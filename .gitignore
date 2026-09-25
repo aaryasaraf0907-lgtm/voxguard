@@ -216,3 +216,20 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Model checkpoints & data (tracked via DVC instead)
+*.pt
+*.pth
+*.ckpt
+data/raw/
+data/processed/
+models/checkpoints/
+
+# Environment
+.env
+.venv/
+__pycache__/
+
+# W&B / DVC local cache
+wandb/
+.dvc/cache/
