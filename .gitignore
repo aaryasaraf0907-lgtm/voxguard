@@ -217,7 +217,7 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-# Model checkpoints & data (tracked via DVC instead)
+# Model checkpoints & data (datasets are reproduced by scripts; checkpoints live on HF Hub)
 *.pt
 *.pth
 *.ckpt
@@ -226,10 +226,13 @@ data/processed/
 models/checkpoints/
 
 # Environment
-.env
 .venv/
-__pycache__/
 
-# W&B / DVC local cache
+# W&B, results caches, local DBs
 wandb/
-.dvc/cache/
+results/cache/
+*.db
+*.sqlite3
+
+# macOS
+.DS_Store
