@@ -232,6 +232,9 @@ models/checkpoints/
 wandb/
 results/cache/
 *.db
+*.db-journal
+*.db-wal
+*.db-shm
 *.sqlite3
 
 # macOS
