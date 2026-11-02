@@ -4,10 +4,10 @@ Each person updates ONLY their own section at the end of a working session.
 
 ## Person 1 - ML Core + repo owner (Aarya)
 
-- **Done:** scaffold (PR #1) merged; 3a download script + manifests (PR #2, open); 3b codecs + augment (open, stacked on 3a). Reviewed and merged Person 2's API skeleton (PR #3).
+- **Done:** scaffold (PR #1) merged; 3a download script + manifests (PR #2, merged); 3b codecs + augment (PR #4); 3c datasets + metrics (stacked on 3b). Reviewed and merged Person 2's API skeleton (PR #3).
 - **In progress:** LA.zip download (7.64 GB, slow link, resumable); review of PRs #2 and 3b.
 - **Blocked:** none.
-- **Next:** 3c datasets + metrics, then 3d RawNet2 + train.
+- **Next:** 3d RawNet2 + train.
 - **Environment note:** local ffmpeg has G.711, Opus and AMR-NB; AMR-WB and GSM encoders are missing (run precompute on Kaggle/Colab for the full set).
 
 ## Person 2 - Product & Platform
