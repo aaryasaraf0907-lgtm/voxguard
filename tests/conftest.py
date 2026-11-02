@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 
 from voxguard.api.deps import Settings
 from voxguard.api.main import create_app
-from voxguard.inference import Detector, StubDetector
+from voxguard.inference import Detector, Prediction, StubDetector
 
 
 def make_wav(seconds: float = 1.0, sr: int = 16_000, channels: int = 1, seed: int = 0) -> bytes:
@@ -18,6 +18,20 @@ def make_wav(seconds: float = 1.0, sr: int = 16_000, channels: int = 1, seed: in
     buf = io.BytesIO()
     sf.write(buf, x, sr, format="WAV", subtype="PCM_16")
     return buf.getvalue()
+
+
+class FixedDetector:
+    """Returns a chosen fake_score; the label follows its own threshold."""
+
+    model_version = "fixed-0"
+
+    def __init__(self, score: float, threshold: float = 0.5) -> None:
+        self.score = score
+        self.threshold = threshold
+
+    def predict(self, waveform: np.ndarray, sample_rate: int) -> Prediction:
+        label = "fake" if self.score >= self.threshold else "real"
+        return Prediction(self.score, label, self.threshold, 1.0, self.model_version)
 
 
 @pytest.fixture
