@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import time
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -23,18 +24,13 @@ LA_URL = "https://datashare.ed.ac.uk/bitstreams/a9f87c35-f055-4015-80e2-2fdff0d4
 LA_SIZE_BYTES = 7_640_952_520  # verified via HTTP range response on 2026-11-01
 DEFAULT_ROOT = Path("data/raw")
 CHUNK = 1 << 20
+TIMEOUT_S = 60
 
 
-def download_resumable(url: str, dest: Path, expected_size: int) -> None:
-    """Download ``url`` to ``dest``, resuming a partial ``.part`` file via HTTP Range."""
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    if dest.exists() and dest.stat().st_size == expected_size:
-        logger.info("%s already complete", dest)
-        return
-    part = dest.with_suffix(dest.suffix + ".part")
+def _fetch_once(url: str, part: Path, expected_size: int) -> None:
     have = part.stat().st_size if part.exists() else 0
     req = urllib.request.Request(url, headers={"Range": f"bytes={have}-"} if have else {})
-    with urllib.request.urlopen(req) as resp:
+    with urllib.request.urlopen(req, timeout=TIMEOUT_S) as resp:
         if have and resp.status != 206:  # server ignored Range: start over
             have = 0
         with part.open("ab" if have else "wb") as f:
@@ -44,6 +40,29 @@ def download_resumable(url: str, dest: Path, expected_size: int) -> None:
                 done += len(chunk)
                 if (done // CHUNK) % 256 == 0:
                     logger.info("downloaded %.2f / %.2f GB", done / 1e9, expected_size / 1e9)
+
+
+def download_resumable(url: str, dest: Path, expected_size: int, retries: int = 20) -> None:
+    """Download ``url`` to ``dest``, resuming a partial ``.part`` file via HTTP Range.
+
+    Socket reads time out after ``TIMEOUT_S`` and the download is retried (resuming), so a
+    dropped connection or a sleeping laptop cannot hang it forever.
+    """
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if dest.exists() and dest.stat().st_size == expected_size:
+        logger.info("%s already complete", dest)
+        return
+    part = dest.with_suffix(dest.suffix + ".part")
+    for attempt in range(1, retries + 1):
+        try:
+            _fetch_once(url, part, expected_size)
+        except (OSError, TimeoutError) as exc:
+            logger.warning("attempt %d/%d failed: %s; retrying", attempt, retries, exc)
+            time.sleep(min(5 * attempt, 30))
+            continue
+        break
+    else:
+        raise OSError(f"download failed after {retries} attempts")
     if part.stat().st_size != expected_size:
         raise OSError(f"{part}: size {part.stat().st_size} != expected {expected_size}")
     part.rename(dest)
