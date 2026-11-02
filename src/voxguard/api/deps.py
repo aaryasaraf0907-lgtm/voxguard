@@ -6,6 +6,7 @@ import math
 import os
 from collections.abc import Iterator
 from dataclasses import dataclass
+from typing import Literal
 
 from fastapi import Request
 from sqlalchemy.orm import Session
@@ -35,20 +36,45 @@ class Settings:
     max_upload_bytes: int = int(DEFAULT_MAX_UPLOAD_MB * 1024 * 1024)
     max_audio_seconds: float = DEFAULT_MAX_AUDIO_SECONDS
     db_url: str = DEFAULT_DB_URL
+    threshold_mode: Literal["eer", "low_far"] = "eer"
+    low_far_threshold: float | None = None
+
+    def __post_init__(self) -> None:
+        if self.threshold_mode not in ("eer", "low_far"):
+            raise ValueError(
+                f"VOXGUARD_THRESHOLD_MODE must be 'eer' or 'low_far', got {self.threshold_mode!r}"
+            )
+        if self.threshold_mode == "low_far":
+            t = self.low_far_threshold
+            if t is None or not math.isfinite(t) or not 0.0 <= t <= 1.0:
+                raise ValueError(
+                    "VOXGUARD_LOW_FAR_THRESHOLD must be set to a number in [0, 1] "
+                    f"when VOXGUARD_THRESHOLD_MODE=low_far, got {t!r}"
+                )
 
     @classmethod
     def from_env(cls) -> Settings:
-        """Read VOXGUARD_MAX_UPLOAD_MB, VOXGUARD_MAX_AUDIO_SECONDS, VOXGUARD_DB_URL.
+        """Read the VOXGUARD_* limits, DB URL and threshold mode (see .env.example).
 
         Unset or empty values use the defaults; invalid values raise ValueError.
         """
         upload_mb = _positive_float_env("VOXGUARD_MAX_UPLOAD_MB", DEFAULT_MAX_UPLOAD_MB)
+        mode = os.environ.get("VOXGUARD_THRESHOLD_MODE", "").strip().lower() or "eer"
+        raw_low_far = os.environ.get("VOXGUARD_LOW_FAR_THRESHOLD", "").strip()
+        try:
+            low_far = float(raw_low_far) if raw_low_far else None
+        except ValueError:
+            raise ValueError(
+                f"VOXGUARD_LOW_FAR_THRESHOLD must be a number in [0, 1], got {raw_low_far!r}"
+            ) from None
         return cls(
             max_upload_bytes=max(1, int(upload_mb * 1024 * 1024)),
             max_audio_seconds=_positive_float_env(
                 "VOXGUARD_MAX_AUDIO_SECONDS", DEFAULT_MAX_AUDIO_SECONDS
             ),
             db_url=os.environ.get("VOXGUARD_DB_URL", "").strip() or DEFAULT_DB_URL,
+            threshold_mode=mode,  # type: ignore[arg-type]  # validated in __post_init__
+            low_far_threshold=low_far,
         )
 
 
