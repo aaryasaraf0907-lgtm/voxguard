@@ -1,0 +1,12 @@
+# Codec-degradation policy used by voxguard.data.augment.
+# Codecs ffmpeg cannot encode are skipped with a warning; g711 must work.
+codecs:
+  g711_mulaw: 1.0
+  g711_alaw: 1.0
+  amr_nb: 1.0
+  amr_wb: 1.0
+  gsm: 1.0
+  opus: 1.0
+noise:
+  probability: 0.3        # chance of adding noise before the codec
+  snr_db: [10, 30]        # uniform range
