@@ -7,7 +7,7 @@ prevention layer and a demo app. University project (Engineering Design & Innova
 
 ## Status
 
-Scaffold only. See [docs/STATUS.md](docs/STATUS.md) and `CLAUDE.md` for scope and roadmap.
+Early development: data pipeline, models, API and demo UI exist; no trained model results yet. See [docs/STATUS.md](docs/STATUS.md) and `CLAUDE.md` for scope and roadmap.
 
 ## Quickstart
 
@@ -21,6 +21,33 @@ Optional extras: `uv sync --extra ml`, `--extra api`, `--extra ui`.
 
 The default detector is a deterministic stub (`VOXGUARD_DETECTOR=stub`), so everything
 runs without weights or GPU.
+
+## Run the demo locally
+
+The default detector is the stub, so no weights or GPU are needed. Scores it returns are
+deterministic placeholders, not real detection results (the UI says so when it is active).
+
+```bash
+uv sync --extra api --extra ui
+
+# terminal 1: API on http://localhost:8000
+uv run uvicorn voxguard.api.main:create_app --factory --port 8000
+
+# terminal 2: Streamlit UI on http://localhost:8501
+uv run streamlit run src/voxguard/ui/app.py
+```
+
+- **API address:** the UI reads `VOXGUARD_API_URL` (default `http://localhost:8000`), e.g.
+  `VOXGUARD_API_URL=http://localhost:9000 uv run streamlit run src/voxguard/ui/app.py`.
+  Other settings are listed in `.env.example`.
+- **Language:** use the selector at the top of the sidebar to switch between English and
+  Hindi. The Hindi text is a draft that has not been reviewed yet.
+- **Using it:** upload a WAV/FLAC/OGG/MP3 file or record with the microphone, then press
+  Analyze. The other tabs list flagged sessions, the caller blocklist and alerts (all times UTC).
+- **Phone-line simulation is not available yet.** The control is shown disabled; recordings
+  are analyzed exactly as provided.
+- **Database:** SQLite only (`VOXGUARD_DB_URL=sqlite:///...`); other database URLs are rejected
+  at startup.
 
 ## Layout
 

@@ -11,6 +11,7 @@ from typing import Literal
 from fastapi import Request
 from sqlalchemy.orm import Session
 
+from voxguard.api.db import require_sqlite_url
 from voxguard.inference import Detector
 
 DEFAULT_DB_URL = "sqlite:///./voxguard.db"
@@ -40,6 +41,7 @@ class Settings:
     low_far_threshold: float | None = None
 
     def __post_init__(self) -> None:
+        require_sqlite_url(self.db_url)
         if self.threshold_mode not in ("eer", "low_far"):
             raise ValueError(
                 f"VOXGUARD_THRESHOLD_MODE must be 'eer' or 'low_far', got {self.threshold_mode!r}"
