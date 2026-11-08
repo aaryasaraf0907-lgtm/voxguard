@@ -1,0 +1,15 @@
+# Codec-augmented smoke training on synthetic clips (clean + degraded variants).
+model:
+  name: rawnet2
+  gru_hidden: 128
+  gru_layers: 1
+data:
+  train_manifests: [data/processed/synthetic/manifests/synthetic_train_aug.csv]
+  dev_manifests: [data/processed/synthetic/manifests/synthetic_dev.csv]
+  roots: [data/processed/synthetic]
+train:
+  epochs: 3
+  batch_size: 8
+  lr: 0.001
+  class_weights: [0.5, 0.5]
+  out_dir: runs/smoke_rawnet2_aug
