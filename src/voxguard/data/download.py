@@ -2,6 +2,7 @@
 
     python -m voxguard.data.download --yes          # ~7.1 GB download + extract + manifests
     python -m voxguard.data.download --manifests-only
+    python -m voxguard.data.download --from-zip /path/LA.zip --root RAW_DIR   # no network
 
 Licence: Open Data Commons Attribution (ODC-By); cite Todisco et al., Interspeech 2019.
 No checksum is published, so integrity is checked via size and zip CRCs.
@@ -12,6 +13,7 @@ from __future__ import annotations
 import argparse
 import logging
 import time
+import urllib.error
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -25,6 +27,7 @@ LA_SIZE_BYTES = 7_640_952_520  # verified via HTTP range response on 2026-11-01
 DEFAULT_ROOT = Path("data/raw")
 CHUNK = 1 << 20
 TIMEOUT_S = 60
+FATAL_HTTP_CODES = (401, 403, 404, 410)  # retrying cannot help (e.g. host blocks this network)
 
 
 def _fetch_once(url: str, part: Path, expected_size: int) -> None:
@@ -56,6 +59,16 @@ def download_resumable(url: str, dest: Path, expected_size: int, retries: int = 
     for attempt in range(1, retries + 1):
         try:
             _fetch_once(url, part, expected_size)
+        except urllib.error.HTTPError as exc:
+            if exc.code in FATAL_HTTP_CODES:
+                raise OSError(
+                    f"HTTP {exc.code} from {url}: the host refuses this network. Download "
+                    "LA.zip elsewhere and re-run with --from-zip PATH (or --manifests-only "
+                    "--root DIR for an already extracted copy)."
+                ) from exc
+            logger.warning("attempt %d/%d failed: %s; retrying", attempt, retries, exc)
+            time.sleep(min(5 * attempt, 30))
+            continue
         except (OSError, TimeoutError) as exc:
             logger.warning("attempt %d/%d failed: %s; retrying", attempt, retries, exc)
             time.sleep(min(5 * attempt, 30))
@@ -96,10 +109,18 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--yes", action="store_true", help="confirm the ~7.1 GB download")
     p.add_argument("--manifests-only", action="store_true", help="skip download/extract")
     p.add_argument("--keep-zip", action="store_true")
+    p.add_argument(
+        "--from-zip", type=Path, help="use a LA.zip you already have (no network); never deleted"
+    )
     args = p.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
-    if not args.manifests_only:
+    if args.from_zip is not None:
+        if not args.from_zip.is_file():
+            p.error(f"--from-zip: {args.from_zip} is not a file")
+        if not list(args.root.rglob("ASVspoof2019_LA_cm_protocols")):
+            safe_extract(args.from_zip, args.root)
+    elif not args.manifests_only:
         if not args.yes:
             p.error(f"LA.zip is {LA_SIZE_BYTES / 1e9:.2f} GB; re-run with --yes to download")
         zip_path = args.root / "LA.zip"
