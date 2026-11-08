@@ -93,3 +93,40 @@ def test_safe_extract_blocks_zip_slip(tmp_path: Path) -> None:
     with pytest.raises(ValueError):
         safe_extract(z, tmp_path / "out")
     assert not (tmp_path / "escape.txt").exists()
+
+
+def test_forbidden_fails_fast(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    import urllib.error
+
+    from voxguard.data import download
+
+    calls = []
+
+    def boom(*args: object, **kwargs: object) -> None:
+        calls.append(1)
+        raise urllib.error.HTTPError("u", 403, "Forbidden", {}, None)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(download.urllib.request, "urlopen", boom)
+    with pytest.raises(OSError, match="--from-zip"):
+        download.download_resumable("http://x", tmp_path / "a.zip", 10)
+    assert len(calls) == 1  # no retries
+
+
+def test_from_zip_builds_manifests(tmp_path: Path) -> None:
+    import zipfile
+
+    from voxguard.data import download
+
+    src = tmp_path / "src"
+    _fake_tree(src)
+    z = tmp_path / "LA.zip"
+    with zipfile.ZipFile(z, "w") as zf:
+        for f in (src / "LA").rglob("*"):
+            if f.is_file():
+                zf.write(f, f.relative_to(src).as_posix())
+    root, out = tmp_path / "raw", tmp_path / "man"
+    download.main(["--from-zip", str(z), "--root", str(root), "--manifests-dir", str(out)])
+    assert z.exists()  # never deleted
+    rows = read_manifest(out / "asvspoof2019_la_eval.csv")
+    assert rows[0].path == "LA/ASVspoof2019_LA_eval/flac/LA_E_2834763.flac"
+    assert (root / rows[0].path).is_file()
