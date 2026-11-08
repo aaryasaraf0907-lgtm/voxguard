@@ -1,13 +1,31 @@
-"""SQLAlchemy 2 models and engine setup (sessions table only; prevention tables come later)."""
+"""SQLAlchemy 2 models and engine setup: sessions, alerts and the caller blocklist."""
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
+from typing import Any
 
-from sqlalchemy import DateTime, Engine, create_engine
+from sqlalchemy import DateTime, Engine, ForeignKey, TypeDecorator, create_engine, event
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.pool import StaticPool
+
+
+class UTCDateTime(TypeDecorator[datetime]):
+    """Stored as naive UTC (SQLite keeps no tzinfo); always returned timezone-aware UTC."""
+
+    impl = DateTime
+    cache_ok = True
+
+    def process_bind_param(self, value: datetime | None, dialect: Any) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None:  # naive values are taken as UTC
+            return value
+        return value.astimezone(UTC).replace(tzinfo=None)
+
+    def process_result_value(self, value: datetime | None, dialect: Any) -> datetime | None:
+        return None if value is None else value.replace(tzinfo=UTC)
 
 
 class Base(DeclarativeBase):
@@ -18,8 +36,7 @@ class SessionRow(Base):
     __tablename__ = "sessions"
 
     session_id: Mapped[str] = mapped_column(primary_key=True)
-    # SQLite does not keep tzinfo: values are written as UTC and read back naive.
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, index=True)
     caller_id: Mapped[str | None] = mapped_column(index=True)
     label: Mapped[str]
     fake_score: Mapped[float]
@@ -30,6 +47,26 @@ class SessionRow(Base):
     latency_ms: Mapped[float]
 
 
+class AlertRow(Base):
+    __tablename__ = "alerts"
+
+    alert_id: Mapped[str] = mapped_column(primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, index=True)
+    session_id: Mapped[str] = mapped_column(ForeignKey("sessions.session_id"), index=True)
+    caller_id: Mapped[str | None]
+    fake_score: Mapped[float]
+    message: Mapped[str]
+
+
+class BlocklistRow(Base):
+    __tablename__ = "blocklist"
+
+    caller_id: Mapped[str] = mapped_column(primary_key=True)
+    hit_count: Mapped[int]
+    first_seen: Mapped[datetime] = mapped_column(UTCDateTime)
+    last_seen: Mapped[datetime] = mapped_column(UTCDateTime)
+
+
 def make_engine(url: str) -> Engine:
     parsed = make_url(url)
     if parsed.get_backend_name() != "sqlite":
@@ -38,7 +75,15 @@ def make_engine(url: str) -> Engine:
     kwargs: dict = {"connect_args": {"check_same_thread": False}}
     if parsed.database in (None, "", ":memory:"):
         kwargs["poolclass"] = StaticPool  # one shared connection, else each thread sees a new DB
-    return create_engine(url, **kwargs)
+    engine = create_engine(url, **kwargs)
+
+    @event.listens_for(engine, "connect")
+    def _enforce_foreign_keys(dbapi_connection: Any, _record: Any) -> None:
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
+    return engine
 
 
 def create_tables(engine: Engine) -> None:

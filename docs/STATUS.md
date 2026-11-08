@@ -12,7 +12,8 @@ Each person updates ONLY their own section at the end of a working session.
 
 ## Person 2 - Product & Platform
 
-- **Done:** repo audit; PR 1 `feat/api-skeleton` opened (FastAPI app factory, `/health`, `/v1/analyze`, audio decoding, SQLite `sessions` table, upload/duration limits, API tests, CI runs the `api` extra).
-- **In progress:** awaiting review of PR 1.
-- **Blocked:** none. `simulate_codec=true` returns 501 until `data/codecs.py` lands.
-- **Next:** PR 2 prevention layer (flagged sessions, alerts, blocklist, `/v1/sessions`, `/v1/blocklist`, `/v1/alerts`); PR 3 Streamlit EN/HI UI.
+- **Done:** PR #3 API skeleton (reviewed and merged by Aarya); PR `feat/prevention-layer` opened: prevention layer in `api/prevention.py` (`flagged = fake_score >= effective threshold`, one rule in one place), `alerts` and `blocklist` tables with atomic blocklist upsert, one transaction per analysis, SQLite foreign keys on, UTC-aware timestamps, `GET /v1/sessions`, `/v1/blocklist`, `/v1/alerts?since=`, threshold modes `eer` (default) and `low_far`. Tests run locally: 152 passed, 8 skipped (ffmpeg/torch not installed here).
+- **In progress:** awaiting review of the prevention-layer PR.
+- **Blocked:** none.
+- **Limitations:** `low_far` uses a manually configured `VOXGUARD_LOW_FAR_THRESHOLD`; there is no evaluation-derived operating point yet (needs Aarya's results). The default detector threshold is 0.5, not an EER-derived value. `simulate_codec=true` still returns 501 (`data/codecs.py` exists now; wiring it needs a codec-name field and ffmpeg). No migrations: existing databases get the new tables via `create_all`, but later column changes to `sessions` would not apply.
+- **Next:** Streamlit EN/HI UI; `simulate_codec` wiring; Docker/compose; `/health` detector `name` once Aarya adds it to the detector.

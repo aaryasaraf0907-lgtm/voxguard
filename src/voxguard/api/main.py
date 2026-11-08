@@ -9,16 +9,24 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, UploadFile
+from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
+from voxguard.api import prevention
 from voxguard.api.audio import decode_audio
-from voxguard.api.db import SessionRow, create_tables, make_engine
+from voxguard.api.db import AlertRow, BlocklistRow, SessionRow, create_tables, make_engine
 from voxguard.api.deps import Settings, get_db, get_detector_dep, get_settings
 from voxguard.api.limits import BodySizeLimitMiddleware
 from voxguard.inference import Detector, get_detector
-from voxguard.schemas import AnalyzeResponse, HealthResponse
+from voxguard.schemas import (
+    AlertRecord,
+    AnalyzeResponse,
+    BlocklistEntry,
+    HealthResponse,
+    SessionRecord,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +83,7 @@ def create_app(detector: Detector | None = None, settings: Settings | None = Non
 
         try:
             pred = det.predict(waveform, sample_rate)
+            decision = prevention.decide(pred, cfg)
         except Exception:
             logger.exception("Detector failed")
             raise HTTPException(500, "Detector failed") from None
@@ -82,17 +91,19 @@ def create_app(detector: Detector | None = None, settings: Settings | None = Non
         row = SessionRow(
             session_id=uuid.uuid4().hex,
             created_at=datetime.now(UTC),
-            caller_id=caller_id or None,
-            label=pred.label,
+            caller_id=prevention.normalize_caller_id(caller_id),
+            label=decision.label,
             fake_score=pred.fake_score,
-            threshold=pred.threshold,
-            flagged=pred.fake_score >= pred.threshold,
+            threshold=decision.threshold,
+            flagged=decision.flagged,
             codec_applied=None,
             model_version=pred.model_version,
             latency_ms=pred.latency_ms,
         )
-        try:
+        try:  # session, alert and blocklist update commit together or not at all
             db.add(row)
+            if row.flagged:
+                prevention.record_flag(db, row)
             db.commit()
         except SQLAlchemyError:
             db.rollback()
@@ -101,13 +112,74 @@ def create_app(detector: Detector | None = None, settings: Settings | None = Non
 
         return AnalyzeResponse(
             session_id=row.session_id,
-            label=pred.label,
+            label=decision.label,
             fake_score=pred.fake_score,
-            threshold=pred.threshold,
+            threshold=decision.threshold,
             latency_ms=pred.latency_ms,
             model_version=pred.model_version,
-            flagged=row.flagged,
+            flagged=decision.flagged,
             codec_applied=row.codec_applied,
         )
+
+    @app.get("/v1/sessions", response_model=list[SessionRecord])
+    def list_sessions(
+        db: Annotated[Session, Depends(get_db)],
+        flagged_only: bool = False,
+        limit: Annotated[int, Query(ge=1, le=500)] = 50,
+    ) -> list[SessionRecord]:
+        stmt = select(SessionRow).order_by(
+            SessionRow.created_at.desc(), SessionRow.session_id.desc()
+        )
+        if flagged_only:
+            stmt = stmt.where(SessionRow.flagged.is_(True))
+        rows = db.scalars(stmt.limit(limit))
+        return [SessionRecord.model_validate(r) for r in rows]
+
+    @app.get("/v1/blocklist", response_model=list[BlocklistEntry])
+    def list_blocklist(db: Annotated[Session, Depends(get_db)]) -> list[BlocklistEntry]:
+        stmt = select(BlocklistRow).order_by(
+            BlocklistRow.hit_count.desc(), BlocklistRow.last_seen.desc(), BlocklistRow.caller_id
+        )
+        return [
+            BlocklistEntry(
+                caller_id=r.caller_id,
+                hit_count=r.hit_count,
+                first_seen=r.first_seen,
+                last_seen=r.last_seen,
+            )
+            for r in db.scalars(stmt)
+        ]
+
+    @app.get("/v1/alerts", response_model=list[AlertRecord])
+    def list_alerts(
+        db: Annotated[Session, Depends(get_db)],
+        since: datetime | None = None,
+        limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    ) -> list[AlertRecord]:
+        if since is None:  # latest alerts, newest first
+            stmt = select(AlertRow).order_by(AlertRow.created_at.desc(), AlertRow.alert_id.desc())
+        else:  # polling cursor: strictly newer, oldest first so clients advance without gaps
+            try:
+                since_utc = (
+                    since.replace(tzinfo=UTC) if since.tzinfo is None else since.astimezone(UTC)
+                )
+            except OverflowError:
+                raise HTTPException(422, "since is out of range") from None
+            stmt = (
+                select(AlertRow)
+                .where(AlertRow.created_at > since_utc)
+                .order_by(AlertRow.created_at, AlertRow.alert_id)
+            )
+        return [
+            AlertRecord(
+                alert_id=r.alert_id,
+                created_at=r.created_at,
+                session_id=r.session_id,
+                caller_id=r.caller_id,
+                fake_score=r.fake_score,
+                message=r.message,
+            )
+            for r in db.scalars(stmt.limit(limit))
+        ]
 
     return app
