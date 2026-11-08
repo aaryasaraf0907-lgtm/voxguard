@@ -1,0 +1,26 @@
+# RawNet2 baseline on ASVspoof 2019 LA. Paths are relative to the repo root.
+# Clean-only run: use the clean train manifest. Codec-augmented run: use the manifest written by
+# `python -m voxguard.data.augment` (clean + degraded variants).
+model:
+  name: rawnet2
+  gru_hidden: 1024
+  gru_layers: 3
+data:
+  train_manifests: [data/processed/manifests/asvspoof2019_la_train.csv]
+  dev_manifests: [data/processed/manifests/asvspoof2019_la_dev.csv]
+  roots: [data/raw, data/processed]
+  num_samples: 64600
+train:
+  epochs: 20
+  batch_size: 32
+  lr: 0.0001
+  weight_decay: 0.0001
+  class_weights: [0.1, 0.9]   # [bona fide, fake]; ASVspoof2021 baseline convention
+  seed: 1234
+  num_workers: 2
+  amp: true
+  out_dir: runs/rawnet2_clean
+  device: auto
+wandb:
+  enabled: false
+  project: voxguard

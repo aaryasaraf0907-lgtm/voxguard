@@ -239,3 +239,6 @@ results/cache/
 
 # macOS
 .DS_Store
+
+# Training runs (checkpoints, logs)
+runs/
