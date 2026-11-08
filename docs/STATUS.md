@@ -4,10 +4,10 @@ Each person updates ONLY their own section at the end of a working session.
 
 ## Person 1 - ML Core + repo owner (Aarya)
 
-- **Done:** scaffold, 3a download + manifests, 3b codecs + augment, 3c datasets + metrics merged; 3d RawNet2 + train loop opened (smoke run OK on MPS). Reviewed and merged Person 2's API skeleton (PR #3).
+- **Done:** scaffold, 3a download + manifests, 3b codecs + augment, 3c datasets + metrics merged; 3d RawNet2 + train loop merged; 3e SSL-AASIST + Kaggle guide opened. Reviewed and merged Person 2's API skeleton (PR #3).
 - **In progress:** getting LA.zip. Edinburgh DataShare returns 403 to Kaggle and Colab IPs, so it is downloaded on the Mac and uploaded to Kaggle as a private dataset (`--from-zip`).
 - **Blocked:** none.
-- **Next:** 3e SSL-AASIST + Kaggle setup doc.
+- **Next:** 3f evaluate.py (2x2 matrix); first real training runs once LA.zip is on Kaggle.
 - **Environment note:** local ffmpeg has G.711, Opus and AMR-NB; AMR-WB and GSM are missing locally (Kaggle's ffmpeg 6.1.1 to be checked with `python -m voxguard.data.codecs`).
 
 ## Person 2 - Product & Platform

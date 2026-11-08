@@ -47,6 +47,7 @@ class TrainConfig:
     epochs: int = 10
     batch_size: int = 32
     lr: float = 1e-4
+    frontend_lr: float | None = None  # separate LR for an SSL front-end (None = use lr)
     weight_decay: float = 1e-4
     class_weights: list[float] = field(default_factory=lambda: [0.1, 0.9])  # [bona fide, fake]
     seed: int = 1234
@@ -152,6 +153,17 @@ def _make_loaders(cfg: Config) -> tuple[DataLoader, DataLoader]:
     return train_dl, dev_dl
 
 
+def _param_groups(model: nn.Module, t: TrainConfig) -> list[dict[str, Any]]:
+    """One group, or front-end/back-end groups when ``frontend_lr`` is set and supported."""
+    if t.frontend_lr is not None and hasattr(model, "frontend_parameters"):
+        groups = [
+            {"params": model.frontend_parameters(), "lr": t.frontend_lr},
+            {"params": model.backend_parameters(), "lr": t.lr},
+        ]
+        return [g for g in groups if g["params"]]
+    return [{"params": [p for p in model.parameters() if p.requires_grad]}]
+
+
 def train(cfg: Config, resume: bool = False, use_wandb: bool = False) -> dict[str, Any]:
     t = cfg.train
     out = Path(t.out_dir)
@@ -165,7 +177,12 @@ def train(cfg: Config, resume: bool = False, use_wandb: bool = False) -> dict[st
     logger.info("train=%d dev=%d clips", len(train_dl.dataset), len(dev_dl.dataset))
     model_params = {k: v for k, v in cfg.model.items() if k != "name"}
     model = build_model(cfg.model["name"], **model_params).to(device)
-    opt = torch.optim.Adam(model.parameters(), lr=t.lr, weight_decay=t.weight_decay)
+    n_all = sum(p.numel() for p in model.parameters())
+    n_train = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    logger.info(
+        "model=%s params=%.1fM trainable=%.1fM", cfg.model["name"], n_all / 1e6, n_train / 1e6
+    )
+    opt = torch.optim.Adam(_param_groups(model, t), lr=t.lr, weight_decay=t.weight_decay)
     scaler = torch.amp.GradScaler("cuda", enabled=amp)
     loss_fn = nn.CrossEntropyLoss(weight=torch.tensor(t.class_weights, device=device))
 
