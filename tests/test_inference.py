@@ -53,8 +53,12 @@ def test_predict_does_not_depend_on_threshold_for_score() -> None:
 
 
 def test_windowing_pad_crop_and_split() -> None:
-    assert [len(x) for x in to_windows(_wave(1000), 16_000)] == [NUM_SAMPLES]
-    assert [len(x) for x in to_windows(_wave(NUM_SAMPLES * 2 + 5), 16_000)] == [NUM_SAMPLES] * 3
+    short = _wave(1000)
+    (w,) = to_windows(short, 16_000)
+    assert len(w) == NUM_SAMPLES and np.array_equal(w[1000:2000], short)  # repeat-padded
+    # a tiny tail (< 1/4 window) is dropped, a long tail becomes its own padded window
+    assert len(to_windows(_wave(NUM_SAMPLES * 2 + 5), 16_000)) == 2
+    assert len(to_windows(_wave(NUM_SAMPLES * 2 + NUM_SAMPLES // 2), 16_000)) == 3
     assert len(to_windows(np.zeros(0, dtype=np.float32), 16_000)) == 1
 
 
@@ -68,6 +72,10 @@ def test_resample_and_stereo() -> None:
 def test_threshold_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("VOXGUARD_THRESHOLD", "0.25")
     assert StubDetector().threshold == 0.25
+    for bad in ("abc", "1.5", "-0.1"):
+        monkeypatch.setenv("VOXGUARD_THRESHOLD", bad)
+        with pytest.raises(ValueError, match="VOXGUARD_THRESHOLD"):
+            StubDetector()
 
 
 def test_get_detector_selection(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -78,6 +86,8 @@ def test_get_detector_selection(monkeypatch: pytest.MonkeyPatch) -> None:
         get_detector()
 
 
-def test_real_detector_placeholder_is_clear() -> None:
-    with pytest.raises(NotImplementedError, match="not implemented yet"):
+def test_real_detector_needs_a_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    pytest.importorskip("torch")
+    monkeypatch.delenv("VOXGUARD_MODEL_REPO", raising=False)
+    with pytest.raises(ValueError, match="VOXGUARD_MODEL_REPO"):
         RealDetector()

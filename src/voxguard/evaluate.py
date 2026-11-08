@@ -82,16 +82,9 @@ def evaluate_condition(scores: np.ndarray, labels: np.ndarray, codecs: list[str]
 
 def load_model(ckpt_path: Path, device: str):
     """Rebuild the model from the config stored in a train.py checkpoint."""
-    import torch
+    from voxguard.models import load_from_checkpoint
 
-    from voxguard.models import build_model
-
-    ckpt = torch.load(ckpt_path, map_location=device, weights_only=False)
-    model_cfg = dict(ckpt["config"]["model"])
-    name = model_cfg.pop("name")
-    model = build_model(name, **model_cfg)
-    model.load_state_dict(ckpt["model"])
-    return model.to(device).eval(), {"name": name, "epoch": ckpt["epoch"], **model_cfg}
+    return load_from_checkpoint(ckpt_path, device)
 
 
 def score_manifests(
