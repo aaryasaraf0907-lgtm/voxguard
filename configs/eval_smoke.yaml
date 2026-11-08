@@ -1,0 +1,13 @@
+# Smoke evaluation on synthetic data (mechanics only). Run `make smoke-eval`.
+models:
+  rawnet2:
+    clean: runs/smoke_rawnet2/best.pt
+    codec_aug: runs/smoke_rawnet2_aug/best.pt
+test_sets:
+  clean: [data/processed/synthetic/manifests/synthetic_dev.csv]
+  degraded: [data/processed/synthetic/manifests/synthetic_dev_per_codec.csv]
+roots: [data/processed/synthetic]
+batch_size: 8
+latency_clips: 20
+out_dir: runs/smoke_eval/results
+docs_path: runs/smoke_eval/results.md

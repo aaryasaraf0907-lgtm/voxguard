@@ -1,0 +1,21 @@
+# Evaluation on ASVspoof 2019 LA eval: the 2x2 matrix per model family.
+# Degraded manifest: `python -m voxguard.data.augment --mode per-codec --no-clean` on the eval split.
+models:
+  rawnet2:
+    clean: runs/rawnet2_clean/best.pt
+    codec_aug: runs/rawnet2_codec_aug/best.pt
+  ssl_aasist:
+    clean: runs/ssl_aasist_clean/best.pt
+    codec_aug: runs/ssl_aasist_codec_aug/best.pt
+test_sets:
+  clean: [data/processed/manifests/asvspoof2019_la_eval.csv]
+  degraded: [data/processed/manifests/eval_per_codec.csv]
+roots: [data/raw, data/processed]
+max_samples: null
+batch_size: 32
+device: auto
+latency_clips: 50
+latency_devices: [cpu, auto]
+seed: 0
+out_dir: results
+docs_path: docs/results.md
