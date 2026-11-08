@@ -95,3 +95,31 @@ def test_config_file_loads() -> None:
     cfg = load_config(Path(__file__).parents[1] / "configs" / "ssl_aasist.yaml")
     assert cfg.model["name"] == "ssl_aasist" and cfg.model["finetune"] == "full"
     assert cfg.train.batch_size == 14 and cfg.train.lr == 1e-6
+
+
+def test_checkpoint_loader_does_not_redownload_xlsr(tmp_path: Path, monkeypatch) -> None:
+    import transformers
+
+    from voxguard.models import load_from_checkpoint
+
+    model = tiny(finetune="last_n", last_n=1)
+    params = {"name": "ssl_aasist", "pretrained": "facebook/wav2vec2-xls-r-300m",
+              "finetune": "last_n", "last_n": 1}  # fmt: skip
+    torch.save(
+        {"model": model.state_dict(), "epoch": 0, "config": {"model": params}}, tmp_path / "c.pt"
+    )
+    fetched = []
+
+    def fake_config(name: str):
+        fetched.append(name)
+        return transformers.Wav2Vec2Config(**TINY)
+
+    monkeypatch.setattr(transformers.Wav2Vec2Config, "from_pretrained", staticmethod(fake_config))
+    monkeypatch.setattr(
+        transformers.Wav2Vec2Model, "from_pretrained",
+        staticmethod(lambda *a, **k: pytest.fail("weights must not be downloaded")),
+    )  # fmt: skip
+    loaded, info = load_from_checkpoint(tmp_path / "c.pt")
+    assert fetched == ["facebook/wav2vec2-xls-r-300m"] and info["name"] == "ssl_aasist"
+    x = torch.randn(1, 16_000)
+    assert torch.allclose(loaded(x), model.eval()(x))
