@@ -1,0 +1,33 @@
+# SSL-AASIST: XLS-R 300M front-end + AASIST back-end on ASVspoof 2019 LA.
+# Paper settings (Tak et al. 2022): Adam lr 1e-6, weight decay 1e-4, batch 14, weighted CE
+# [0.1, 0.9], full fine-tuning, 100 epochs. Deviations here (documented for the report):
+#   - epochs 20: free Kaggle/Colab GPU time; best.pt is kept by dev EER
+#   - gradient checkpointing on: fits a 16 GB T4 at batch 14
+# Fallback if too slow / OOM: finetune: last_n (last_n: 4) and frontend_lr: 1.0e-5, lr: 1.0e-4.
+model:
+  name: ssl_aasist
+  pretrained: facebook/wav2vec2-xls-r-300m
+  finetune: full            # full | last_n | frozen
+  last_n: 4                 # used only when finetune: last_n
+  gradient_checkpointing: true
+  proj_dim: 128
+data:
+  train_manifests: [data/processed/manifests/asvspoof2019_la_train.csv]
+  dev_manifests: [data/processed/manifests/asvspoof2019_la_dev.csv]
+  roots: [data/raw, data/processed]
+  num_samples: 64600
+train:
+  epochs: 20
+  batch_size: 14
+  lr: 1.0e-6
+  frontend_lr: null         # set to use a separate front-end LR (e.g. with last_n)
+  weight_decay: 1.0e-4
+  class_weights: [0.1, 0.9] # [bona fide, fake]
+  seed: 1234
+  num_workers: 2
+  amp: true                 # CUDA only
+  out_dir: runs/ssl_aasist_clean
+  device: auto
+wandb:
+  enabled: false
+  project: voxguard

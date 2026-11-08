@@ -11,4 +11,8 @@ def build_model(name: str, **params: Any):
         from voxguard.models.rawnet2 import RawNet2
 
         return RawNet2(**params)
-    raise ValueError(f"unknown model {name!r}; known: ['rawnet2']")
+    if name == "ssl_aasist":
+        from voxguard.models.ssl_aasist import SSLAASIST
+
+        return SSLAASIST(**params)
+    raise ValueError(f"unknown model {name!r}; known: ['rawnet2', 'ssl_aasist']")
