@@ -41,10 +41,19 @@ import subprocess
 
 tok = UserSecretsClient().get_secret("GITHUB_TOKEN")
 r = subprocess.run(
-    ["git", "clone", "-b", "dev", "--depth", "1",
-     f"https://x-access-token:{tok}@github.com/aaryasaraf0907-lgtm/voxguard.git",
-     "/kaggle/working/voxguard"],
-    capture_output=True, text=True)
+    [
+        "git",
+        "clone",
+        "-b",
+        "dev",
+        "--depth",
+        "1",
+        f"https://x-access-token:{tok}@github.com/aaryasaraf0907-lgtm/voxguard.git",
+        "/kaggle/working/voxguard",
+    ],
+    capture_output=True,
+    text=True,
+)
 print("clone exit code:", r.returncode)
 print(r.stderr.replace(tok, "***")[-300:])  # never print the raw token
 ```
@@ -148,6 +157,7 @@ Sessions are time-limited and can stop. `last.pt` is written atomically every ep
 
 ```python
 import os
+
 os.environ["WANDB_API_KEY"] = UserSecretsClient().get_secret("WANDB_API_KEY")
 ```
 
