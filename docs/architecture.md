@@ -41,9 +41,23 @@ curl -F file=@call.wav -F simulate_codec=true http://localhost:8000/v1/analyze
 
 **Limitations**
 - Audio moves through ffmpeg pipes; no temporary files are created.
-- Non-16 kHz input is resampled with linear interpolation (no low-pass filter), so material
-  above 16 kHz can alias before the codec stage (input already at 16 kHz is not resampled).
+- Non-16 kHz input is first resampled to 16 kHz with ffmpeg's resampler (libswresample, which
+  low-pass filters before decimation), so content above 8 kHz is removed instead of aliasing
+  into the band; input already at 16 kHz is not resampled. This reuses the ffmpeg this feature
+  already requires and adds no Python dependency. It is separate from the detector's own
+  preprocessing, which still resamples when simulation is off.
 - The codec is fixed per server, not per request, and there is no noise or bitrate variation;
   this is a deterministic single-codec demo, not the randomized training augmentation.
-- `latency_ms` in the response is the detector's own latency and excludes codec time.
 - The set of available encoders is read once per process; install ffmpeg before starting the API.
+
+## Latency
+
+Three different times exist, and the API reports only the first:
+
+- **Detector inference latency:** `latency_ms` in the response (and in the stored session) is
+  `Prediction.latency_ms`, measured inside the detector around `predict`. With simulation on,
+  it is measured on the degraded audio.
+- **Codec preprocessing time** (resampling plus encode/decode through ffmpeg): not measured and
+  not included in `latency_ms`.
+- **Total request time** (upload read, decoding, codec, inference, database commit): not
+  measured by the API either, so `latency_ms` must not be read as end-to-end latency.

@@ -127,13 +127,22 @@ def test_detector_receives_transformed_audio_and_codec_is_reported(sim_client, f
     assert fake_codec[0][1] == CODEC
 
 
-def test_other_sample_rates_are_resampled_to_16k_before_the_codec(sim_client, fake_codec) -> None:
+def test_other_sample_rates_are_resampled_to_16k_before_the_codec(
+    sim_client, fake_codec, monkeypatch
+) -> None:
+    resampled = []
+
+    def fake_resample(x: np.ndarray, sr: int) -> np.ndarray:  # band-limited version is tested apart
+        resampled.append((x.shape, sr))
+        return np.repeat(x, 2)[:16_000].astype(np.float32)
+
+    monkeypatch.setattr(codec_sim, "resample_to_16k", fake_resample)
     det = SpyDetector()
     with sim_client(det) as c:
-        assert (
-            _post(c, make_wav(1.0, sr=8_000, channels=2), simulate_codec="true").status_code == 200
-        )
-    assert fake_codec[0][0].shape == (16_000,)  # 8 kHz stereo -> mono 16 kHz into the codec
+        r = _post(c, make_wav(1.0, sr=8_000, channels=2), simulate_codec="true")
+        assert r.status_code == 200
+    assert resampled == [((8_000,), 8_000)]  # mono 8 kHz signal went in
+    assert fake_codec[0][0].shape == (16_000,)  # the resampled signal is what the codec gets
     assert det.seen[0][1] == 16_000 and det.seen[0][0].shape == (16_000,)
 
 
