@@ -76,7 +76,7 @@ Stretch evidence: train on a subset of codecs, test on an unseen codec.
 
 | Layer | Choice |
 |---|---|
-| Language / env | Python 3.11, `uv` (fallback pip + venv), `pyproject.toml`, src layout |
+| Language / env | Python 3.11 for dev/CI, `uv` (fallback pip + venv), `pyproject.toml`, src layout; package also runs on 3.12+ (Kaggle ships 3.13) |
 | ML | PyTorch, HuggingFace Transformers (`facebook/wav2vec2-xls-r-300m`), torchaudio/soundfile/librosa |
 | Codec simulation | FFmpeg via subprocess (G.711 mu-law/A-law native; AMR-NB `libopencore_amrnb`, AMR-WB `libvo_amrwbenc`, GSM `libgsm`, Opus `libopus` if available) |
 | Baselines/refs | RawNet2 (ASVspoof 2021 baseline), AASIST (clovaai/aasist), SSL-AASIST (Tak et al. 2022, TakHemlata/SSL_Anti-spoofing). Check licences; implement/adapt with attribution rather than blind copy |
@@ -153,6 +153,8 @@ Prevention rule (MVP): `fake_score >= threshold` -> session stored as flagged, a
 ## 8. Data and codec spec
 
 - **Primary dataset:** ASVspoof 2019 LA (train/dev/eval), English, 16 kHz. Source: Edinburgh DataShare (handle 10283/3336) - verify URL, size, licence. Ask the user before downloading; check free disk first (`df -h`).
+  - Verified 2026-11-01/08: `LA.zip` is 7,640,952,520 bytes; licence ODC-By (attribution; cite Todisco et al., Interspeech 2019); no checksum published.
+  - DataShare returns **HTTP 403 to Kaggle and Colab IP ranges** (even the landing page), and caps throughput per client at roughly 0.3-0.6 MB/s (parallel connections do not help). Download once on a personal machine (`python -m voxguard.data.download --yes --keep-zip`, resumable), upload `LA.zip` to Kaggle as a **private** dataset, and build manifests there with `--from-zip` (see `scripts/kaggle_setup.md`).
 - **Stretch eval sets:** In-the-Wild (out-of-domain). Hindi set per section 11.
 - **Codec chain:** resample to codec rate (8 kHz for NB codecs, 16 kHz for WB) -> encode -> decode via ffmpeg -> resample back to 16 kHz. Randomise codec and bitrate per sample (seeded). Optional additive noise. `G.711` must always work; other codecs are skipped with a clear warning if ffmpeg lacks the encoder (`ffmpeg -encoders | grep -i -E "amr|gsm|opus"`). Report codec availability in the first status update.
 - **Offline precompute by default:** for each training file keep the clean version + N random codec variants; write manifests (`path,label,split,codec,bitrate,source`). Eval sets: deterministic degraded copies per codec so numbers are reproducible. On-the-fly augmentation is optional (subprocess ffmpeg per sample is slow).
