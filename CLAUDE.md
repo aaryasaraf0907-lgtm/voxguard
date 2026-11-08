@@ -194,8 +194,9 @@ Each Claude Code session updates ONLY its own section of `docs/STATUS.md` at the
 
 ## 13. Git workflow
 
-- `main` and `dev` are protected by a ruleset: **PR required + 1 approval**. So: never push to `main`/`dev`, never force-push, never merge your own PR. Work on `feat/<task>`, `fix/<task>`, `docs/<task>` branches from `dev`; open PRs with `gh pr create --base dev`; the OTHER person reviews.
-- Small PRs (aim < 400 changed lines), imperative commit messages, CI green before asking for review, fill in the PR template.
+- Everything reaches `main` and `dev` through a PR: never push to `main`/`dev` directly, never force-push or rewrite history. Work on `feat/<task>`, `fix/<task>`, `docs/<task>` branches from `dev`; open PRs with `gh pr create --base dev`. Never bypass the branch ruleset or use admin overrides.
+- **Merging into `dev` (team decision, 8 Nov 2026):** the author may merge their own PR once (1) CI is green on the PR's **latest** commit, (2) ruff and the test suite pass locally, and (3) if `dev` has moved since the PR's CI run, the PR has been re-tested merged onto current `dev`. Review by the other person is welcome but not required. Changes to the section 7 contract, shared preprocessing, or this file must still be called out to the other person in the PR description. The other person's PRs may be merged after a review and the same three checks.
+- Small PRs (aim < 400 changed lines), imperative commit messages, CI green before merging or asking for review, fill in the PR template.
 - `dev` -> `main` only at milestones, by PR: **M1 15 Nov** (pipeline + stub end-to-end), **M2 29 Nov** (real model in the demo), **M3 8 Dec** (feature freeze).
 - Never commit secrets, `.env`, data, checkpoints. Never print tokens. Use `.env.example` for variable names only.
 
