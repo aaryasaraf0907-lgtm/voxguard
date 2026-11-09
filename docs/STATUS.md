@@ -4,10 +4,10 @@ Each person updates ONLY their own section at the end of a working session.
 
 ## Person 1 - ML Core + repo owner (Aarya)
 
-- **Done:** scaffold, 3a-3g (data, codecs, datasets/metrics, RawNet2 + train, SSL-AASIST + Kaggle guide, evaluate.py, RealDetector) merged; CLAUDE.md fixes (DataShare, merge policy). Reviewed and merged Person 2's #3, #6, #14, #15 (Hindi review in #14). Branch ruleset now actually protects `main` and `dev` (lint-test required).
-- **In progress:** LA.zip download on the Mac (resumable; download retries now reset on progress); then upload to Kaggle as a private dataset.
+- **Done:** scaffold, 3a-3g (data, codecs, datasets/metrics, RawNet2 + train, SSL-AASIST + Kaggle guide, evaluate.py, RealDetector) merged; CLAUDE.md fixes (DataShare, merge policy). Reviewed and merged Person 2's #3, #6, #14, #15, #18. Branch ruleset protects `main` and `dev`. ASVspoof 2019 LA downloaded and verified (train 25,380 / dev 24,844 / eval 71,237). Training-set codec variants built locally (2 per clip; G.711 µ/A-law, AMR-NB, Opus; 76,140 rows, 2.3 GB). #17 Kaggle CLI runner: code, LA and prep data are private Kaggle datasets; a GPU smoke run passed (T4: ~62 clips/s).
+- **In progress:** RawNet2 full runs on Kaggle, 20 epochs each: `voxguard-rawnet2-clean` (~4.5 h) and `voxguard-rawnet2-codec-aug` (~9 h, queued behind the clean run).
 - **Blocked:** none.
-- **Next:** manifests + codec variants on Kaggle, first real RawNet2 runs (clean vs codec-aug), then SSL-AASIST; M1 promotion on 15 Nov.
+- **Next:** fetch checkpoints; eval-set codec copies (per-codec, incl. a held-out codec) and `evaluate.py` for the RawNet2 2x2 matrix; faster data loading + both T4s before SSL-AASIST (which likely needs next week's GPU quota, resets 14 Nov); M1 promotion on 15 Nov.
 - **Environment note:** local ffmpeg has G.711, Opus and AMR-NB; AMR-WB and GSM are missing locally.
 
 ## Person 2 - Product & Platform
