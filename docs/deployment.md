@@ -65,7 +65,10 @@ The API image installs Debian's ffmpeg. Check which encoders it has with:
 docker compose exec api python -m voxguard.data.codecs
 ```
 
-G.711 (`g711_mulaw`, `g711_alaw`) is built into ffmpeg and always available. Set
+In CI (Debian bookworm's ffmpeg in the API image) the report shows `g711_mulaw`, `g711_alaw`,
+`gsm` and `opus` as OK and `amr_nb` / `amr_wb` as missing: Debian's ffmpeg is built without the
+OpenCORE AMR encoders, so AMR simulation needs a different ffmpeg build. G.711 is built into
+ffmpeg and always available. Set
 `VOXGUARD_SIMULATE_CODEC=g711_mulaw` (or another codec the report lists as OK) in `.env` and
 restart; then:
 
