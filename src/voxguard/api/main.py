@@ -34,6 +34,18 @@ ANALYZE_PATH = "/v1/analyze"
 MULTIPART_OVERHEAD_BYTES = 64 * 1024  # boundaries and form fields around the file
 
 
+def _load_detector() -> Detector:
+    """``get_detector()`` with an actionable message when the ml extra is missing."""
+    try:
+        return get_detector()
+    except ModuleNotFoundError as exc:
+        raise RuntimeError(
+            f"VOXGUARD_DETECTOR=real needs the 'ml' extra, but {exc.name!r} is not installed. "
+            "Install it with `uv sync --extra api --extra ml`, or build the Docker API image "
+            "with INSTALL_ML=1."
+        ) from exc
+
+
 def create_app(detector: Detector | None = None, settings: Settings | None = None) -> FastAPI:
     """Build the app. Invalid VOXGUARD_* settings raise ValueError here (fail fast)."""
     settings = settings or Settings.from_env()
@@ -43,7 +55,7 @@ def create_app(detector: Detector | None = None, settings: Settings | None = Non
         engine = make_engine(settings.db_url)
         create_tables(engine)
         app.state.settings = settings
-        app.state.detector = detector or get_detector()
+        app.state.detector = detector or _load_detector()
         app.state.session_factory = sessionmaker(engine, expire_on_commit=False)
         yield
         engine.dispose()
