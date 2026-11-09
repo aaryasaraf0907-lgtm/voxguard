@@ -10,11 +10,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
+      - name: Install ffmpeg (real codec tests)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
       - name: Install (core + api + ui extras + dev; no torch, no weights)
         run: uv sync --python 3.11 --extra api --extra ui
+      - name: Codec availability
+        run: uv run python -m voxguard.data.codecs
       - name: Ruff lint
         run: uv run ruff check .
       - name: Ruff format
         run: uv run ruff format --check .
       - name: Pytest
-        run: uv run pytest
+        run: uv run pytest -rs
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Install test dependencies
+        run: uv sync --python 3.11 --extra api --extra ui
+      - name: Docker smoke tests (build images, compose up, Space image)
+        env:
+          VOXGUARD_DOCKER_TESTS: "1"
+        run: uv run pytest tests/test_docker_smoke.py -v -s
