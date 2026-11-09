@@ -147,7 +147,9 @@ def apply_codec(waveform: np.ndarray, codec: str, bitrate: int | None = None) ->
     if spec.bitrates and bitrate is not None:
         enc += ["-b:a", str(bitrate)]
     enc += ["-f", spec.container, "-"]
-    dec = [*base, "-i", "-", "-f", "f32le", "-ar", str(SAMPLE_RATE), "-ac", "1", "-"]
+    # Name the input format: probing a pipe misdetects some raw streams (seen with raw GSM).
+    dec = [*base, "-f", spec.container, "-i", "-"]
+    dec += ["-f", "f32le", "-ar", str(SAMPLE_RATE), "-ac", "1", "-"]
     y = np.frombuffer(run_ffmpeg(dec, run_ffmpeg(enc, x.tobytes())), dtype="<f4").astype(np.float32)
     n = len(x)
     if len(y) < n:  # codec frame padding/delay: align to the input length
