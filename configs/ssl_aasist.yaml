@@ -16,6 +16,9 @@ data:
   dev_manifests: [data/processed/manifests/asvspoof2019_la_dev.csv]
   roots: [data/raw, data/processed]
   num_samples: 64600
+  # Per-epoch model selection on a fixed seeded dev subset (~500 bona fide); the full dev set
+  # with XLS-R costs a large share of each epoch. Final numbers come from evaluate.py.
+  dev_max_samples: 5000
 train:
   epochs: 20
   batch_size: 14

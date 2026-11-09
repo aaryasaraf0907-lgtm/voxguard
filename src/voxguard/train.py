@@ -40,6 +40,7 @@ class DataConfig:
     num_samples: int = NUM_SAMPLES
     codecs: list[str] | None = None  # filter training rows by codec column (None = all)
     max_samples: int | None = None  # smoke mode: seeded random subset
+    dev_max_samples: int | None = None  # fixed seeded dev subset for per-epoch model selection
 
 
 @dataclass
@@ -55,6 +56,7 @@ class TrainConfig:
     amp: bool = True  # mixed precision, CUDA only
     out_dir: str = "runs/rawnet2"
     device: str = "auto"  # auto | cuda | mps | cpu
+    multi_gpu: bool = True  # nn.DataParallel over all visible CUDA GPUs when there are several
 
 
 @dataclass
@@ -121,7 +123,7 @@ def evaluate(model: nn.Module, loader: DataLoader, device: torch.device) -> dict
     model.eval()
     scores, labels = [], []
     for x, y in loader:
-        logits = model(x.to(device))
+        logits = model(x.to(device, non_blocking=True))
         scores.append(torch.softmax(logits.float(), dim=-1)[:, 1].cpu().numpy())
         labels.append(y.numpy())
     s, y = np.concatenate(scores), np.concatenate(labels)
@@ -132,7 +134,7 @@ def evaluate(model: nn.Module, loader: DataLoader, device: torch.device) -> dict
         return {"eer": float("nan"), "n": int(len(y))}
 
 
-def _make_loaders(cfg: Config) -> tuple[DataLoader, DataLoader]:
+def _make_loaders(cfg: Config, pin_memory: bool = False) -> tuple[DataLoader, DataLoader]:
     d, t = cfg.data, cfg.train
     kwargs = dict(roots=[Path(r) for r in d.roots], num_samples=d.num_samples, seed=t.seed)
     train_ds = ManifestDataset(
@@ -142,15 +144,32 @@ def _make_loaders(cfg: Config) -> tuple[DataLoader, DataLoader]:
         max_samples=d.max_samples,
         **kwargs,
     )
-    dev_max = None if d.max_samples is None else max(d.max_samples // 4, 16)
+    dev_max = d.dev_max_samples
+    if d.max_samples is not None:
+        dev_max = max(d.max_samples // 4, 16) if dev_max is None else min(dev_max, d.max_samples)
     dev_ds = ManifestDataset(
         [Path(m) for m in d.dev_manifests], train=False, max_samples=dev_max, **kwargs
     )
-    train_dl = DataLoader(
-        train_ds, batch_size=t.batch_size, shuffle=True, num_workers=t.num_workers, drop_last=False
+    loader_kw: dict[str, Any] = dict(
+        batch_size=t.batch_size, num_workers=t.num_workers, pin_memory=pin_memory
     )
-    dev_dl = DataLoader(dev_ds, batch_size=t.batch_size, shuffle=False, num_workers=t.num_workers)
+    # Train workers are re-created each epoch so they see set_epoch() (seeded crops); the dev
+    # set has no per-epoch state, so its workers can persist.
+    train_dl = DataLoader(train_ds, shuffle=True, drop_last=False, **loader_kw)
+    dev_dl = DataLoader(dev_ds, shuffle=False, persistent_workers=t.num_workers > 0, **loader_kw)
     return train_dl, dev_dl
+
+
+def seed_epoch(loader: DataLoader, seed: int, epoch: int) -> None:
+    """Make the shuffle order (and worker seeds) depend only on ``seed`` and ``epoch``.
+
+    The shuffler keeps the generator it was built with, so both it and the loader's are set;
+    a resumed run then sees the same batches as an uninterrupted one.
+    """
+    g = torch.Generator().manual_seed(seed + epoch)
+    loader.generator = g
+    if hasattr(loader.sampler, "generator"):
+        loader.sampler.generator = g
 
 
 def _param_groups(model: nn.Module, t: TrainConfig) -> list[dict[str, Any]]:
@@ -173,7 +192,9 @@ def train(cfg: Config, resume: bool = False, use_wandb: bool = False) -> dict[st
     amp = t.amp and device.type == "cuda"
     logger.info("device=%s amp=%s seed=%d out=%s", device, amp, t.seed, out)
 
-    train_dl, dev_dl = _make_loaders(cfg)
+    if device.type == "cuda":
+        torch.backends.cudnn.benchmark = True  # fixed input length: let cuDNN pick fast kernels
+    train_dl, dev_dl = _make_loaders(cfg, pin_memory=device.type == "cuda")
     logger.info("train=%d dev=%d clips", len(train_dl.dataset), len(dev_dl.dataset))
     model_params = {k: v for k, v in cfg.model.items() if k != "name"}
     model = build_model(cfg.model["name"], **model_params).to(device)
@@ -183,6 +204,11 @@ def train(cfg: Config, resume: bool = False, use_wandb: bool = False) -> dict[st
         "model=%s params=%.1fM trainable=%.1fM", cfg.model["name"], n_all / 1e6, n_train / 1e6
     )
     opt = torch.optim.Adam(_param_groups(model, t), lr=t.lr, weight_decay=t.weight_decay)
+    core = model  # unwrapped module: checkpoints keep plain (non-"module.") keys
+    n_gpus = torch.cuda.device_count() if device.type == "cuda" else 0
+    if t.multi_gpu and n_gpus > 1:
+        model = nn.DataParallel(core)
+        logger.info("DataParallel over %d GPUs (batch %d split across them)", n_gpus, t.batch_size)
     scaler = torch.amp.GradScaler("cuda", enabled=amp)
     loss_fn = nn.CrossEntropyLoss(weight=torch.tensor(t.class_weights, device=device))
 
@@ -190,7 +216,7 @@ def train(cfg: Config, resume: bool = False, use_wandb: bool = False) -> dict[st
     last = out / "last.pt"
     if resume and last.exists():
         ckpt = torch.load(last, map_location=device, weights_only=False)
-        model.load_state_dict(ckpt["model"])
+        core.load_state_dict(ckpt["model"])
         opt.load_state_dict(ckpt["opt"])
         scaler.load_state_dict(ckpt["scaler"])
         start_epoch, best_eer = ckpt["epoch"] + 1, ckpt["best_eer"]
@@ -209,10 +235,10 @@ def train(cfg: Config, resume: bool = False, use_wandb: bool = False) -> dict[st
         t0 = time.perf_counter()
         model.train()
         train_dl.dataset.set_epoch(epoch)
-        train_dl.generator = torch.Generator().manual_seed(t.seed + epoch)  # resume-stable order
+        seed_epoch(train_dl, t.seed, epoch)
         total, n = 0.0, 0
         for x, y in train_dl:
-            x, y = x.to(device), y.to(device)
+            x, y = x.to(device, non_blocking=True), y.to(device, non_blocking=True)
             opt.zero_grad(set_to_none=True)
             with torch.autocast(device.type, enabled=amp):
                 loss = loss_fn(model(x).float(), y)
@@ -238,7 +264,7 @@ def train(cfg: Config, resume: bool = False, use_wandb: bool = False) -> dict[st
         improved = dev["eer"] < best_eer
         best_eer = dev["eer"] if improved else best_eer
         state = {
-            "model": model.state_dict(),
+            "model": core.state_dict(),
             "opt": opt.state_dict(),
             "scaler": scaler.state_dict(),
             "epoch": epoch,

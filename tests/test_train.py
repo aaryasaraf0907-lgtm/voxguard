@@ -6,7 +6,16 @@ torch = pytest.importorskip("torch")
 pytest.importorskip("soundfile")
 
 from voxguard.data.synthetic import write_synthetic  # noqa: E402
-from voxguard.train import Config, DataConfig, TrainConfig, load_config, pick_device, train  # noqa: E402
+from voxguard.train import (  # noqa: E402
+    Config,
+    DataConfig,
+    TrainConfig,
+    _make_loaders,
+    load_config,
+    pick_device,
+    seed_epoch,
+    train,
+)
 
 
 def _cfg(tmp_path: Path, epochs: int, out: str = "run") -> Config:
@@ -62,3 +71,28 @@ def test_load_config_roundtrip_and_validation(tmp_path: Path) -> None:
 def test_pick_device() -> None:
     assert pick_device("cpu").type == "cpu"
     assert pick_device("auto").type in {"cuda", "mps", "cpu"}
+
+
+def _order(loader) -> list[float]:
+    return [float(x[:, 0].sum()) for x, _ in loader]
+
+
+def test_shuffle_order_depends_only_on_seed_and_epoch(tmp_path: Path) -> None:
+    cfg = _cfg(tmp_path, 1)
+    a, _ = _make_loaders(cfg)
+    b, _ = _make_loaders(cfg)
+    torch.manual_seed(99)  # global RNG state must not matter (it differs after a resume)
+    seed_epoch(a, 1234, 3)
+    first = _order(a)
+    torch.manual_seed(7)
+    seed_epoch(b, 1234, 3)
+    assert _order(b) == first
+    seed_epoch(b, 1234, 4)
+    assert _order(b) != first
+
+
+def test_dev_max_samples_limits_dev_set(tmp_path: Path) -> None:
+    cfg = _cfg(tmp_path, 1)
+    full = len(_make_loaders(cfg)[1].dataset)
+    cfg.data.dev_max_samples = 4
+    assert len(_make_loaders(cfg)[1].dataset) == 4 < full
