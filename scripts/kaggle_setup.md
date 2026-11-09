@@ -3,6 +3,32 @@
 Exact steps to run VoxGuard data prep and training from this **private** repo. Facts marked
 *(verified)* were checked in a real Kaggle notebook on 8 Nov 2026.
 
+## Recommended: drive Kaggle from your terminal (no notebook cells)
+
+`python -m voxguard.kaggle_runner` uploads the code and prepared data as **private** datasets
+and pushes training runs as private GPU script kernels. Kernels get the code from the
+`voxguard-src` dataset, so they need no GitHub token. Codec variants are precomputed locally
+(your machine has the raw data and ffmpeg).
+
+```bash
+uv tool install kaggle --with six        # CLI 2.2.5 needs `six` but does not declare it
+kaggle auth login                         # browser login; nothing to paste
+python -m voxguard.data.augment ...       # local codec variants, see section 6
+uv run python -m voxguard.kaggle_runner upload-src     # after every code change you need
+uv run python -m voxguard.kaggle_runner upload-prep    # manifests + codec_aug
+uv run python -m voxguard.kaggle_runner push --run rawnet2-clean \
+    --config configs/rawnet2.yaml --train-manifest asvspoof2019_la_train.csv --smoke
+kaggle kernels status <user>/voxguard-rawnet2-clean
+kaggle kernels output <user>/voxguard-rawnet2-clean -p runs/kaggle/rawnet2-clean
+```
+
+The kernel attaches `<user>/asvspoof2019-la` (the raw dataset from section 1), so create that
+first. Resume a run that hit the time limit with
+`push --run rawnet2-clean-r1 ... --resume-from <user>/voxguard-rawnet2-clean`.
+`push --dry-run` only stages the kernel under `data/processed/kaggle/kernels/`.
+
+The notebook steps below remain as the manual route.
+
 ## 0. One-time setup
 
 1. Kaggle: verify your phone number (Settings), or Internet and GPUs stay disabled.
@@ -35,11 +61,15 @@ anyway (CLAUDE.md section 15). Cite Todisco et al., Interspeech 2019.
 
 ## 3. Clone (cell 1)
 
+The token is used once and then removed from the remote URL, so it is never saved in
+`.git/config` (everything under `/kaggle/working` is kept when you save a version).
+
 ```python
 from kaggle_secrets import UserSecretsClient
 import subprocess
 
 tok = UserSecretsClient().get_secret("GITHUB_TOKEN")
+dest = "/kaggle/working/voxguard"
 r = subprocess.run(
     [
         "git",
@@ -49,14 +79,29 @@ r = subprocess.run(
         "--depth",
         "1",
         f"https://x-access-token:{tok}@github.com/aaryasaraf0907-lgtm/voxguard.git",
-        "/kaggle/working/voxguard",
+        dest,
     ],
     capture_output=True,
     text=True,
 )
 print("clone exit code:", r.returncode)
 print(r.stderr.replace(tok, "***")[-300:])  # never print the raw token
+subprocess.run(
+    [
+        "git",
+        "-C",
+        dest,
+        "remote",
+        "set-url",
+        "origin",
+        "https://github.com/aaryasaraf0907-lgtm/voxguard.git",
+    ],
+    check=True,
+)
+del tok
 ```
+
+To update the code, `rm -rf /kaggle/working/voxguard` and re-run this cell (do not `git pull`).
 
 ## 4. Environment (cell 2)
 
@@ -137,7 +182,7 @@ SSL-AASIST: copy the model section from `configs/ssl_aasist.yaml`. XLS-R (1.27 G
 from Hugging Face on first use. If you run out of GPU memory, switch to
 `finetune: last_n`, `last_n: 4`, `frontend_lr: 1.0e-5`, `lr: 1.0e-4`.
 
-Checkpoint size: RawNet2 ~100 MB; SSL-AASIST ~3.6 GB per file with full fine-tuning
+Checkpoint size: RawNet2 ~212 MB *(verified)*; SSL-AASIST ~3.6 GB per file with full fine-tuning
 (weights + Adam state), so `last.pt` + `best.pt` is ~7 GB of the 20 GB working disk.
 
 ## 8. Resuming after a session dies
