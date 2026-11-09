@@ -77,3 +77,22 @@ def test_usable_codecs_skips_missing_with_warning(caplog: pytest.LogCaptureFixtu
         assert (name in names) == ok
     if not all(available_codecs().values()):
         assert "skipping codec" in caplog.text
+
+
+@pytest.mark.parametrize("codec", sorted(CODECS))
+def test_decoder_is_told_the_container_format(codec: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Probing a pipe misdetected some raw GSM streams on Kaggle; the demuxer must be named."""
+    from voxguard.data import codecs as mod
+
+    calls: list[list[str]] = []
+
+    def fake_run(cmd: list[str], data: bytes, timeout: float = 30.0) -> bytes:
+        calls.append(cmd)
+        return b"enc" if len(calls) == 1 else np.zeros(160, dtype="<f4").tobytes()
+
+    monkeypatch.setattr(mod, "ffmpeg_path", lambda: "ffmpeg")
+    monkeypatch.setattr(mod, "run_ffmpeg", fake_run)
+    apply_codec(np.zeros(160, dtype=np.float32), codec)
+    dec = calls[1]
+    i = dec.index("-i")
+    assert dec[i - 2 : i] == ["-f", CODECS[codec].container]
