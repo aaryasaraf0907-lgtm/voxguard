@@ -20,6 +20,10 @@ def make_wav(seconds: float = 1.0, sr: int = 16_000, channels: int = 1, seed: in
     return buf.getvalue()
 
 
+def pytest_configure(config: pytest.Config) -> None:
+    config.addinivalue_line("markers", "docker: builds and runs Docker images (opt-in)")
+
+
 class FixedDetector:
     """Returns a chosen fake_score; the label follows its own threshold."""
 

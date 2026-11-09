@@ -1,0 +1,7 @@
+# Local `streamlit run` settings. The API rejects uploads above VOXGUARD_MAX_UPLOAD_MB (25 MB by
+# default), so the uploader uses the same limit instead of Streamlit's 200 MB default.
+[server]
+maxUploadSize = 25
+
+[browser]
+gatherUsageStats = false

@@ -1,4 +1,4 @@
-.PHONY: setup lint format test smoke smoke-eval
+.PHONY: setup lint format test smoke smoke-eval docker-up docker-down docker-smoke
 
 setup:
 	uv sync
@@ -28,3 +28,12 @@ smoke-eval: smoke
 		--codecs g711_mulaw opus --mode per-codec --no-clean
 	uv run --extra ml python -m voxguard.train --config configs/rawnet2_smoke_aug.yaml --no-wandb
 	uv run --extra ml python -m voxguard.evaluate --config configs/eval_smoke.yaml
+
+docker-up:
+	docker compose up --build --detach --wait
+
+docker-down:
+	docker compose down
+
+docker-smoke:
+	VOXGUARD_DOCKER_TESTS=1 uv run pytest tests/test_docker_smoke.py -v
