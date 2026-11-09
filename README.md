@@ -44,10 +44,22 @@ uv run streamlit run src/voxguard/ui/app.py
   Hindi. The Hindi text is a draft that has not been reviewed yet.
 - **Using it:** upload a WAV/FLAC/OGG/MP3 file or record with the microphone, then press
   Analyze. The other tabs list flagged sessions, the caller blocklist and alerts (all times UTC).
-- **Phone-line simulation is not available yet.** The control is shown disabled; recordings
-  are analyzed exactly as provided.
+- **Phone-line simulation:** the API supports it (`simulate_codec=true`, with the codec set by
+  `VOXGUARD_SIMULATE_CODEC` and ffmpeg installed; see `docs/architecture.md`). The UI toggle is
+  still shown disabled, so recordings analyzed from the UI are used exactly as provided.
 - **Database:** SQLite only (`VOXGUARD_DB_URL=sqlite:///...`); other database URLs are rejected
   at startup.
+
+## Run with Docker
+
+```bash
+cp .env.example .env               # optional: settings such as VOXGUARD_SIMULATE_CODEC
+docker compose up --build          # UI http://localhost:8501, API http://localhost:8000
+```
+
+The API image includes ffmpeg and the stub detector; the SQLite database lives on the
+`voxguard-data` volume. The real detector, the Hugging Face Space image, every variable and
+troubleshooting are covered in [docs/deployment.md](docs/deployment.md).
 
 ## Layout
 
