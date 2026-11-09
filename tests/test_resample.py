@@ -40,7 +40,7 @@ def test_output_length_dtype_and_mono(sr: int) -> None:
 
 @needs_ffmpeg
 def test_16k_input_is_returned_unchanged_without_ffmpeg_call(monkeypatch) -> None:
-    monkeypatch.setattr(codec_sim, "_run", lambda *a, **k: pytest.fail("ffmpeg must not run"))
+    monkeypatch.setattr(codec_sim, "run_ffmpeg", lambda *a, **k: pytest.fail("ffmpeg must not run"))
     x = tone(1000, 16_000)
     y = resample_to_16k(x, 16_000)
     assert np.array_equal(y, x) and y.dtype == np.float32
@@ -138,7 +138,7 @@ def _patch_run(monkeypatch, response):
             raise response
         return response
 
-    monkeypatch.setattr(codec_sim, "_run", fake)
+    monkeypatch.setattr(codec_sim, "run_ffmpeg", fake)
     return seen
 
 

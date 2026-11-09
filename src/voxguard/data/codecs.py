@@ -115,7 +115,8 @@ def usable_codecs(requested: list[str] | None = None) -> list[str]:
 FFMPEG_TIMEOUT_S = 30.0  # per ffmpeg process; a hung encoder must not block a caller forever
 
 
-def _run(cmd: list[str], data: bytes, timeout: float = FFMPEG_TIMEOUT_S) -> bytes:
+def run_ffmpeg(cmd: list[str], data: bytes, timeout: float = FFMPEG_TIMEOUT_S) -> bytes:
+    """Run an ffmpeg command with ``data`` on stdin; returns stdout. Raises ``CodecError``."""
     try:
         proc = subprocess.run(cmd, input=data, capture_output=True, check=False, timeout=timeout)
     except subprocess.TimeoutExpired:  # subprocess.run kills the child before raising
@@ -147,7 +148,7 @@ def apply_codec(waveform: np.ndarray, codec: str, bitrate: int | None = None) ->
         enc += ["-b:a", str(bitrate)]
     enc += ["-f", spec.container, "-"]
     dec = [*base, "-i", "-", "-f", "f32le", "-ar", str(SAMPLE_RATE), "-ac", "1", "-"]
-    y = np.frombuffer(_run(dec, _run(enc, x.tobytes())), dtype="<f4").astype(np.float32)
+    y = np.frombuffer(run_ffmpeg(dec, run_ffmpeg(enc, x.tobytes())), dtype="<f4").astype(np.float32)
     n = len(x)
     if len(y) < n:  # codec frame padding/delay: align to the input length
         y = np.pad(y, (0, n - len(y)))

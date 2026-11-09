@@ -130,3 +130,43 @@ def test_from_zip_builds_manifests(tmp_path: Path) -> None:
     rows = read_manifest(out / "asvspoof2019_la_eval.csv")
     assert rows[0].path == "LA/ASVspoof2019_LA_eval/flac/LA_E_2834763.flac"
     assert (root / rows[0].path).is_file()
+
+
+def test_progress_resets_retry_count(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """A flaky link that keeps making progress must finish, even past `retries` failures."""
+    from voxguard.data import download
+
+    monkeypatch.setattr(download.time, "sleep", lambda s: None)
+    total, step = 10, 1
+    calls = []
+
+    def flaky(url: str, part: Path, expected: int) -> None:
+        calls.append(1)
+        have = part.stat().st_size if part.exists() else 0
+        with part.open("ab") as f:
+            f.write(b"x" * min(step, expected - have))
+        if part.stat().st_size < expected:
+            raise TimeoutError("The read operation timed out")
+
+    monkeypatch.setattr(download, "_fetch_once", flaky)
+    download.download_resumable("http://x", tmp_path / "a.zip", total, retries=3)
+    assert (tmp_path / "a.zip").stat().st_size == total
+    assert len(calls) == total  # 9 failures with progress, more than retries=3
+
+
+def test_no_progress_gives_up_after_retries(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from voxguard.data import download
+
+    monkeypatch.setattr(download.time, "sleep", lambda s: None)
+    calls = []
+
+    def stuck(url: str, part: Path, expected: int) -> None:
+        calls.append(1)
+        raise TimeoutError("The read operation timed out")
+
+    monkeypatch.setattr(download, "_fetch_once", stuck)
+    with pytest.raises(OSError, match="3 attempts in a row made no progress"):
+        download.download_resumable("http://x", tmp_path / "a.zip", 10, retries=3)
+    assert len(calls) == 3

@@ -282,7 +282,7 @@ def test_ffmpeg_timeout_becomes_a_clean_500(sim_client, monkeypatch) -> None:
 
 def test_run_timeout_message() -> None:
     with pytest.raises(CodecError, match="timed out"):
-        codecs._run(["sleep", "5"], b"", timeout=0.2)
+        codecs.run_ffmpeg(["sleep", "5"], b"", timeout=0.2)
 
 
 # --- real ffmpeg (skipped when ffmpeg or the encoder is missing) ------------------------

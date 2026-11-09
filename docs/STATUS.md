@@ -4,11 +4,11 @@ Each person updates ONLY their own section at the end of a working session.
 
 ## Person 1 - ML Core + repo owner (Aarya)
 
-- **Done:** scaffold, 3a download + manifests, 3b codecs + augment, 3c datasets + metrics merged; 3d RawNet2 + train loop merged; 3e SSL-AASIST + Kaggle guide merged; 3f evaluate.py merged; 3g RealDetector opened (API serves it end to end on a smoke checkpoint). Reviewed and merged Person 2's API skeleton (PR #3).
-- **In progress:** getting LA.zip. Edinburgh DataShare returns 403 to Kaggle and Colab IPs, so it is downloaded on the Mac and uploaded to Kaggle as a private dataset (`--from-zip`).
+- **Done:** scaffold, 3a-3g (data, codecs, datasets/metrics, RawNet2 + train, SSL-AASIST + Kaggle guide, evaluate.py, RealDetector) merged; CLAUDE.md fixes (DataShare, merge policy). Reviewed and merged Person 2's #3, #6, #14, #15 (Hindi review in #14). Branch ruleset now actually protects `main` and `dev` (lint-test required).
+- **In progress:** LA.zip download on the Mac (resumable; download retries now reset on progress); then upload to Kaggle as a private dataset.
 - **Blocked:** none.
-- **Next:** LA.zip to Kaggle, first real RawNet2 runs (clean vs codec-aug), then SSL-AASIST; M1 check on 15 Nov.
-- **Environment note:** local ffmpeg has G.711, Opus and AMR-NB; AMR-WB and GSM are missing locally (Kaggle's ffmpeg 6.1.1 to be checked with `python -m voxguard.data.codecs`).
+- **Next:** manifests + codec variants on Kaggle, first real RawNet2 runs (clean vs codec-aug), then SSL-AASIST; M1 promotion on 15 Nov.
+- **Environment note:** local ffmpeg has G.711, Opus and AMR-NB; AMR-WB and GSM are missing locally.
 
 ## Person 2 - Product & Platform
 
