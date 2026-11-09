@@ -49,16 +49,21 @@ def download_resumable(url: str, dest: Path, expected_size: int, retries: int = 
     """Download ``url`` to ``dest``, resuming a partial ``.part`` file via HTTP Range.
 
     Socket reads time out after ``TIMEOUT_S`` and the download is retried (resuming), so a
-    dropped connection or a sleeping laptop cannot hang it forever.
+    dropped connection or a sleeping laptop cannot hang it forever. ``retries`` limits
+    *consecutive* attempts that add no bytes: any attempt that makes progress resets the count,
+    so a slow, flaky link still finishes.
     """
     dest.parent.mkdir(parents=True, exist_ok=True)
     if dest.exists() and dest.stat().st_size == expected_size:
         logger.info("%s already complete", dest)
         return
     part = dest.with_suffix(dest.suffix + ".part")
-    for attempt in range(1, retries + 1):
+    failures = 0
+    while True:
+        before = part.stat().st_size if part.exists() else 0
         try:
             _fetch_once(url, part, expected_size)
+            break
         except urllib.error.HTTPError as exc:
             if exc.code in FATAL_HTTP_CODES:
                 raise OSError(
@@ -66,16 +71,21 @@ def download_resumable(url: str, dest: Path, expected_size: int, retries: int = 
                     "LA.zip elsewhere and re-run with --from-zip PATH (or --manifests-only "
                     "--root DIR for an already extracted copy)."
                 ) from exc
-            logger.warning("attempt %d/%d failed: %s; retrying", attempt, retries, exc)
-            time.sleep(min(5 * attempt, 30))
-            continue
+            error: Exception = exc
         except (OSError, TimeoutError) as exc:
-            logger.warning("attempt %d/%d failed: %s; retrying", attempt, retries, exc)
-            time.sleep(min(5 * attempt, 30))
-            continue
-        break
-    else:
-        raise OSError(f"download failed after {retries} attempts")
+            error = exc
+        after = part.stat().st_size if part.exists() else 0
+        failures = 0 if after > before else failures + 1
+        if failures >= retries:
+            raise OSError(
+                f"download failed: {retries} attempts in a row made no progress ({error}); "
+                "re-run the same command to resume"
+            ) from error
+        logger.warning(
+            "attempt failed after %.2f GB (+%.0f MB this attempt): %s; retrying (%d/%d without "
+            "progress)", after / 1e9, (after - before) / 1e6, error, failures, retries,
+        )  # fmt: skip
+        time.sleep(min(5 * max(failures, 1), 30))
     if part.stat().st_size != expected_size:
         raise OSError(f"{part}: size {part.stat().st_size} != expected {expected_size}")
     part.rename(dest)

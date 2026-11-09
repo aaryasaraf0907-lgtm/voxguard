@@ -10,10 +10,10 @@ from voxguard.data.codecs import (
     CODECS,
     SAMPLE_RATE,
     CodecError,
-    _run,
     apply_codec,
     available_codecs,
     ffmpeg_path,
+    run_ffmpeg,
 )
 
 logger = logging.getLogger(__name__)
@@ -67,7 +67,7 @@ def resample_to_16k(x: np.ndarray, sample_rate: int) -> np.ndarray:
         "-ar", str(SAMPLE_RATE), "-ac", "1", "-f", "f32le", "-",
     ]  # fmt: skip
     try:
-        raw = _run(cmd, np.ascontiguousarray(padded, dtype="<f4").tobytes())
+        raw = run_ffmpeg(cmd, np.ascontiguousarray(padded, dtype="<f4").tobytes())
     except CodecError as exc:
         logger.error("resampling %d Hz -> 16 kHz failed: %s", sample_rate, exc)
         raise CodecSimulationError("resampling failed") from None
