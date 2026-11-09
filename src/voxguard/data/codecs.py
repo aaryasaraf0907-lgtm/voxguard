@@ -112,8 +112,14 @@ def usable_codecs(requested: list[str] | None = None) -> list[str]:
     return usable
 
 
-def _run(cmd: list[str], data: bytes) -> bytes:
-    proc = subprocess.run(cmd, input=data, capture_output=True, check=False)
+FFMPEG_TIMEOUT_S = 30.0  # per ffmpeg process; a hung encoder must not block a caller forever
+
+
+def _run(cmd: list[str], data: bytes, timeout: float = FFMPEG_TIMEOUT_S) -> bytes:
+    try:
+        proc = subprocess.run(cmd, input=data, capture_output=True, check=False, timeout=timeout)
+    except subprocess.TimeoutExpired:  # subprocess.run kills the child before raising
+        raise CodecError(f"ffmpeg timed out after {timeout:g} s") from None
     if proc.returncode != 0:
         raise CodecError(f"ffmpeg failed: {proc.stderr.decode(errors='replace').strip()[:300]}")
     return proc.stdout

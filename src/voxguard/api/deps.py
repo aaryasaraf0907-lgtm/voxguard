@@ -12,6 +12,7 @@ from fastapi import Request
 from sqlalchemy.orm import Session
 
 from voxguard.api.db import require_sqlite_url
+from voxguard.data.codecs import CODECS
 from voxguard.inference import Detector
 
 DEFAULT_DB_URL = "sqlite:///./voxguard.db"
@@ -39,9 +40,15 @@ class Settings:
     db_url: str = DEFAULT_DB_URL
     threshold_mode: Literal["eer", "low_far"] = "eer"
     low_far_threshold: float | None = None
+    simulate_codec: str | None = None  # codec used when a request sets simulate_codec=true
 
     def __post_init__(self) -> None:
         require_sqlite_url(self.db_url)
+        if self.simulate_codec is not None and self.simulate_codec not in CODECS:
+            raise ValueError(
+                f"VOXGUARD_SIMULATE_CODEC must be one of {sorted(CODECS)}, "
+                f"got {self.simulate_codec!r}"
+            )
         if self.threshold_mode not in ("eer", "low_far"):
             raise ValueError(
                 f"VOXGUARD_THRESHOLD_MODE must be 'eer' or 'low_far', got {self.threshold_mode!r}"
@@ -77,6 +84,7 @@ class Settings:
             db_url=os.environ.get("VOXGUARD_DB_URL", "").strip() or DEFAULT_DB_URL,
             threshold_mode=mode,  # type: ignore[arg-type]  # validated in __post_init__
             low_far_threshold=low_far,
+            simulate_codec=os.environ.get("VOXGUARD_SIMULATE_CODEC", "").strip() or None,
         )
 
 

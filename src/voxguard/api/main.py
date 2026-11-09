@@ -14,7 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
-from voxguard.api import prevention
+from voxguard.api import codec_sim, prevention
 from voxguard.api.audio import decode_audio
 from voxguard.api.db import AlertRow, BlocklistRow, SessionRow, create_tables, make_engine
 from voxguard.api.deps import Settings, get_db, get_detector_dep, get_settings
@@ -70,7 +70,15 @@ def create_app(detector: Detector | None = None, settings: Settings | None = Non
         simulate_codec: Annotated[bool, Form()] = False,
     ) -> AnalyzeResponse:
         if simulate_codec:
-            raise HTTPException(501, "Codec simulation is not implemented yet")
+            if cfg.simulate_codec is None:
+                raise HTTPException(
+                    501, "Codec simulation is not configured (set VOXGUARD_SIMULATE_CODEC)"
+                )
+            try:
+                codec_sim.ensure_available(cfg.simulate_codec)
+            except codec_sim.CodecUnavailableError as exc:
+                logger.error("codec simulation unavailable: %s", exc)
+                raise HTTPException(503, "Codec simulation is unavailable on this server") from None
 
         # sync handler: read the underlying file object, bounded by the upload limit
         data = file.file.read(cfg.max_upload_bytes + 1)
@@ -80,6 +88,18 @@ def create_app(detector: Detector | None = None, settings: Settings | None = Non
             raise HTTPException(413, "Upload too large")
 
         waveform, sample_rate = decode_audio(data, cfg.max_audio_seconds)
+
+        codec_applied: str | None = None
+        if simulate_codec:  # before inference; on failure nothing is stored or scored
+            try:
+                waveform, sample_rate = codec_sim.simulate_phone_line(
+                    waveform, sample_rate, cfg.simulate_codec
+                )
+            except codec_sim.CodecUnavailableError:
+                raise HTTPException(503, "Codec simulation is unavailable on this server") from None
+            except codec_sim.CodecSimulationError:
+                raise HTTPException(500, "Codec simulation failed") from None
+            codec_applied = cfg.simulate_codec
 
         try:
             pred = det.predict(waveform, sample_rate)
@@ -96,7 +116,7 @@ def create_app(detector: Detector | None = None, settings: Settings | None = Non
             fake_score=pred.fake_score,
             threshold=decision.threshold,
             flagged=decision.flagged,
-            codec_applied=None,
+            codec_applied=codec_applied,
             model_version=pred.model_version,
             latency_ms=pred.latency_ms,
         )
@@ -118,7 +138,7 @@ def create_app(detector: Detector | None = None, settings: Settings | None = Non
             latency_ms=pred.latency_ms,
             model_version=pred.model_version,
             flagged=decision.flagged,
-            codec_applied=row.codec_applied,
+            codec_applied=codec_applied,
         )
 
     @app.get("/v1/sessions", response_model=list[SessionRecord])
