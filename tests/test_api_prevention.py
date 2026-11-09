@@ -67,7 +67,7 @@ def test_flagged_creates_one_alert_with_session_and_score(client_factory) -> Non
         body = _post(c, caller_id="alice").json()
         (alert,) = _all(c, AlertRow)
         assert alert.session_id == body["session_id"] and alert.fake_score == 0.9
-        assert alert.caller_id == "alice" and "0.900" in alert.message
+        assert alert.caller_id == "alice" and "0.9000" in alert.message
         assert body["flagged"] is True and body["label"] == "fake"
 
 
@@ -91,6 +91,13 @@ def test_flagged_without_caller_still_alerts(client_factory) -> None:
 def test_score_equal_to_threshold_is_flagged(client_factory) -> None:
     with client_factory(FixedDetector(0.5, 0.5)) as c:
         assert _post(c).json()["flagged"] is True
+
+
+def test_alert_message_keeps_four_decimals(client_factory) -> None:
+    with client_factory(FixedDetector(0.9998, threshold=0.5)) as c:
+        _post(c)
+        (alert,) = _all(c, AlertRow)
+        assert alert.message == "Flagged call: fake_score 0.9998 >= threshold 0.5000"
 
 
 # --- blocklist -------------------------------------------------------------------------
@@ -356,3 +363,33 @@ def test_env_threshold_settings(monkeypatch) -> None:
     monkeypatch.setenv("VOXGUARD_THRESHOLD_MODE", "nope")
     with pytest.raises(ValueError, match="VOXGUARD_THRESHOLD_MODE"):
         Settings.from_env()
+
+
+# --- database URL validation -----------------------------------------------------------
+
+
+@pytest.mark.parametrize("url", ["sqlite://", "sqlite:///x.db", "sqlite:///:memory:"])
+def test_sqlite_urls_accepted(url: str) -> None:
+    Settings(db_url=url)
+    make_engine(url).dispose()
+
+
+@pytest.mark.parametrize(
+    "url", ["postgresql://user:secret@host/db", "mysql+pymysql://u:secret@h/d", "oracle://a:b@c/d"]
+)
+def test_non_sqlite_urls_rejected_without_leaking_credentials(url: str) -> None:
+    for build in (lambda: Settings(db_url=url), lambda: make_engine(url)):
+        with pytest.raises(ValueError, match="SQLite") as exc:
+            build()
+        assert "secret" not in str(exc.value) and "VOXGUARD_DB_URL" in str(exc.value)
+
+
+def test_garbage_db_url_rejected() -> None:
+    with pytest.raises(ValueError, match="VOXGUARD_DB_URL"):
+        Settings(db_url="not a url")
+
+
+def test_env_non_sqlite_url_fails_fast(monkeypatch) -> None:
+    monkeypatch.setenv("VOXGUARD_DB_URL", "postgresql://u:secret@h/d")
+    with pytest.raises(ValueError, match="SQLite"):
+        create_app()

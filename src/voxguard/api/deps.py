@@ -11,6 +11,7 @@ from typing import Literal
 from fastapi import Request
 from sqlalchemy.orm import Session
 
+from voxguard.api.db import require_sqlite_url
 from voxguard.data.codecs import CODECS
 from voxguard.inference import Detector
 
@@ -42,6 +43,7 @@ class Settings:
     simulate_codec: str | None = None  # codec used when a request sets simulate_codec=true
 
     def __post_init__(self) -> None:
+        require_sqlite_url(self.db_url)
         if self.simulate_codec is not None and self.simulate_codec not in CODECS:
             raise ValueError(
                 f"VOXGUARD_SIMULATE_CODEC must be one of {sorted(CODECS)}, "
