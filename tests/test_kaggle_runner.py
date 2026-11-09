@@ -53,3 +53,15 @@ def test_push_dry_run_stages_files(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     folder = kr.push("me", spec(), "NvidiaTeslaT4", None, dry_run=True)
     meta = json.loads((folder / "kernel-metadata.json").read_text())
     assert meta["code_file"] == "run.py" and (folder / "run.py").is_file()
+
+
+def test_augment_kernel_is_cpu_and_compiles(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(kr, "STAGE", tmp_path)
+    folder = kr.push_augment("me", kr.AugmentSpec(run="eval-heldout"), dry_run=True)
+    meta = json.loads((folder / "kernel-metadata.json").read_text())
+    assert meta["enable_gpu"] is False and meta["is_private"] is True
+    code = (folder / "run.py").read_text()
+    compile(code, "run.py", "exec")
+    assert '"codecs": ["gsm", "amr_wb"]' in code and '"subset": 10000' in code
