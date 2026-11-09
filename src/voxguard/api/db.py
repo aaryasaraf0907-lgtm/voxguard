@@ -6,7 +6,8 @@ from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import DateTime, Engine, ForeignKey, TypeDecorator, create_engine, event
-from sqlalchemy.engine import make_url
+from sqlalchemy.engine import URL, make_url
+from sqlalchemy.exc import ArgumentError
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.pool import StaticPool
 
@@ -67,10 +68,27 @@ class BlocklistRow(Base):
     last_seen: Mapped[datetime] = mapped_column(UTCDateTime)
 
 
-def make_engine(url: str) -> Engine:
-    parsed = make_url(url)
+def require_sqlite_url(url: str) -> URL:
+    """The blocklist upsert uses SQLite's ON CONFLICT, so only SQLite URLs are supported.
+
+    Error messages name the backend only, never the URL (it may contain credentials).
+    """
+    try:
+        parsed = make_url(url)
+    except ArgumentError:
+        raise ValueError(
+            "VOXGUARD_DB_URL is not a valid database URL; expected sqlite:///path/to/file.db"
+        ) from None
     if parsed.get_backend_name() != "sqlite":
-        return create_engine(url)
+        raise ValueError(
+            f"VOXGUARD_DB_URL must be a SQLite URL (sqlite:///...), got backend "
+            f"{parsed.get_backend_name()!r}: only SQLite is supported"
+        )
+    return parsed
+
+
+def make_engine(url: str) -> Engine:
+    parsed = require_sqlite_url(url)
     # FastAPI runs sync handlers on a threadpool, so SQLite connections cross threads.
     kwargs: dict = {"connect_args": {"check_same_thread": False}}
     if parsed.database in (None, "", ":memory:"):

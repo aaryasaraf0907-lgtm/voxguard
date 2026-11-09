@@ -79,8 +79,8 @@ def record_flag(db: Session, session_row: SessionRow) -> None:
             caller_id=session_row.caller_id,
             fake_score=session_row.fake_score,
             message=(
-                f"Flagged call: fake_score {session_row.fake_score:.3f} "
-                f">= threshold {session_row.threshold:.3f}"
+                f"Flagged call: fake_score {session_row.fake_score:.4f} "
+                f">= threshold {session_row.threshold:.4f}"
             ),
         )
     )
