@@ -1,0 +1,312 @@
+{
+  "family": "rawnet2",
+  "matrix": {
+    "clean": {
+      "clean": {
+        "pooled": {
+          "eer": 0.04221388367729831,
+          "eer_threshold": 0.22891502518479417,
+          "accuracy_at_eer": 0.9577,
+          "accuracy_at_0.5": 0.95,
+          "confusion_at_eer": {
+            "tp": 8556,
+            "fp": 45,
+            "tn": 1021,
+            "fn": 378
+          },
+          "n": 10000
+        },
+        "per_codec": {
+          "clean": {
+            "eer": 0.04221388367729831,
+            "eer_threshold": 0.22891502518479417,
+            "accuracy_at_eer": 0.9577,
+            "accuracy_at_0.5": 0.95,
+            "confusion_at_eer": {
+              "tp": 8556,
+              "fp": 45,
+              "tn": 1021,
+              "fn": 378
+            },
+            "n": 10000
+          }
+        }
+      },
+      "degraded": {
+        "pooled": {
+          "eer": 0.0751063353481084,
+          "eer_threshold": 0.9986527974583678,
+          "accuracy_at_eer": 0.9249,
+          "accuracy_at_0.5": 0.96335,
+          "confusion_at_eer": {
+            "tp": 33052,
+            "fp": 320,
+            "tn": 3944,
+            "fn": 2684
+          },
+          "n": 40000
+        },
+        "per_codec": {
+          "amr_nb": {
+            "eer": 0.11350844277673545,
+            "eer_threshold": 0.9999187639014582,
+            "accuracy_at_eer": 0.8864,
+            "accuracy_at_0.5": 0.9494,
+            "confusion_at_eer": {
+              "tp": 7919,
+              "fp": 121,
+              "tn": 945,
+              "fn": 1015
+            },
+            "n": 10000
+          },
+          "g711_alaw": {
+            "eer": 0.04980971569285875,
+            "eer_threshold": 0.9923733752366811,
+            "accuracy_at_eer": 0.9502,
+            "accuracy_at_0.5": 0.9687,
+            "confusion_at_eer": {
+              "tp": 8489,
+              "fp": 53,
+              "tn": 1013,
+              "fn": 445
+            },
+            "n": 10000
+          },
+          "g711_mulaw": {
+            "eer": 0.050369375419744844,
+            "eer_threshold": 0.9929628418627163,
+            "accuracy_at_eer": 0.9497,
+            "accuracy_at_0.5": 0.9685,
+            "confusion_at_eer": {
+              "tp": 8484,
+              "fp": 53,
+              "tn": 1013,
+              "fn": 450
+            },
+            "n": 10000
+          },
+          "opus": {
+            "eer": 0.04499664204163867,
+            "eer_threshold": 0.9093956705945863,
+            "accuracy_at_eer": 0.9551,
+            "accuracy_at_0.5": 0.9668,
+            "confusion_at_eer": {
+              "tp": 8532,
+              "fp": 47,
+              "tn": 1019,
+              "fn": 402
+            },
+            "n": 10000
+          }
+        }
+      },
+      "heldout": {
+        "pooled": {
+          "eer": 0.06660412757973734,
+          "eer_threshold": 0.9995731306568095,
+          "accuracy_at_eer": 0.9333,
+          "accuracy_at_0.5": 0.9569,
+          "confusion_at_eer": {
+            "tp": 8338,
+            "fp": 71,
+            "tn": 995,
+            "fn": 596
+          },
+          "n": 10000
+        },
+        "per_codec": {
+          "gsm": {
+            "eer": 0.06660412757973734,
+            "eer_threshold": 0.9995731306568095,
+            "accuracy_at_eer": 0.9333,
+            "accuracy_at_0.5": 0.9569,
+            "confusion_at_eer": {
+              "tp": 8338,
+              "fp": 71,
+              "tn": 995,
+              "fn": 596
+            },
+            "n": 10000
+          }
+        }
+      }
+    },
+    "codec_aug": {
+      "clean": {
+        "pooled": {
+          "eer": 0.06378986866791744,
+          "eer_threshold": 0.4693492833266339,
+          "accuracy_at_eer": 0.9362,
+          "accuracy_at_0.5": 0.9355,
+          "confusion_at_eer": {
+            "tp": 8364,
+            "fp": 68,
+            "tn": 998,
+            "fn": 570
+          },
+          "n": 10000
+        },
+        "per_codec": {
+          "clean": {
+            "eer": 0.06378986866791744,
+            "eer_threshold": 0.4693492833266339,
+            "accuracy_at_eer": 0.9362,
+            "accuracy_at_0.5": 0.9355,
+            "confusion_at_eer": {
+              "tp": 8364,
+              "fp": 68,
+              "tn": 998,
+              "fn": 570
+            },
+            "n": 10000
+          }
+        }
+      },
+      "degraded": {
+        "pooled": {
+          "eer": 0.061758450861875924,
+          "eer_threshold": 0.7472404427567879,
+          "accuracy_at_eer": 0.93825,
+          "accuracy_at_0.5": 0.944625,
+          "confusion_at_eer": {
+            "tp": 33529,
+            "fp": 263,
+            "tn": 4001,
+            "fn": 2207
+          },
+          "n": 40000
+        },
+        "per_codec": {
+          "amr_nb": {
+            "eer": 0.043151969981238276,
+            "eer_threshold": 0.8531040171297584,
+            "accuracy_at_eer": 0.9568,
+            "accuracy_at_0.5": 0.9615,
+            "confusion_at_eer": {
+              "tp": 8548,
+              "fp": 46,
+              "tn": 1020,
+              "fn": 386
+            },
+            "n": 10000
+          },
+          "g711_alaw": {
+            "eer": 0.0657040519364227,
+            "eer_threshold": 0.6017805422769447,
+            "accuracy_at_eer": 0.9343,
+            "accuracy_at_0.5": 0.9379,
+            "confusion_at_eer": {
+              "tp": 8347,
+              "fp": 70,
+              "tn": 996,
+              "fn": 587
+            },
+            "n": 10000
+          },
+          "g711_mulaw": {
+            "eer": 0.06581598388179988,
+            "eer_threshold": 0.595346788938931,
+            "accuracy_at_eer": 0.9342,
+            "accuracy_at_0.5": 0.9375,
+            "confusion_at_eer": {
+              "tp": 8346,
+              "fp": 70,
+              "tn": 996,
+              "fn": 588
+            },
+            "n": 10000
+          },
+          "opus": {
+            "eer": 0.06581598388179988,
+            "eer_threshold": 0.7973148735519061,
+            "accuracy_at_eer": 0.9342,
+            "accuracy_at_0.5": 0.9416,
+            "confusion_at_eer": {
+              "tp": 8346,
+              "fp": 70,
+              "tn": 996,
+              "fn": 588
+            },
+            "n": 10000
+          }
+        }
+      },
+      "heldout": {
+        "pooled": {
+          "eer": 0.07566599507499439,
+          "eer_threshold": 0.9670266660369428,
+          "accuracy_at_eer": 0.9244,
+          "accuracy_at_0.5": 0.9471,
+          "confusion_at_eer": {
+            "tp": 8258,
+            "fp": 80,
+            "tn": 986,
+            "fn": 676
+          },
+          "n": 10000
+        },
+        "per_codec": {
+          "gsm": {
+            "eer": 0.07566599507499439,
+            "eer_threshold": 0.9670266660369428,
+            "accuracy_at_eer": 0.9244,
+            "accuracy_at_0.5": 0.9471,
+            "confusion_at_eer": {
+              "tp": 8258,
+              "fp": 80,
+              "tn": 986,
+              "fn": 676
+            },
+            "n": 10000
+          }
+        }
+      }
+    }
+  },
+  "models": {
+    "clean": {
+      "checkpoint": "runs/kaggle/rawnet2-clean/runs/rawnet2-clean/best.pt",
+      "name": "rawnet2",
+      "epoch": 19,
+      "gru_hidden": 1024,
+      "gru_layers": 3
+    },
+    "codec_aug": {
+      "checkpoint": "runs/kaggle/rawnet2-codec-aug/runs/rawnet2-codec-aug/best.pt",
+      "name": "rawnet2",
+      "epoch": 17,
+      "gru_hidden": 1024,
+      "gru_layers": 3
+    }
+  },
+  "latency": {
+    "cpu": {
+      "n": 50,
+      "mean_ms": 41.09050333969208,
+      "p50_ms": 41.26629199981835,
+      "p95_ms": 42.19278559894519
+    },
+    "mps": {
+      "n": 50,
+      "mean_ms": 26.65317907994904,
+      "p50_ms": 26.64177050064609,
+      "p95_ms": 27.563695649860165
+    }
+  },
+  "meta": {
+    "generated_at": "2026-11-10T12:25:09+00:00",
+    "max_samples": null,
+    "test_sets": {
+      "clean": [
+        "data/processed/manifests/eval_subset10k.csv"
+      ],
+      "degraded": [
+        "data/processed/manifests/eval_subset10k_per_codec.csv"
+      ],
+      "heldout": [
+        "data/processed/manifests/eval_subset10k_heldout.csv"
+      ]
+    }
+  }
+}
