@@ -192,7 +192,7 @@ def test_bad_configuration_fails_with_a_clear_error(compose: Compose) -> None:
 
 
 @pytest.fixture(scope="module")
-def space() -> Iterator[str]:
+def space() -> Iterator[tuple[str, str]]:
     tag = f"voxguard-space:smoke-{uuid.uuid4().hex[:8]}"
     name = tag.replace(":", "-")
     subprocess.run(
@@ -214,14 +214,15 @@ def space() -> Iterator[str]:
                 time.sleep(1)
         else:
             pytest.fail("Space container did not become ready")
-        yield name
+        yield name, tag
     finally:
         print(subprocess.run(["docker", "logs", name], capture_output=True, text=True).stdout)
         subprocess.run(["docker", "rm", "-f", name], capture_output=True)
         subprocess.run(["docker", "rmi", "-f", tag], capture_output=True)
 
 
-def test_space_image_serves_ui_on_7860_with_internal_api(space: str) -> None:
+def test_space_image_serves_ui_on_7860_with_internal_api(space: tuple[str, str]) -> None:
+    space, _ = space
     assert _get(f"http://127.0.0.1:{SPACE_PORT}/_stcore/health") == (200, b"ok")
     code = (
         "from voxguard.ui.api_client import VoxGuardClient; c = VoxGuardClient(); "
@@ -233,3 +234,29 @@ def test_space_image_serves_ui_on_7860_with_internal_api(space: str) -> None:
     assert r.stdout.split() == ["http://127.0.0.1:8000", "stub"], r.stderr
     r = subprocess.run(["docker", "exec", space, "id", "-u"], capture_output=True, text=True)
     assert r.stdout.strip() == "1000"
+
+
+def test_space_exits_early_when_the_api_cannot_start(space: tuple[str, str]) -> None:
+    """space_start.sh must stop as soon as the API dies, not wait out its start timeout."""
+    _, tag = space
+    started = time.monotonic()
+    r = subprocess.run(
+        ["docker", "run", "--rm", "-e", "VOXGUARD_SIMULATE_CODEC=bogus",
+         "-e", "VOXGUARD_API_START_TIMEOUT=300", tag],
+        capture_output=True, text=True, timeout=120,
+    )  # fmt: skip
+    elapsed = time.monotonic() - started
+    out = r.stdout + r.stderr
+    assert r.returncode != 0 and elapsed < 60, (elapsed, out[-2000:])
+    assert "VOXGUARD_SIMULATE_CODEC must be one of" in out
+    assert "VoxGuard API exited during startup" in out
+
+
+def test_space_start_timeout_is_validated(space: tuple[str, str]) -> None:
+    _, tag = space
+    r = subprocess.run(
+        ["docker", "run", "--rm", "-e", "VOXGUARD_API_START_TIMEOUT=soon", tag],
+        capture_output=True, text=True, timeout=120,
+    )  # fmt: skip
+    assert r.returncode != 0
+    assert "VOXGUARD_API_START_TIMEOUT must be a number" in r.stdout + r.stderr

@@ -1,0 +1,92 @@
+{
+  "schema": 1,
+  "id": "4736434ce9ea",
+  "created_at": "2026-11-10T12:20:30+00:00",
+  "mocked": false,
+  "note": "UNTRAINED weights from configs/rawnet2.yaml (latency only). RawNet2 at the training configuration.",
+  "detector": {
+    "kind": "real",
+    "model_version": "rawnet2:best.pt:epoch0",
+    "threshold": 0.5,
+    "device": "cpu",
+    "load_ms": 113.58600099993055,
+    "weights": "untrained"
+  },
+  "input": {
+    "seconds": 4.0,
+    "sample_rate": 16000,
+    "seed": 0,
+    "channels": 1
+  },
+  "method": {
+    "warmup": 5,
+    "iterations": 50,
+    "timer": "time.perf_counter"
+  },
+  "environment": {
+    "platform": "Linux-6.18.54.1-microsoft-standard-WSL2-x86_64-with-glibc2.43",
+    "python": "3.11.18",
+    "cpu": "13th Gen Intel(R) Core(TM) i5-13450HX",
+    "cpu_count": 16,
+    "ffmpeg": "ffmpeg version 7.0.2-static https://johnvansickle.com/ffmpeg/  Copyright (c) 2000-2024 the FFmpeg developers",
+    "git_commit": "22e8a0a",
+    "device": "cpu",
+    "torch": "2.15.0+cu132",
+    "torch_threads": 8,
+    "cuda_available": true
+  },
+  "detector_inference": {
+    "wall": {
+      "n": 50,
+      "mean_ms": 48.792173580013696,
+      "p50_ms": 48.38792100008504,
+      "p95_ms": 51.723614950105905,
+      "min_ms": 44.88994099983756,
+      "max_ms": 64.44181999995635,
+      "warmup": 5
+    },
+    "reported_latency_ms": {
+      "n": 50,
+      "mean_ms": 48.77897049997955,
+      "p50_ms": 48.37499849998039,
+      "p95_ms": 51.707524549919974,
+      "min_ms": 44.87686299989946,
+      "max_ms": 64.42864100017687,
+      "warmup": 5
+    }
+  },
+  "codec_preprocessing": {
+    "g711_mulaw": {
+      "n": 50,
+      "mean_ms": 7.458687779981119,
+      "p50_ms": 7.384037999941029,
+      "p95_ms": 7.895211200025187,
+      "min_ms": 6.736116999945807,
+      "max_ms": 10.658855999963635,
+      "warmup": 5
+    }
+  },
+  "api_request": {
+    "clean": {
+      "n": 50,
+      "mean_ms": 79.29933740000251,
+      "p50_ms": 78.81344850011374,
+      "p95_ms": 83.44828619996179,
+      "min_ms": 74.20880199993007,
+      "max_ms": 109.14356299986139,
+      "warmup": 5,
+      "sequential_requests_per_s": 12.61044584718016
+    },
+    "simulated": {
+      "n": 50,
+      "mean_ms": 87.79931960003069,
+      "p50_ms": 87.54729850011245,
+      "p95_ms": 92.84116974997687,
+      "min_ms": 82.76200899990727,
+      "max_ms": 99.59355499995581,
+      "warmup": 5,
+      "sequential_requests_per_s": 11.389609903077774
+    },
+    "codec": "g711_mulaw"
+  }
+}

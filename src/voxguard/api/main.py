@@ -18,8 +18,9 @@ from voxguard.api import codec_sim, prevention
 from voxguard.api.audio import decode_audio
 from voxguard.api.db import AlertRow, BlocklistRow, SessionRow, create_tables, make_engine
 from voxguard.api.deps import Settings, get_db, get_detector_dep, get_settings
+from voxguard.api.detector_loader import load_detector
 from voxguard.api.limits import BodySizeLimitMiddleware
-from voxguard.inference import Detector, get_detector
+from voxguard.inference import Detector
 from voxguard.schemas import (
     AlertRecord,
     AnalyzeResponse,
@@ -34,18 +35,6 @@ ANALYZE_PATH = "/v1/analyze"
 MULTIPART_OVERHEAD_BYTES = 64 * 1024  # boundaries and form fields around the file
 
 
-def _load_detector() -> Detector:
-    """``get_detector()`` with an actionable message when the ml extra is missing."""
-    try:
-        return get_detector()
-    except ModuleNotFoundError as exc:
-        raise RuntimeError(
-            f"VOXGUARD_DETECTOR=real needs the 'ml' extra, but {exc.name!r} is not installed. "
-            "Install it with `uv sync --extra api --extra ml`, or build the Docker API image "
-            "with INSTALL_ML=1."
-        ) from exc
-
-
 def create_app(detector: Detector | None = None, settings: Settings | None = None) -> FastAPI:
     """Build the app. Invalid VOXGUARD_* settings raise ValueError here (fail fast)."""
     settings = settings or Settings.from_env()
@@ -55,7 +44,7 @@ def create_app(detector: Detector | None = None, settings: Settings | None = Non
         engine = make_engine(settings.db_url)
         create_tables(engine)
         app.state.settings = settings
-        app.state.detector = detector or _load_detector()
+        app.state.detector = detector or load_detector(settings.device)
         app.state.session_factory = sessionmaker(engine, expire_on_commit=False)
         yield
         engine.dispose()

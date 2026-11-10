@@ -41,9 +41,12 @@ class Settings:
     threshold_mode: Literal["eer", "low_far"] = "eer"
     low_far_threshold: float | None = None
     simulate_codec: str | None = None  # codec used when a request sets simulate_codec=true
+    device: str = "cpu"  # VOXGUARD_DEVICE for the real detector: cpu | cuda | auto
 
     def __post_init__(self) -> None:
         require_sqlite_url(self.db_url)
+        if self.device not in ("cpu", "cuda", "auto"):
+            raise ValueError(f"VOXGUARD_DEVICE must be cpu, cuda or auto, got {self.device!r}")
         if self.simulate_codec is not None and self.simulate_codec not in CODECS:
             raise ValueError(
                 f"VOXGUARD_SIMULATE_CODEC must be one of {sorted(CODECS)}, "
@@ -85,6 +88,7 @@ class Settings:
             threshold_mode=mode,  # type: ignore[arg-type]  # validated in __post_init__
             low_far_threshold=low_far,
             simulate_codec=os.environ.get("VOXGUARD_SIMULATE_CODEC", "").strip() or None,
+            device=os.environ.get("VOXGUARD_DEVICE", "").strip().lower() or "cpu",
         )
 
 

@@ -22,6 +22,14 @@ services:
       - voxguard-data:/data
     ports:
       - "${VOXGUARD_API_PORT:-8000}:8000"
+    healthcheck:
+      # Same check as the image; the grace period is longer for the real detector, whose
+      # first start downloads the checkpoint (set VOXGUARD_API_START_PERIOD=600s).
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4)"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: ${VOXGUARD_API_START_PERIOD:-20s}
     restart: unless-stopped
 
   ui:
