@@ -38,6 +38,10 @@ def load_detector(device: str = "cpu") -> Detector:
     kind = os.environ.get("VOXGUARD_DETECTOR", "stub").strip().lower()
     if kind != "real":
         return get_detector()  # stub, or its own clear error for unknown values
+    try:  # the missing ML stack is the more basic problem, so report it first
+        import torch  # noqa: F401
+    except ModuleNotFoundError as exc:
+        raise _missing_ml(exc) from exc
     repo = os.environ.get("VOXGUARD_MODEL_REPO", "").strip()
     if not repo:
         raise RuntimeError(

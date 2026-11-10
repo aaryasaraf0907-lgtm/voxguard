@@ -18,6 +18,17 @@ def _settings(**kw) -> Settings:
     return Settings(db_url="sqlite://", **kw)
 
 
+def _torch_present(monkeypatch) -> None:
+    """Mocked RealDetector tests run without the ml extra (as in CI): a stand-in torch module."""
+    import sys
+    import types
+
+    try:
+        import torch  # noqa: F401
+    except ModuleNotFoundError:
+        monkeypatch.setitem(sys.modules, "torch", types.ModuleType("torch"))
+
+
 def _start(monkeypatch, device: str = "cpu", **env: str):
     for k, v in env.items():
         monkeypatch.setenv(k, v)
@@ -38,7 +49,20 @@ def test_stub_is_default_and_unchanged(monkeypatch) -> None:
         }
 
 
+def test_missing_ml_is_reported_before_missing_model_repo(monkeypatch) -> None:
+    import sys
+
+    monkeypatch.delenv("VOXGUARD_MODEL_REPO", raising=False)
+    monkeypatch.setitem(sys.modules, "torch", None)  # as if the ml extra were not installed
+    with (
+        pytest.raises(RuntimeError, match="INSTALL_ML=1"),
+        _start(monkeypatch, VOXGUARD_DETECTOR="real"),
+    ):
+        pass
+
+
 def test_real_without_model_repo_fails_clearly(monkeypatch) -> None:
+    _torch_present(monkeypatch)
     monkeypatch.delenv("VOXGUARD_MODEL_REPO", raising=False)
     with (
         pytest.raises(RuntimeError, match="VOXGUARD_MODEL_REPO"),
@@ -67,6 +91,7 @@ def test_no_silent_fallback_to_stub(monkeypatch) -> None:
 
     import voxguard.inference as inference
 
+    _torch_present(monkeypatch)
     monkeypatch.setattr(inference, "RealDetector", boom)
     with (
         pytest.raises(RuntimeError, match="checkpoint not found"),
@@ -84,6 +109,7 @@ def test_hub_errors_are_explained(monkeypatch) -> None:
 
     import voxguard.inference as inference
 
+    _torch_present(monkeypatch)
     monkeypatch.setattr(inference, "RealDetector", boom)
     with (
         pytest.raises(RuntimeError, match="Hugging Face Hub") as exc,
