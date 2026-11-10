@@ -48,7 +48,10 @@ The API reads `.env` (or the file named by `VOXGUARD_ENV_FILE`). All variables a
 | `HF_TOKEN` | (none) | only for a private model repo; read by `huggingface_hub` at runtime |
 | `VOXGUARD_THRESHOLD` | `0.5` | placeholder until evaluation results give an EER threshold |
 | `VOXGUARD_THRESHOLD_MODE` / `VOXGUARD_LOW_FAR_THRESHOLD` | `eer` / (none) | `low_far` refuses to start without an explicit threshold |
-| `VOXGUARD_SIMULATE_CODEC` | (none) | codec for `simulate_codec=true`; unset means the API answers 501 |
+| `VOXGUARD_SIMULATE_CODEC` | (none) | codec for `simulate_codec=true`; unset means the API answers 501. With these images use `g711_mulaw` (or `gsm`/`opus`); AMR is not available |
+| `VOXGUARD_DEVICE` | `cpu` | real detector device: `cpu`, `cuda` or `auto` |
+| `VOXGUARD_API_START_PERIOD` | `20s` | API health-check grace period (compose); `600s` for the real detector |
+| `VOXGUARD_API_START_TIMEOUT` | 600 (real) / 60 | Space image only: seconds `space_start.sh` waits for the API |
 | `VOXGUARD_MAX_UPLOAD_MB` / `VOXGUARD_MAX_AUDIO_SECONDS` | `25` / `60` | API limits |
 | `VOXGUARD_UI_MAX_UPLOAD_MB` | `25` | UI uploader limit (whole MB); keep it at or below the API limit |
 | `INSTALL_ML` | `0` | build arg for the API image |
@@ -82,25 +85,42 @@ The response's `codec_applied` names the codec. Behaviour and errors are in
 ### Real detector
 
 ```bash
-INSTALL_ML=1 docker compose build api     # large download
+INSTALL_ML=1 docker compose build api     # large download (see below)
 # .env:
 #   VOXGUARD_DETECTOR=real
 #   VOXGUARD_MODEL_REPO=<hf-user>/<private-model-repo>   (or a path mounted into the container)
 #   HF_TOKEN=<token with read access>                    (only for a private repo)
+#   VOXGUARD_API_START_PERIOD=600s                       (first start downloads the checkpoint)
 docker compose up
 ```
 
-The checkpoint is downloaded at startup into the `/data/hf-cache` volume, so later restarts reuse
-it. `/health` then reports `"detector": "real"` and the checkpoint's `model_version`. To use a
-local checkpoint instead, mount it, e.g. add `- ./runs/best:/models:ro` under the API's
-`volumes` and set `VOXGUARD_MODEL_REPO=/models`.
+- The detector is built **once**, when the API starts; requests reuse it. If it cannot be built
+  the API exits with an error naming the problem (missing `ml` extra, missing
+  `VOXGUARD_MODEL_REPO`, checkpoint not found, Hugging Face download error, corrupt checkpoint,
+  `VOXGUARD_DEVICE=cuda` without a GPU). It never falls back to the stub.
+- The checkpoint is downloaded at startup into the `/data/hf-cache` volume, so later restarts
+  reuse it. A full SSL-AASIST checkpoint is GBs, which is why `VOXGUARD_API_START_PERIOD`
+  (health-check grace period, default 20 s) should be raised for the real detector.
+- `/health` then reports `"detector": "real"` and the checkpoint's `model_version`
+  (`<model>:<source>:epoch<N>`).
+- To use a local checkpoint instead, mount it, e.g. add `- ./runs/best:/models:ro` under the
+  API's `volumes` and set `VOXGUARD_MODEL_REPO=/models` (a directory holding `best.pt`, or the
+  file itself).
+- `VOXGUARD_DEVICE` (`cpu` default, `cuda`, `auto`) picks the device. The compose file does not
+  request a GPU: running on CUDA in Docker additionally needs the NVIDIA Container Toolkit and a
+  `deploy.resources.reservations.devices` entry, which this project has not set up or tested.
+- **Image size:** `INSTALL_ML=1` installs the locked torch from PyPI, which on Linux pulls the
+  CUDA build and its `nvidia-*` wheels (several GB), even for CPU-only use. A CPU wheel index
+  would need a `pyproject.toml` source entry and a re-lock (shared files; to be decided with
+  Aarya). The ML image has not been built yet.
 
 ## Private Hugging Face Space (prepared, not deployed)
 
 `docker/Dockerfile.space` runs the API on 127.0.0.1:8000 inside the container and Streamlit on
 port 7860, which is what a Docker Space exposes. `docker/space_start.sh` starts the API, waits
 for `/health`, and exits with the API's error if it fails to start, so the Space shows it in its
-logs.
+logs. The wait is `VOXGUARD_API_START_TIMEOUT` seconds: 600 by default with
+`VOXGUARD_DETECTOR=real` (the first start downloads the checkpoint), 60 otherwise.
 
 Manual steps (need your Hugging Face account; nothing here has been deployed):
 
@@ -147,7 +167,8 @@ Limitations on a Space:
 |---|---|
 | `api` exits at startup with `VOXGUARD_DETECTOR=real needs the 'ml' extra` | The image was built without the ML stack: `INSTALL_ML=1 docker compose build api`. |
 | `api` exits with `VOXGUARD_... must be ...` | An invalid setting in `.env`; the message names the variable. `docker compose logs api` shows it. |
-| `dependency failed to start: container voxguard-api-1 is unhealthy` | The API did not pass `/health`: see `docker compose logs api`. |
+| `dependency failed to start: container voxguard-api-1 is unhealthy` | The API did not pass `/health`: see `docker compose logs api`. With the real detector, the checkpoint download may still be running: raise `VOXGUARD_API_START_PERIOD` (e.g. `600s`). |
+| Space log: `VoxGuard API did not become healthy within 60 s` | Raise `VOXGUARD_API_START_TIMEOUT` in the Space variables. |
 | UI sidebar shows "API unavailable" | `docker compose ps` should show `api` as healthy. In compose the UI must use `http://api:8000`, not `localhost` (each container has its own localhost). |
 | `simulate_codec=true` returns 501 | `VOXGUARD_SIMULATE_CODEC` is not set for the API. |
 | `simulate_codec=true` returns 503 | This ffmpeg has no encoder for the chosen codec; pick one the codec report lists as OK. |
