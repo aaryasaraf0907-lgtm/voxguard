@@ -69,6 +69,17 @@ def test_render_marks_missing_conditions() -> None:
     assert "| Codec-augmented | not run | not run |" in md
 
 
+def test_render_heldout_section_separate_from_matrix() -> None:
+    fam = _fake_family()
+    assert "Unseen-codec" not in render_markdown({"rawnet2": fam})  # optional section
+    block = fam["matrix"]["clean"]["degraded"]["per_codec"]["gsm"]
+    fam["matrix"]["clean"]["heldout"] = {"pooled": block, "per_codec": {"amr_wb": block}}
+    md = render_markdown({"rawnet2": fam})
+    assert "### Unseen-codec EER (%)" in md and "| Train | amr_wb |" in md
+    assert "| Clean only | 25.00 |" in md and "| Codec-augmented | not run |" in md
+    assert "| Clean only | 1.23 | 20.00 |" in md  # 2x2 unchanged
+
+
 def test_render_flags_smoke_runs() -> None:
     fam = _fake_family()
     fam["meta"]["max_samples"] = 100

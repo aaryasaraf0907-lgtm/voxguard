@@ -5,8 +5,10 @@
 
 For each model family, the ``clean`` and ``codec_aug`` checkpoints are scored on the ``clean``
 and ``degraded`` test sets. Degraded rows are grouped by the manifest ``codec`` column for the
-per-codec breakdown. Missing checkpoints are skipped and shown as "not run", so partial results
-still render. Numbers in docs/results.md come only from results/*.json (never hand-typed).
+per-codec breakdown. An optional ``heldout`` test set holds codecs that no model saw in training
+(the unseen-codec test); it is reported separately and never enters the 2x2 matrix. Missing
+checkpoints are skipped and shown as "not run", so partial results still render.
+Numbers in docs/results.md come only from results/*.json (never hand-typed).
 """
 
 from __future__ import annotations
@@ -27,14 +29,16 @@ from voxguard.metrics import latency_stats, summarize
 logger = logging.getLogger(__name__)
 
 TRAIN_CONDITIONS = ("clean", "codec_aug")
-TEST_CONDITIONS = ("clean", "degraded")
+MATRIX_TESTS = ("clean", "degraded")  # the 2x2 columns
+TEST_CONDITIONS = (*MATRIX_TESTS, "heldout")  # heldout: codecs unseen in training (optional)
+CODEC_TESTS = ("degraded", "heldout")  # sets whose clean rows are dropped
 TRAIN_LABELS = {"clean": "Clean only", "codec_aug": "Codec-augmented"}
 
 
 @dataclass
 class EvalConfig:
     models: dict[str, dict[str, str]] = field(default_factory=dict)  # family -> condition -> ckpt
-    test_sets: dict[str, list[str]] = field(default_factory=dict)  # clean/degraded -> manifests
+    test_sets: dict[str, list[str]] = field(default_factory=dict)  # test condition -> manifests
     roots: list[str] = field(default_factory=lambda: ["data/raw", "data/processed"])
     max_samples: int | None = None
     batch_size: int = 32
@@ -100,7 +104,7 @@ def score_manifests(
         manifests, [Path(r) for r in cfg.roots], train=False,
         max_samples=cfg.max_samples, seed=cfg.seed,
     )  # fmt: skip
-    if codec_filter_clean:  # the degraded set must not include clean rows
+    if codec_filter_clean:  # codec test sets must not include clean rows
         ds.rows = [r for r in ds.rows if r.codec != "clean"]
     loader = DataLoader(ds, batch_size=cfg.batch_size, shuffle=False)
     scores, labels = [], []
@@ -158,7 +162,7 @@ def evaluate_family(family: str, ckpts: dict[str, str], cfg: EvalConfig) -> dict
             if not manifests:
                 continue
             s, y, codecs = score_manifests(
-                model, [Path(m) for m in manifests], cfg, device, test_cond == "degraded"
+                model, [Path(m) for m in manifests], cfg, device, test_cond in CODEC_TESTS
             )
             result["matrix"][train_cond][test_cond] = evaluate_condition(s, y, codecs)
             logger.info(
@@ -203,35 +207,40 @@ def _get(res: dict[str, Any], train: str, test: str) -> dict[str, Any] | None:
     return res.get("matrix", {}).get(train, {}).get(test)
 
 
+def _per_codec_table(res: dict[str, Any], test: str, title: str) -> list[str]:
+    codecs = sorted(
+        {c for t in TRAIN_CONDITIONS for c in ((_get(res, t, test) or {}).get("per_codec", {}))}
+    )
+    if not codecs:
+        return []
+    lines = ["", f"### {title}", ""]
+    lines += ["| Train | " + " | ".join(codecs) + " |", "|---" * (len(codecs) + 1) + "|"]
+    for train in TRAIN_CONDITIONS:
+        per = (_get(res, train, test) or {}).get("per_codec", {})
+        cells = [_pct(per.get(c, {}).get("eer")) for c in codecs]
+        lines.append(f"| {TRAIN_LABELS[train]} | " + " | ".join(cells) + " |")
+    return lines
+
+
 def render_family(res: dict[str, Any]) -> str:
     lines = [f"## {res['family']}", "", "### 2x2 matrix: EER (%)", ""]
     lines += ["| Train \\ Test | Clean | Phone-degraded (pooled) |", "|---|---|---|"]
     for train in TRAIN_CONDITIONS:
         cells = [
-            _pct((_get(res, train, t) or {}).get("pooled", {}).get("eer")) for t in TEST_CONDITIONS
+            _pct((_get(res, train, t) or {}).get("pooled", {}).get("eer")) for t in MATRIX_TESTS
         ]
         lines.append(f"| {TRAIN_LABELS[train]} | {cells[0]} | {cells[1]} |")
 
-    codecs = sorted(
-        {
-            c
-            for t in TRAIN_CONDITIONS
-            for c in ((_get(res, t, "degraded") or {}).get("per_codec", {}))
-        }
+    lines += _per_codec_table(res, "degraded", "Phone-degraded EER (%) per codec")
+    lines += _per_codec_table(
+        res, "heldout", "Unseen-codec EER (%): codecs not used in any training run"
     )
-    if codecs:
-        lines += ["", "### Phone-degraded EER (%) per codec", ""]
-        lines += ["| Train | " + " | ".join(codecs) + " |", "|---" * (len(codecs) + 1) + "|"]
-        for train in TRAIN_CONDITIONS:
-            per = (_get(res, train, "degraded") or {}).get("per_codec", {})
-            cells = [_pct(per.get(c, {}).get("eer")) for c in codecs]
-            lines.append(f"| {TRAIN_LABELS[train]} | " + " | ".join(cells) + " |")
 
     lines += ["", "### Accuracy (%) at the EER threshold / at 0.5", ""]
     lines += ["| Train \\ Test | Clean | Phone-degraded |", "|---|---|---|"]
     for train in TRAIN_CONDITIONS:
         cells = []
-        for test in TEST_CONDITIONS:
+        for test in MATRIX_TESTS:
             pooled = (_get(res, train, test) or {}).get("pooled")
             cells.append(
                 "not run"
