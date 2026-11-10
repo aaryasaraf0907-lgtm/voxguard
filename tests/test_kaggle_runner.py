@@ -65,3 +65,16 @@ def test_augment_kernel_is_cpu_and_compiles(
     code = (folder / "run.py").read_text()
     compile(code, "run.py", "exec")
     assert '"codecs": ["gsm", "amr_wb"]' in code and '"subset": 10000' in code
+
+
+def test_internet_only_for_pretrained_configs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = Path(__file__).parents[1] / "configs"
+    assert kr.needs_internet(root / "ssl_aasist.yaml") is True  # XLS-R from HF Hub
+    assert kr.needs_internet(root / "rawnet2.yaml") is False
+    monkeypatch.setattr(kr, "STAGE", tmp_path)
+    ssl = spec(run="ssl-aasist-clean", config=str(root / "ssl_aasist.yaml"))
+    folder = kr.push("me", ssl, "NvidiaTeslaT4", None, dry_run=True)
+    assert json.loads((folder / "kernel-metadata.json").read_text())["enable_internet"] is True
+    assert kr.kernel_metadata("me", spec())["enable_internet"] is False
