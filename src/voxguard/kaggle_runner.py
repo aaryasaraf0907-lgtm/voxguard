@@ -28,6 +28,8 @@ import subprocess
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+import yaml
+
 log = logging.getLogger(__name__)
 
 STAGE = Path("data/processed/kaggle")  # gitignored
@@ -256,8 +258,18 @@ def render_augment_kernel(spec: AugmentSpec) -> str:
     return AUGMENT_TEMPLATE.format(spec=json.dumps(asdict(spec)))
 
 
+def needs_internet(config: str | Path) -> bool:
+    """True when the training config downloads pretrained weights (e.g. XLS-R from HF Hub)."""
+    raw = yaml.safe_load(Path(config).read_text()) or {}
+    return bool((raw.get("model") or {}).get("pretrained"))
+
+
 def kernel_metadata(
-    owner: str, spec: RunSpec | AugmentSpec, resume_from: str | None = None, gpu: bool = True
+    owner: str,
+    spec: RunSpec | AugmentSpec,
+    resume_from: str | None = None,
+    gpu: bool = True,
+    internet: bool = False,
 ) -> dict[str, object]:
     slug = kernel_slug(spec.run)
     return {
@@ -268,7 +280,7 @@ def kernel_metadata(
         "kernel_type": "script",
         "is_private": True,
         "enable_gpu": gpu,
-        "enable_internet": False,
+        "enable_internet": internet,
         "dataset_sources": [
             f"{owner}/{SRC_DATASET}",
             f"{owner}/{PREP_DATASET}",
@@ -282,7 +294,7 @@ def kernel_metadata(
 def push(
     owner: str, spec: RunSpec, accelerator: str, resume_from: str | None, dry_run: bool
 ) -> Path:
-    meta = kernel_metadata(owner, spec, resume_from)
+    meta = kernel_metadata(owner, spec, resume_from, internet=needs_internet(spec.config))
     return _push_folder(spec.run, render_kernel(spec), meta, accelerator, dry_run)
 
 
