@@ -199,10 +199,36 @@ def test_corrupt_checkpoint_fails_clearly(monkeypatch, tmp_path: Path) -> None:
     bad = tmp_path / "best.pt"
     bad.write_bytes(b"not a checkpoint")
     with (
-        pytest.raises(RuntimeError, match="could not load it"),
+        pytest.raises(RuntimeError, match="could not load the checkpoint"),
         _start(monkeypatch, VOXGUARD_DETECTOR="real", VOXGUARD_MODEL_REPO=str(bad)),
     ):
         pass
+
+
+def test_checkpoint_not_matching_its_config_is_wrapped(monkeypatch, tmp_path: Path) -> None:
+    """Weights saved for one model size, config claiming another: torch raises a RuntimeError
+    from load_state_dict, which must come back as the actionable checkpoint error."""
+    torch = pytest.importorskip("torch")
+    from voxguard.models import build_model
+
+    weights = build_model("rawnet2", gru_hidden=16, gru_layers=1).state_dict()
+    path = tmp_path / "best.pt"
+    torch.save(
+        {"model": weights, "epoch": 1, "config": {"model": {"name": "rawnet2", "gru_hidden": 32,
+                                                           "gru_layers": 1}}},
+        path,
+    )  # fmt: skip
+    with (
+        pytest.raises(RuntimeError) as exc,
+        _start(monkeypatch, VOXGUARD_DETECTOR="real", VOXGUARD_MODEL_REPO=str(path)),
+    ):
+        pass
+    message = str(exc.value)
+    assert message.startswith("could not load the checkpoint (VOXGUARD_MODEL_REPO=")
+    assert str(path) in message and "size mismatch" in message
+    assert type(exc.value) is RuntimeError  # the wrapper, not torch's error passed through
+    cause = exc.value.__cause__
+    assert isinstance(cause, RuntimeError) and "state_dict" in str(cause)
 
 
 def test_checkpoint_without_config_fails_clearly(monkeypatch, tmp_path: Path) -> None:
@@ -234,7 +260,7 @@ def test_cuda_requested_without_gpu_fails_clearly(monkeypatch, checkpoint: Path)
 
     monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
     with (
-        pytest.raises(RuntimeError, match="VOXGUARD_DEVICE=cuda"),
+        pytest.raises(detector_loader.DeviceUnavailableError, match="VOXGUARD_DEVICE=cuda"),
         _start(monkeypatch, "cuda", VOXGUARD_DETECTOR="real", VOXGUARD_MODEL_REPO=str(checkpoint)),
     ):
         pass

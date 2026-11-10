@@ -25,13 +25,19 @@ def _missing_ml(exc: ModuleNotFoundError) -> RuntimeError:
     )
 
 
+class DeviceUnavailableError(RuntimeError):
+    """``VOXGUARD_DEVICE`` asks for a device this machine does not have."""
+
+
 def _check_device(device: str) -> None:
     if device != "cuda":
         return
     import torch
 
     if not torch.cuda.is_available():
-        raise RuntimeError("VOXGUARD_DEVICE=cuda but torch reports no CUDA device; use cpu or auto")
+        raise DeviceUnavailableError(
+            "VOXGUARD_DEVICE=cuda but torch reports no CUDA device; use cpu or auto"
+        )
 
 
 def load_detector(device: str = "cpu") -> Detector:
@@ -56,16 +62,18 @@ def load_detector(device: str = "cpu") -> Detector:
         detector = RealDetector(repo, device=device)
     except ModuleNotFoundError as exc:
         raise _missing_ml(exc) from exc
-    except RuntimeError:
+    except DeviceUnavailableError:
         raise
     except FileNotFoundError as exc:
         raise RuntimeError(f"VOXGUARD_MODEL_REPO checkpoint not found: {exc}") from exc
     except ValueError:
         raise  # RealDetector's own messages (threshold, missing source) are already clear
-    except Exception as exc:  # hub errors, corrupt or incompatible checkpoints
+    except Exception as exc:  # hub errors; corrupt or incompatible checkpoints (torch errors)
         origin = type(exc).__module__.split(".")[0]
         where = (
-            "download it from the Hugging Face Hub" if origin == "huggingface_hub" else "load it"
+            "download the checkpoint from the Hugging Face Hub"
+            if origin == "huggingface_hub"
+            else "load the checkpoint"
         )
         raise RuntimeError(
             f"could not {where} (VOXGUARD_MODEL_REPO={repo!r}): {type(exc).__name__}: {exc}"
