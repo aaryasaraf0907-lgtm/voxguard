@@ -96,3 +96,29 @@ def test_dev_max_samples_limits_dev_set(tmp_path: Path) -> None:
     full = len(_make_loaders(cfg)[1].dataset)
     cfg.data.dev_max_samples = 4
     assert len(_make_loaders(cfg)[1].dataset) == 4 < full
+
+
+def test_train_samples_per_epoch_caps_epoch_and_reshuffles(tmp_path: Path) -> None:
+    cfg = _cfg(tmp_path, 1)
+    cfg.data.train_samples_per_epoch = 4
+    train_dl, _ = _make_loaders(cfg)
+    assert len(train_dl.dataset) > 4
+    seed_epoch(train_dl, 1234, 0)
+    first = [float(x[:, 0].sum()) for x, _ in train_dl]
+    assert sum(len(y) for _, y in train_dl) == 4
+    seed_epoch(train_dl, 1234, 1)
+    assert [float(x[:, 0].sum()) for x, _ in train_dl] != first  # a different subset per epoch
+    cfg.data.train_samples_per_epoch = 10_000  # larger than the set: plain shuffle, all clips
+    assert sum(len(y) for _, y in _make_loaders(cfg)[0]) == len(train_dl.dataset)
+
+
+def test_best_checkpoint_is_weights_only(tmp_path: Path) -> None:
+    train(_cfg(tmp_path, 1))
+    best = torch.load(tmp_path / "run" / "best.pt", weights_only=False)
+    last = torch.load(tmp_path / "run" / "last.pt", weights_only=False)
+    assert "opt" not in best and "scaler" not in best
+    assert {"model", "config", "epoch", "best_eer"} <= set(best) and "opt" in last
+    from voxguard.models import load_from_checkpoint
+
+    _, info = load_from_checkpoint(tmp_path / "run" / "best.pt", "cpu")
+    assert info["epoch"] == 0

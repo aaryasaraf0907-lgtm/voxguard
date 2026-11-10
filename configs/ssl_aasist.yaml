@@ -1,7 +1,12 @@
 # SSL-AASIST: XLS-R 300M front-end + AASIST back-end on ASVspoof 2019 LA.
 # Paper settings (Tak et al. 2022): Adam lr 1e-6, weight decay 1e-4, batch 14, weighted CE
 # [0.1, 0.9], full fine-tuning, 100 epochs. Deviations here (documented for the report):
-#   - epochs 20: free Kaggle/Colab GPU time; best.pt is kept by dev EER
+#   - epochs 8: free Kaggle GPU time. Measured on 2x T4 (full fine-tune, batch 14): ~5-6 train
+#     clips/s, so one 25,380-clip epoch is ~80 min; run as 4 + 4 epochs (resume) to stay inside
+#     Kaggle's 12 h session limit. best.pt is kept by dev EER.
+#   - train_samples_per_epoch 25380: the codec-augmented manifest (clean + 2 codec copies per
+#     clip, 76,140 rows) trains on a fresh random 25,380 rows per epoch, so both runs take the
+#     same number of steps. No-op for the clean manifest (25,380 rows).
 #   - gradient checkpointing on: fits a 16 GB T4 at batch 14
 # Fallback if too slow / OOM: finetune: last_n (last_n: 4) and frontend_lr: 1.0e-5, lr: 1.0e-4.
 model:
@@ -19,8 +24,9 @@ data:
   # Per-epoch model selection on a fixed seeded dev subset (~500 bona fide); the full dev set
   # with XLS-R costs a large share of each epoch. Final numbers come from evaluate.py.
   dev_max_samples: 5000
+  train_samples_per_epoch: 25380
 train:
-  epochs: 20
+  epochs: 8
   batch_size: 14
   lr: 1.0e-6
   frontend_lr: null         # set to use a separate front-end LR (e.g. with last_n)

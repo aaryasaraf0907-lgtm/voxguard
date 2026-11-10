@@ -3,8 +3,9 @@
     python -m voxguard.train --config configs/rawnet2.yaml
     python -m voxguard.train --config configs/rawnet2_smoke.yaml --max-samples 100 --no-wandb
 
-A checkpoint (``last.pt``) is written atomically after every epoch, and ``best.pt`` whenever
-dev EER improves. ``--resume`` continues from ``last.pt`` (free GPU sessions die).
+A checkpoint (``last.pt``) is written atomically after every epoch, and ``best.pt`` (weights and
+config only, no optimizer state) whenever dev EER improves. ``--resume`` continues from
+``last.pt`` (free GPU sessions die).
 """
 
 from __future__ import annotations
@@ -23,7 +24,7 @@ import numpy as np
 import torch
 import yaml
 from torch import nn
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, RandomSampler
 
 from voxguard.data.datasets import NUM_SAMPLES, ManifestDataset
 from voxguard.metrics import summarize
@@ -41,6 +42,9 @@ class DataConfig:
     codecs: list[str] | None = None  # filter training rows by codec column (None = all)
     max_samples: int | None = None  # smoke mode: seeded random subset
     dev_max_samples: int | None = None  # fixed seeded dev subset for per-epoch model selection
+    # Clips drawn (without replacement, reshuffled each epoch) per training epoch. Lets a larger
+    # codec-augmented manifest train for the same number of steps as the clean one.
+    train_samples_per_epoch: int | None = None
 
 
 @dataclass
@@ -155,7 +159,12 @@ def _make_loaders(cfg: Config, pin_memory: bool = False) -> tuple[DataLoader, Da
     )
     # Train workers are re-created each epoch so they see set_epoch() (seeded crops); the dev
     # set has no per-epoch state, so its workers can persist.
-    train_dl = DataLoader(train_ds, shuffle=True, drop_last=False, **loader_kw)
+    n_epoch = d.train_samples_per_epoch
+    if n_epoch is not None and n_epoch < len(train_ds):
+        sampler = RandomSampler(train_ds, num_samples=n_epoch)
+        train_dl = DataLoader(train_ds, sampler=sampler, drop_last=False, **loader_kw)
+    else:
+        train_dl = DataLoader(train_ds, shuffle=True, drop_last=False, **loader_kw)
     dev_dl = DataLoader(dev_ds, shuffle=False, persistent_workers=t.num_workers > 0, **loader_kw)
     return train_dl, dev_dl
 
@@ -272,8 +281,9 @@ def train(cfg: Config, resume: bool = False, use_wandb: bool = False) -> dict[st
             "config": asdict(cfg),
         }
         save_checkpoint(last, state)
-        if improved:
-            save_checkpoint(out / "best.pt", state)
+        if improved:  # weights only: best.pt is for inference, last.pt carries optimizer state
+            best = {k: v for k, v in state.items() if k not in ("opt", "scaler")}
+            save_checkpoint(out / "best.pt", best)
     if run is not None:
         run.finish()
     return {"history": history, "best_eer": best_eer, "out_dir": str(out)}
