@@ -189,9 +189,14 @@ if SPEC["epochs"] is not None:
 if SPEC["max_samples"] is not None:
     cmd += ["--max-samples", str(SPEC["max_samples"])]
 if SPEC["resume_run"]:
-    ckpt = "runs/" + SPEC["resume_run"] + "/last.pt"
+    prev = "runs/" + SPEC["resume_run"]
+    prev_dir = find(prev + "/last.pt") / prev
     out_dir.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(find(ckpt) / ckpt, out_dir / "last.pt")
+    # best.pt and metrics.jsonl too: the best epoch may be in the earlier part of the run
+    for name in ("last.pt", "best.pt", "metrics.jsonl"):
+        if (prev_dir / name).exists():
+            shutil.copy2(prev_dir / name, out_dir / name)
+            print("carried over", prev_dir / name, flush=True)
     cmd.append("--resume")
 
 if shutil.which("nvidia-smi"):

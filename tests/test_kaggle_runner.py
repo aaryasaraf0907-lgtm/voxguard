@@ -29,6 +29,7 @@ def test_rendered_kernel_compiles_and_embeds_spec() -> None:
     code = kr.render_kernel(spec(epochs=3, resume_run="rawnet2-clean"))
     compile(code, "run.py", "exec")
     assert '"epochs": 3' in code and '"resume_run": "rawnet2-clean"' in code
+    assert '("last.pt", "best.pt", "metrics.jsonl")' in code  # resume keeps the earlier best
 
 
 def test_metadata_is_private_gpu_with_sources() -> None:
