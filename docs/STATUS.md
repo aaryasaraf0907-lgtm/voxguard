@@ -4,11 +4,12 @@ Each person updates ONLY their own section at the end of a working session.
 
 ## Person 1 - ML Core + repo owner (Aarya)
 
-- **Done:** scaffold, 3a-3g (data, codecs, datasets/metrics, RawNet2 + train, SSL-AASIST + Kaggle guide, evaluate.py, RealDetector) merged; CLAUDE.md fixes (DataShare, merge policy). Reviewed and merged Person 2's #3, #6, #14, #15, #18. Branch ruleset protects `main` and `dev`. ASVspoof 2019 LA downloaded and verified (train 25,380 / dev 24,844 / eval 71,237). Training-set codec variants built locally (2 per clip; G.711 µ/A-law, AMR-NB, Opus; 76,140 rows, 2.3 GB). #17 Kaggle CLI runner: code, LA and prep data are private Kaggle datasets; a GPU smoke run passed (T4: ~62 clips/s).
-- **In progress:** RawNet2 full runs on Kaggle, 20 epochs each: `voxguard-rawnet2-clean` (~4.5 h) and `voxguard-rawnet2-codec-aug` (~9 h, queued behind the clean run).
-- **Blocked:** none.
-- **Next:** fetch checkpoints; eval-set codec copies (per-codec, incl. a held-out codec) and `evaluate.py` for the RawNet2 2x2 matrix; faster data loading + both T4s before SSL-AASIST (which likely needs next week's GPU quota, resets 14 Nov); M1 promotion on 15 Nov.
-- **Environment note:** local ffmpeg has G.711, Opus and AMR-NB; AMR-WB and GSM are missing locally.
+- **Done:** scaffold, 3a-3g (data, codecs, datasets/metrics, RawNet2 + train, SSL-AASIST + Kaggle guide, evaluate.py, RealDetector), #17 Kaggle CLI runner. ASVspoof 2019 LA verified (train 25,380 / dev 24,844 / eval 71,237); training codec variants (76,140 rows). #24 RawNet2 results: 2x2 matrix + per-codec + held-out GSM in `docs/results.md` (codec-aug EER: clean 6.38 %, degraded 6.18 %, unseen GSM 7.57 %; clean-only: 4.22 / 7.51 / 6.66 %). Checkpoints in the private HF org: `voxguard-team/voxguard-rawnet2-clean`, `voxguard-team/voxguard-rawnet2-codec-aug`. #25 internet for SSL kernels, #26 equal-size SSL epochs (25,380 clips/epoch) + weights-only `best.pt`, #27 carry `best.pt`/metrics across resumed runs, #28 class-weight fix. Reviewed #23 (Person 2's RealDetector benchmarking).
+- **Bug found (11 Nov):** `class_weights` were `[0.1, 0.9]` for `[bona fide, fake]`, copied from reference code that labels bona fide = 1, so the loss up-weighted the fake majority. The first SSL-AASIST run collapsed (dev EER ~0.4, everything scored fake); fixed in #28 (`[0.9, 0.1]`). The committed RawNet2 results used the inverted weights (both arms alike, so the comparison is fair); RawNet2 gets retrained with the fix in the week of 16 Nov.
+- **In progress:** SSL-AASIST on Kaggle (2x T4, full XLS-R fine-tune, ~80 min/epoch), 8 epochs per run split 4 + 4 with resume: clean part 1 restarted 11 Nov 14:44 IST; then clean part 2, codec-aug part 1, and codec-aug part 2 after the GPU quota reset (14 Nov).
+- **Blocked:** none (GPU quota sets the pace).
+- **Next:** evaluate SSL-AASIST (2x2, per codec, GSM held out) and publish `best.pt` to the HF org; RawNet2 retrain with fixed weights; M1 promotion (dev -> main) on 15 Nov.
+- **Environment note:** local ffmpeg has G.711, Opus and AMR-NB (no GSM, no AMR-WB); Kaggle ffmpeg has G.711, GSM and Opus (no AMR).
 
 ## Person 2 - Product & Platform
 
