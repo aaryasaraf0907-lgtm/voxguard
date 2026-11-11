@@ -46,7 +46,7 @@ The API reads `.env` (or the file named by `VOXGUARD_ENV_FILE`). All variables a
 | `VOXGUARD_DETECTOR` | `stub` | `real` needs an image built with `INSTALL_ML=1` and `VOXGUARD_MODEL_REPO` |
 | `VOXGUARD_MODEL_REPO` | (none) | local path inside the container or a Hugging Face repo id |
 | `HF_TOKEN` | (none) | only for a private model repo; read by `huggingface_hub` at runtime |
-| `VOXGUARD_THRESHOLD` | `0.5` | placeholder until evaluation results give an EER threshold |
+| `VOXGUARD_THRESHOLD` | `0.5` | a default, not a tuned or validated operating point; `results/<model>.json` records the evaluation-set `eer_threshold` per checkpoint and test condition (see README) |
 | `VOXGUARD_THRESHOLD_MODE` / `VOXGUARD_LOW_FAR_THRESHOLD` | `eer` / (none) | `low_far` refuses to start without an explicit threshold |
 | `VOXGUARD_SIMULATE_CODEC` | (none) | codec for `simulate_codec=true`; unset means the API answers 501. With these images use `g711_mulaw` (or `gsm`/`opus`); AMR is not available |
 | `VOXGUARD_DEVICE` | `cpu` | real detector device: `cpu`, `cuda` or `auto` |
@@ -88,7 +88,7 @@ The response's `codec_applied` names the codec. Behaviour and errors are in
 INSTALL_ML=1 docker compose build api     # large download (see below)
 # .env:
 #   VOXGUARD_DETECTOR=real
-#   VOXGUARD_MODEL_REPO=<hf-user>/<private-model-repo>   (or a path mounted into the container)
+#   VOXGUARD_MODEL_REPO=voxguard-team/voxguard-rawnet2-codec-aug   (or -clean, or a mounted path)
 #   HF_TOKEN=<token with read access>                    (only for a private repo)
 #   VOXGUARD_API_START_PERIOD=600s                       (first start downloads the checkpoint)
 docker compose up

@@ -37,14 +37,18 @@ class FakeClient:
             raise self.down
 
     def health(self):
+        self.calls.append(("health",))
         self._check()
         return self.health_response
 
-    def analyze(self, audio, filename="audio.wav", caller_id=None):
-        self.calls.append(("analyze", audio, filename, caller_id))
-        if isinstance(self.analyze_response, ApiError):
-            raise self.analyze_response
-        return self.analyze_response
+    def analyze(self, audio, filename="audio.wav", caller_id=None, simulate_codec=False):
+        self.calls.append(("analyze", audio, filename, caller_id, simulate_codec))
+        response = self.analyze_response
+        if callable(response):  # lets a test answer per request (e.g. clean vs simulated)
+            response = response(simulate_codec)
+        if isinstance(response, ApiError):
+            raise response
+        return response
 
     def sessions(self, flagged_only=False, limit=50):
         self.calls.append(("sessions", flagged_only, limit))
@@ -52,6 +56,7 @@ class FakeClient:
         return self.sessions_response
 
     def blocklist(self):
+        self.calls.append(("blocklist",))
         self._check()
         return self.blocklist_response
 
@@ -103,14 +108,14 @@ def test_renders_english() -> None:
     assert t("status_detail", "en", detector="stub", model="m-1") in _text(at)
 
 
-def test_renders_hindi_and_shows_draft_notice() -> None:
+def test_renders_hindi_with_reviewed_strings() -> None:
     at = _run(FakeClient(), "hi")
     assert not at.exception
-    assert [tab.label for tab in at.tabs][0] == t("tab_analyze", "hi")
+    assert [tab.label for tab in at.tabs][:2] == [t("tab_analyze", "hi"), "चिह्नित कॉल"]
     text = _text(at)
     assert t("app_subtitle", "hi") in text
-    assert t("hi_draft_notice", "hi") in text
-    assert t("hi_draft_notice", "en") not in text
+    assert "नमूना (प्लेसहोल्डर)" in text  # Aarya's stub_notice wording (PR #14 review)
+    assert "प्रारूप" not in text and "मसौदा" not in text  # draft notice removed after her review
 
 
 def test_language_switch() -> None:
@@ -120,7 +125,6 @@ def test_language_switch() -> None:
     assert not at.exception and at.tabs[1].label == t("tab_sessions", "hi")
     at.selectbox[0].set_value("en").run()
     assert at.tabs[1].label == t("tab_sessions", "en")
-    assert t("hi_draft_notice", "en") not in _text(at)
 
 
 def test_stub_notice_only_for_stub_detector() -> None:
@@ -207,20 +211,29 @@ def test_no_result_or_scores_before_analysis() -> None:
     assert not at.button or all(b.label != t("analyze_button", "en") for b in at.button)
 
 
-def test_simulate_phone_line_is_disabled_and_explained() -> None:
+def test_phone_line_toggle_is_enabled_off_by_default_and_explained() -> None:
     at = _run(FakeClient())
     (toggle,) = at.toggle
-    assert toggle.label == t("simulate_label", "en") and toggle.disabled and not toggle.value
-    assert t("simulate_unavailable", "en") in _text(at)
+    assert toggle.label == t("simulate_label", "en") and not toggle.disabled and not toggle.value
+    assert t("simulate_off", "en") in _text(at)
+    toggle.set_value(True).run()
+    assert t("simulate_on", "en") in _text(at)
 
 
-def _analyze(client: FakeClient, lang: str = "en", caller: str = "") -> AppTest:
+def _click_analyze(at: AppTest, lang: str = "en") -> AppTest:
+    return next(b for b in at.button if b.label == t("analyze_button", lang)).click().run()
+
+
+def _analyze(
+    client: FakeClient, lang: str = "en", caller: str = "", simulate: bool = False
+) -> AppTest:
     at = _run(client, lang)
     if caller:
         at.text_input[0].set_value(caller).run()
+    if simulate:
+        at.toggle[0].set_value(True).run()
     at.file_uploader[0].set_value(("clip.wav", b"RIFFfake", "audio/wav")).run()
-    next(b for b in at.button if b.label == t("analyze_button", lang)).click().run()
-    return at
+    return _click_analyze(at, lang)
 
 
 def test_flagged_result_is_shown_with_banner() -> None:
@@ -228,7 +241,7 @@ def test_flagged_result_is_shown_with_banner() -> None:
     client.analyze_response = _result(True, 0.9998)
     at = _analyze(client, caller="  alice ")
     assert not at.exception
-    assert _analyze_calls(client) == [("analyze", b"RIFFfake", "clip.wav", "alice")]
+    assert _analyze_calls(client) == [("analyze", b"RIFFfake", "clip.wav", "alice", False)]
     assert t("flagged_banner", "en") in [e.value for e in at.error]
     values = {m.label: m.value for m in at.metric}
     assert values[t("m_label", "en")] == t("label_fake", "en")
@@ -283,7 +296,8 @@ def test_recorded_audio_is_analyzed_too() -> None:
 
 
 @pytest.mark.parametrize(
-    "kind", ["too_large", "unsupported", "invalid", "not_implemented", "server", "timeout"]
+    "kind",
+    ["too_large", "unsupported", "invalid", "not_implemented", "unavailable", "server", "timeout"],
 )
 def test_analysis_errors_show_distinct_messages(kind: str) -> None:
     client = FakeClient()
@@ -304,9 +318,138 @@ def test_failed_analysis_clears_previous_result() -> None:
     assert not at.metric
 
 
-def test_analyze_never_requests_codec_simulation() -> None:
+def test_simulation_is_requested_only_when_the_toggle_is_on() -> None:
     client = FakeClient()
     client.analyze_response = _result(False)
     _analyze(client)
-    calls = _analyze_calls(client)
-    assert calls and all(len(c) == 4 for c in calls)  # audio, name, caller only: no codec field
+    assert [c[4] for c in _analyze_calls(client)] == [False]
+    client = FakeClient()
+    client.analyze_response = _result(False, codec="g711_mulaw")
+    _analyze(client, simulate=True)
+    assert [c[4] for c in _analyze_calls(client)] == [True]
+
+
+def test_simulated_result_says_which_codec_was_applied() -> None:
+    client = FakeClient()
+    client.analyze_response = _result(True, codec="g711_mulaw")
+    at = _analyze(client, simulate=True)
+    assert t("result_simulated", "en", codec="g711_mulaw") in _text(at)
+    assert t("result_clean", "en") not in _text(at)
+
+
+def test_503_from_simulation_is_an_error_not_a_result() -> None:
+    client = FakeClient()
+    client.analyze_response = ApiError("unavailable", 503, "Codec simulation is unavailable")
+    at = _analyze(client, simulate=True)
+    assert not at.exception and not at.metric  # nothing presented as a result
+    assert any(t("err_unavailable", "en") in e.value for e in at.error)
+    assert t("err_server", "en") not in _text(at)  # its own message, not the generic 5xx one
+
+
+def test_501_from_simulation_explains_the_server_setting() -> None:
+    client = FakeClient()
+    client.analyze_response = ApiError("not_implemented", 501, "not configured")
+    at = _analyze(client, simulate=True)
+    assert not at.metric
+    assert any("VOXGUARD_SIMULATE_CODEC" in e.value for e in at.error)
+
+
+def test_same_clip_clean_and_phone_line_side_by_side() -> None:
+    client = FakeClient()
+    client.analyze_response = lambda simulate: _result(
+        not simulate, 0.2 if simulate else 0.95, "g711_mulaw" if simulate else None
+    )
+    at = _analyze(client)  # clean first
+    at.toggle[0].set_value(True).run()
+    _click_analyze(at)  # same clip, phone line
+    assert not at.exception
+    text = _text(at)
+    assert t("result_header_clean", "en") in text and t("result_header_phone", "en") in text
+    scores = [m.value for m in at.metric if m.label == t("m_score", "en")]
+    assert scores == ["0.9500", "0.2000"]  # clean on the left, phone line on the right
+    assert [c[4] for c in _analyze_calls(client)] == [False, True]
+
+
+# --- stale results ----------------------------------------------------------------------
+
+
+def test_new_upload_drops_the_previous_result() -> None:
+    client = FakeClient()
+    client.analyze_response = _result(True, 0.9)
+    at = _analyze(client)
+    assert at.metric
+    at.file_uploader[0].set_value(("other.wav", b"RIFFother", "audio/wav")).run()
+    assert not at.exception and not at.metric  # the old score must not sit next to a new file
+    _click_analyze(at)
+    assert at.metric and _analyze_calls(client)[-1][1] == b"RIFFother"
+
+
+def test_removing_the_file_drops_the_result() -> None:
+    client = FakeClient()
+    client.analyze_response = _result(True)
+    at = _analyze(client)
+    at.file_uploader[0].clear().run()
+    assert not at.metric and t("no_audio", "en") in _text(at)
+
+
+def test_new_recording_drops_the_previous_result() -> None:
+    client = FakeClient()
+    client.analyze_response = _result(False, 0.1)
+    at = _run(client)
+    at.radio[0].set_value("record").run()
+    at.audio_input[0].set_value(("rec.wav", b"RIFFmic1", "audio/wav")).run()
+    _click_analyze(at)
+    assert at.metric
+    at.audio_input[0].set_value(("rec.wav", b"RIFFmic2", "audio/wav")).run()
+    assert not at.metric
+
+
+def test_reanalysis_shows_the_latest_response() -> None:
+    client = FakeClient()
+    client.analyze_response = _result(True, 0.9)
+    at = _analyze(client)
+    client.analyze_response = _result(False, 0.1)
+    _click_analyze(at)
+    scores = [m.value for m in at.metric if m.label == t("m_score", "en")]
+    assert scores == ["0.1000"]
+
+
+# --- refetching -------------------------------------------------------------------------
+
+
+def _count(client: FakeClient, name: str) -> int:
+    return sum(1 for c in client.calls if c[0] == name)
+
+
+def test_reruns_reuse_recent_api_reads() -> None:
+    client = FakeClient()
+    at = _run(client)
+    before = {n: _count(client, n) for n in ("health", "sessions", "blocklist", "alerts")}
+    assert before == {"health": 1, "sessions": 1, "blocklist": 1, "alerts": 1}
+    at.text_input[0].set_value("typing a caller id").run()
+    at.selectbox[0].set_value("hi").run()
+    after = {n: _count(client, n) for n in before}
+    assert after == before  # typing and switching language did not refetch
+
+
+def test_refresh_button_refetches_its_list() -> None:
+    client = FakeClient()
+    at = _run(client)
+    refresh = [b for b in at.button if b.label == t("refresh", "en")]
+    refresh[1].click().run()  # blocklist tab
+    assert _count(client, "blocklist") == 2 and _count(client, "sessions") == 1
+
+
+def test_lists_refetch_after_an_analysis() -> None:
+    client = FakeClient()
+    client.analyze_response = _result(True)
+    _analyze(client)
+    assert _count(client, "sessions") == 2 and _count(client, "alerts") == 2
+
+
+def test_api_errors_are_not_cached() -> None:
+    client = FakeClient(down=ApiError("unreachable"))
+    at = _run(client)
+    client.down = None
+    at.text_input[0].set_value("x").run()
+    assert t("status_connected", "en") in _text(at)

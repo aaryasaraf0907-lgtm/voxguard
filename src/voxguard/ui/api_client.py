@@ -30,6 +30,7 @@ ErrorKind = Literal[
     "unsupported",
     "invalid",
     "not_implemented",
+    "unavailable",
     "server",
     "bad_response",
     "other",
@@ -40,6 +41,7 @@ _STATUS_KIND: dict[int, ErrorKind] = {
     415: "unsupported",
     422: "invalid",
     501: "not_implemented",
+    503: "unavailable",
 }
 
 T = TypeVar("T", bound=BaseModel)
@@ -119,16 +121,24 @@ class VoxGuardClient:
         return self._parse(HealthResponse, self._request("GET", "/health"))
 
     def analyze(
-        self, audio: bytes, filename: str = "audio.wav", caller_id: str | None = None
+        self,
+        audio: bytes,
+        filename: str = "audio.wav",
+        caller_id: str | None = None,
+        simulate_codec: bool = False,
     ) -> AnalyzeResponse:
-        """POST /v1/analyze. Never sends ``simulate_codec``: the API does not support it yet."""
-        data = {"caller_id": caller_id} if caller_id else None
+        """POST /v1/analyze. ``simulate_codec`` is only sent when true (the API default is off)."""
+        data: dict[str, str] = {}
+        if caller_id:
+            data["caller_id"] = caller_id
+        if simulate_codec:
+            data["simulate_codec"] = "true"
         payload = self._request(
             "POST",
             "/v1/analyze",
             read_timeout=ANALYZE_READ_TIMEOUT_S,
             files={"file": (filename, audio)},
-            data=data,
+            data=data or None,
         )
         return self._parse(AnalyzeResponse, payload)
 
