@@ -64,10 +64,13 @@ uv run python -m voxguard.benchmark --render results/benchmarks   # -> docs/benc
 
 - Stub numbers measure the plumbing, not a model.
 - A checkpoint's weights do not change how long the model takes, but the architecture and its
-  configuration do. Until a trained checkpoint exists, the committed RawNet2 numbers come from
-  an **untrained** RawNet2 built with the training configuration (`configs/rawnet2.yaml`):
-  valid as compute latency for that architecture, meaningless for detection quality. The run's
-  `note` says so.
+  configuration do. The committed RawNet2 numbers come from an **untrained** RawNet2 built with
+  the training configuration (`configs/rawnet2.yaml`): valid as compute latency for that
+  architecture, meaningless for detection quality. The run's `note` and `weights` field say so.
+- Trained RawNet2 checkpoints now exist in the private Hugging Face org. Aarya ran this
+  benchmark on one (macOS, CPU) in her PR #23 review; that run is not in `results/benchmarks/`.
+  Trained runs should replace the untrained files once the checkpoints are reachable from the
+  benchmark machine.
 - The CLAUDE.md targets (CPU < 2 s, GPU < 300 ms per 4 s clip) apply to
   `detector_inference`. The phone-line demo path costs `codec_preprocessing` on top, and
   `api_request.simulated` is the end-to-end time a client sees.
