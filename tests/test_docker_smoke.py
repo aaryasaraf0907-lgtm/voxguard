@@ -138,15 +138,19 @@ def test_ui_container_reaches_api_by_service_name(compose: Compose) -> None:
 
 def test_ui_client_phone_line_through_containers(compose: Compose) -> None:
     """The UI's own client, inside the UI container, asks the API for a simulated analysis."""
-    code = (
-        "import io, numpy as np, soundfile as sf; "
+    code = (  # the UI image has no soundfile: build the WAV with the standard library
+        "import io, wave, numpy as np; "
         "from voxguard.ui.api_client import VoxGuardClient; "
-        "b = io.BytesIO(); sf.write(b, (0.3 * np.sin(np.arange(16000) / 3)).astype('f4'), 16000,"
-        " format='WAV'); c = VoxGuardClient(); "
+        "b = io.BytesIO(); w = wave.open(b, 'wb'); w.setnchannels(1); w.setsampwidth(2); "
+        "w.setframerate(16000); "
+        "w.writeframes((8000 * np.sin(np.arange(16000) / 3)).astype('<i2').tobytes()); "
+        "w.close(); c = VoxGuardClient(); "
         "print(c.analyze(b.getvalue(), simulate_codec=True).codec_applied, "
         "c.analyze(b.getvalue()).codec_applied)"
     )
-    out = compose("exec", "-T", "ui", "python", "-c", code).stdout.split()
+    r = compose("exec", "-T", "ui", "python", "-c", code, check=False)
+    assert r.returncode == 0, r.stderr[-2000:]
+    out = r.stdout.split()
     assert out == ["g711_mulaw", "None"]
 
 
