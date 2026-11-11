@@ -1,6 +1,7 @@
 # SSL-AASIST: XLS-R 300M front-end + AASIST back-end on ASVspoof 2019 LA.
 # Paper settings (Tak et al. 2022): Adam lr 1e-6, weight decay 1e-4, batch 14, weighted CE
-# [0.1, 0.9], full fine-tuning, 100 epochs. Deviations here (documented for the report):
+# 0.9 on bona fide / 0.1 on spoof, full fine-tuning, 100 epochs. (The reference code writes
+# [0.1, 0.9] because it labels bona fide 1; we label fake 1, so ours is [0.9, 0.1].) Deviations here (documented for the report):
 #   - epochs 8: free Kaggle GPU time. Measured on 2x T4 (full fine-tune, batch 14): ~5-6 train
 #     clips/s, so one 25,380-clip epoch is ~80 min; run as 4 + 4 epochs (resume) to stay inside
 #     Kaggle's 12 h session limit. best.pt is kept by dev EER.
@@ -31,7 +32,7 @@ train:
   lr: 1.0e-6
   frontend_lr: null         # set to use a separate front-end LR (e.g. with last_n)
   weight_decay: 1.0e-4
-  class_weights: [0.1, 0.9] # [bona fide, fake]
+  class_weights: [0.9, 0.1] # [bona fide, fake]: up-weight the minority bona fide class
   seed: 1234
   num_workers: 2
   amp: true                 # CUDA only

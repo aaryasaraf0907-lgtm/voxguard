@@ -54,7 +54,8 @@ class TrainConfig:
     lr: float = 1e-4
     frontend_lr: float | None = None  # separate LR for an SSL front-end (None = use lr)
     weight_decay: float = 1e-4
-    class_weights: list[float] = field(default_factory=lambda: [0.1, 0.9])  # [bona fide, fake]
+    # [bona fide, fake]: up-weight the minority bona fide class (labels: 1 = fake)
+    class_weights: list[float] = field(default_factory=lambda: [0.9, 0.1])
     seed: int = 1234
     num_workers: int = 0
     amp: bool = True  # mixed precision, CUDA only

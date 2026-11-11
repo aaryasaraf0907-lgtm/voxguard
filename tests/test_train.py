@@ -122,3 +122,11 @@ def test_best_checkpoint_is_weights_only(tmp_path: Path) -> None:
 
     _, info = load_from_checkpoint(tmp_path / "run" / "best.pt", "cpu")
     assert info["epoch"] == 0
+
+
+def test_ssl_config_upweights_bonafide() -> None:
+    # labels are 1 = fake; ASVspoof is ~90 % fake, so the minority bona fide class gets the
+    # larger weight (the reference code's [0.1, 0.9] assumes bona fide = 1).
+    cfg = load_config(Path(__file__).parents[1] / "configs" / "ssl_aasist.yaml")
+    assert cfg.train.class_weights[0] > cfg.train.class_weights[1]
+    assert TrainConfig().class_weights[0] > TrainConfig().class_weights[1]
