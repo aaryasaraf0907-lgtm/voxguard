@@ -37,10 +37,14 @@ class SSLFrontEnd(nn.Module):
         super().__init__()
         from transformers import Wav2Vec2Config, Wav2Vec2Model
 
+        # No SpecAugment-style time masking while fine-tuning: the XLS-R checkpoint's config
+        # enables it (mask_time_prob 0.075, span 10, i.e. a large share of frames hidden), but
+        # the SSL-AASIST reference calls the model with mask=False. Masking is train-mode only.
+        no_mask = {"apply_spec_augment": False}
         if pretrained is None:  # random init, for tests (no download)
-            self.model = Wav2Vec2Model(Wav2Vec2Config(**(config_overrides or {})))
+            self.model = Wav2Vec2Model(Wav2Vec2Config(**{**(config_overrides or {}), **no_mask}))
         else:
-            self.model = Wav2Vec2Model.from_pretrained(pretrained)
+            self.model = Wav2Vec2Model.from_pretrained(pretrained, **no_mask)
         if gradient_checkpointing:
             self.model.gradient_checkpointing_enable()
         self.hidden_size = self.model.config.hidden_size

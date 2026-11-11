@@ -123,3 +123,18 @@ def test_checkpoint_loader_does_not_redownload_xlsr(tmp_path: Path, monkeypatch)
     assert fetched == ["facebook/wav2vec2-xls-r-300m"] and info["name"] == "ssl_aasist"
     x = torch.randn(1, 16_000)
     assert torch.allclose(loaded(x), model.eval()(x))
+
+
+def test_frontend_never_masks_time_steps() -> None:
+    # Even if a config asks for heavy time masking, fine-tuning must not mask (reference:
+    # mask=False). With every dropout off, train and eval mode must then give the same features.
+    off = dict(hidden_dropout=0.0, attention_dropout=0.0, activation_dropout=0.0,
+               feat_proj_dropout=0.0, layerdrop=0.0)  # fmt: skip
+    overrides = {**TINY, **off, "mask_time_prob": 0.9}
+    model = build_model("ssl_aasist", pretrained=None, ssl_config_overrides=overrides)
+    assert model.frontend.model.config.apply_spec_augment is False
+    torch.manual_seed(0)
+    x = torch.randn(2, 16_000)
+    train_feats = model.frontend.train()(x)
+    eval_feats = model.frontend.eval()(x)
+    assert torch.allclose(train_feats, eval_feats, atol=1e-5)
