@@ -136,6 +136,20 @@ def test_ui_container_reaches_api_by_service_name(compose: Compose) -> None:
     assert out == ["http://api:8000", "stub"]
 
 
+def test_ui_client_phone_line_through_containers(compose: Compose) -> None:
+    """The UI's own client, inside the UI container, asks the API for a simulated analysis."""
+    code = (
+        "import io, numpy as np, soundfile as sf; "
+        "from voxguard.ui.api_client import VoxGuardClient; "
+        "b = io.BytesIO(); sf.write(b, (0.3 * np.sin(np.arange(16000) / 3)).astype('f4'), 16000,"
+        " format='WAV'); c = VoxGuardClient(); "
+        "print(c.analyze(b.getvalue(), simulate_codec=True).codec_applied, "
+        "c.analyze(b.getvalue()).codec_applied)"
+    )
+    out = compose("exec", "-T", "ui", "python", "-c", code).stdout.split()
+    assert out == ["g711_mulaw", "None"]
+
+
 def test_containers_run_as_non_root(compose: Compose) -> None:
     for service in ("api", "ui"):
         assert compose("exec", "-T", service, "id", "-u").stdout.strip() == "1000"
