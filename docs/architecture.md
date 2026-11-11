@@ -1,7 +1,42 @@
 # Architecture
 
-The pipeline diagram lives in `CLAUDE.md` section 4. This document covers the parts of the
-API that need more than a diagram.
+What is implemented on `dev`. The overall pipeline diagram is in `CLAUDE.md` section 4.
+
+## Components
+
+| Component | Code | Role |
+|---|---|---|
+| Streamlit UI | `src/voxguard/ui/app.py`, `api_client.py`, `i18n.py` | Upload or record audio, phone-line toggle, results, flagged sessions, blocklist, alerts. Talks to the API over HTTP only; no inference or prevention logic. All strings through `i18n.t(key, lang)` (English, Hindi). |
+| FastAPI backend | `src/voxguard/api/main.py` (`create_app`) | `/health`, `/v1/analyze`, `/v1/sessions`, `/v1/blocklist`, `/v1/alerts`; schemas in `schemas.py` (CLAUDE.md section 7). |
+| Audio decoding | `api/audio.py`, `api/limits.py` | Upload limit (25 MB, enforced before multipart parsing), soundfile decoding to mono float32 at the native rate, duration/channel/rate checks. |
+| Codec simulation | `api/codec_sim.py` -> `data/codecs.py` | Optional ffmpeg encode/decode before inference (below). |
+| Detector | `inference.py` (Aarya), `api/detector_loader.py` | `Detector` protocol; `StubDetector` (hash, default) or `RealDetector` (RawNet2 / SSL-AASIST checkpoint from a path or Hugging Face Hub). Built once at API startup; `VOXGUARD_DEVICE` picks cpu/cuda/auto. The detector does its own resampling and windowing. |
+| Prevention | `api/prevention.py` | One rule, `fake_score >= threshold` (threshold from the detector, or `VOXGUARD_LOW_FAR_THRESHOLD` in `low_far` mode). A flagged analysis writes the session, an alert and an atomic blocklist upsert in one transaction. |
+| Persistence | `api/db.py` | SQLite (SQLAlchemy 2): `sessions`, `alerts`, `blocklist`; UTC-aware timestamps; foreign keys on; no migrations (`create_all`). |
+| Deployment | `docker/`, `docker-compose.yml` | API and UI images, compose with a `/data` volume, single-container Hugging Face Space image. See `docs/deployment.md`. |
+| Benchmarks | `benchmark.py` | Detector, codec and API latency measured separately. See `docs/benchmarking.md`. |
+
+### Request flow (`POST /v1/analyze`)
+
+1. Body size check (413), bounded read, decode (400/415/422).
+2. If `simulate_codec=true`: check the codec is configured (501) and available (503), then
+   resample to 16 kHz and encode/decode with ffmpeg (500 on failure; never falls back to the
+   original audio).
+3. `Detector.predict(waveform, sample_rate)`.
+4. Prevention decision; store session (+ alert + blocklist when flagged) in one transaction.
+5. Return `AnalyzeResponse` (label, score, threshold, detector latency, model version, flagged,
+   `codec_applied`).
+
+### UI state
+
+- Results are kept per audio clip (SHA-256 of the bytes) and per mode (original, phone line).
+  Selecting a different file or recording discards them, so a result is never shown next to
+  audio it was not computed from. When a clip has both results they are shown side by side.
+- API reads (health, the three lists) are reused for 5 s within a browser session, so typing or
+  switching language does not refetch them; **Refresh** and a new analysis refetch at once.
+  Errors are never cached.
+- HTTP errors map to messages by kind: 413, 415, 422, 501 (simulation not configured), 503
+  (simulation unavailable), other 5xx, timeouts, unreachable API.
 
 ## Codec simulation in `/v1/analyze`
 
