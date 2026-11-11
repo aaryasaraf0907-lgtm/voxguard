@@ -3,7 +3,8 @@
 Every user-visible string in the UI goes through ``t(key, lang)``. Both dictionaries must have
 identical keys and no empty values (enforced by tests).
 
-NOTE: the Hindi (``hi``) strings are initial DRAFTS and need review by Aarya (CLAUDE.md section 11).
+Hindi (``hi``): reviewed by Aarya on PR #14 (CLAUDE.md section 11); her edits are applied. Strings
+added after that review (phone-line simulation, 503 handling) still need her review.
 """
 
 from __future__ import annotations
@@ -22,7 +23,6 @@ EN: dict[str, str] = {
         "Check whether a voice recording may be AI-generated, and review flagged calls."
     ),
     "language": "Language / भाषा",
-    "hi_draft_notice": "Hindi text is a draft and has not been reviewed yet.",
     "api_section": "API",
     "api_url": "Address: {url}",
     "status_connected": "Connected",
@@ -48,10 +48,16 @@ EN: dict[str, str] = {
     "analyze_button": "Analyze",
     "analyzing": "Analyzing…",
     "simulate_label": "Simulate phone line",
-    "simulate_unavailable": (
-        "Not available yet: the API cannot apply codec simulation, "
-        "so recordings are analyzed exactly as provided."
+    "simulate_help": (
+        "The server passes the recording through a telephone codec before the detector scores it."
+        " Which codec is set on the server (VOXGUARD_SIMULATE_CODEC)."
     ),
+    "simulate_on": "Phone-line simulation is on: the next analysis uses the codec-degraded audio.",
+    "simulate_off": "Phone-line simulation is off: the recording is analyzed as provided.",
+    "result_clean": "Analyzed as provided (no phone-line simulation).",
+    "result_simulated": "Analyzed after phone-line simulation with {codec}.",
+    "result_header_clean": "Result: original audio",
+    "result_header_phone": "Result: simulated phone line",
     "result_header": "Result",
     "flagged_banner": "Flagged: this recording scored at or above the threshold.",
     "not_flagged_banner": "Not flagged: this recording scored below the threshold.",
@@ -100,7 +106,15 @@ EN: dict[str, str] = {
         "The API rejected the request "
         "(for example, the audio is too long or has too many channels)."
     ),
-    "err_not_implemented": "This feature is not available in the API yet.",
+    "err_not_implemented": (
+        "Phone-line simulation is not enabled on this server (VOXGUARD_SIMULATE_CODEC is not set)."
+        " Turn the toggle off to analyze the original audio."
+    ),
+    "err_unavailable": (
+        "Phone-line simulation isn't available on this server right now (its ffmpeg lacks the"
+        " configured codec). Nothing was analyzed; turn the toggle off to analyze the original"
+        " audio."
+    ),
     "err_server": "The API reported an internal error. Please try again.",
     "err_bad_response": "The API returned an unexpected response.",
     "err_other": "The request failed.",
@@ -110,20 +124,21 @@ HI: dict[str, str] = {
     "app_title": "VoxGuard",
     "app_subtitle": ("जाँचें कि कोई आवाज़ रिकॉर्डिंग AI से बनी हो सकती है या नहीं, और चिह्नित कॉल देखें।"),
     "language": "Language / भाषा",
-    "hi_draft_notice": "हिन्दी पाठ अभी प्रारूप है और इसकी समीक्षा नहीं हुई है।",
     "api_section": "API",
     "api_url": "पता: {url}",
     "status_connected": "जुड़ा हुआ",
     "status_detail": "डिटेक्टर: {detector} · मॉडल: {model}",
     "status_unavailable": "API उपलब्ध नहीं है",
-    "stub_notice": ("स्टब डिटेक्टर चल रहा है: स्कोर निश्चित प्लेसहोल्डर हैं, असली पहचान के परिणाम नहीं।"),
+    "stub_notice": (
+        "स्टब डिटेक्टर चल रहा है: स्कोर केवल नमूना (प्लेसहोल्डर) मान हैं, असली पहचान के परिणाम नहीं।"
+    ),
     "tab_analyze": "ऑडियो जाँचें",
-    "tab_sessions": "चिह्नित सत्र",
+    "tab_sessions": "चिह्नित कॉल",
     "tab_blocklist": "ब्लॉकलिस्ट",
     "tab_alerts": "अलर्ट",
     "analyze_header": "रिकॉर्डिंग जाँचें",
     "caller_label": "कॉलर आईडी (वैकल्पिक)",
-    "caller_help": "कॉलर आईडी के साथ चिह्नित रिकॉर्डिंग होने पर वह कॉलर ब्लॉकलिस्ट में जुड़ जाता है।",
+    "caller_help": ("यदि कॉलर आईडी वाली रिकॉर्डिंग चिह्नित होती है, तो वह कॉलर ब्लॉकलिस्ट में जुड़ जाता है।"),
     "source_label": "ऑडियो स्रोत",
     "source_upload": "फ़ाइल अपलोड करें",
     "source_record": "माइक्रोफ़ोन से रिकॉर्ड करें",
@@ -133,16 +148,23 @@ HI: dict[str, str] = {
     "analyze_button": "जाँचें",
     "analyzing": "जाँच हो रही है…",
     "simulate_label": "फ़ोन लाइन का अनुकरण करें",
-    "simulate_unavailable": (
-        "अभी उपलब्ध नहीं: API कोडेक अनुकरण नहीं कर सकता, इसलिए रिकॉर्डिंग जैसी है वैसी ही जाँची जाती है।"
+    "simulate_help": (
+        "डिटेक्टर के स्कोर देने से पहले सर्वर रिकॉर्डिंग को टेलीफ़ोन कोडेक से गुज़ारता है।"
+        " कौन-सा कोडेक, यह सर्वर पर तय होता है (VOXGUARD_SIMULATE_CODEC)।"
     ),
+    "simulate_on": "फ़ोन लाइन अनुकरण चालू है: अगली जाँच कोडेक से गुज़री ऑडियो पर होगी।",
+    "simulate_off": "फ़ोन लाइन अनुकरण बंद है: रिकॉर्डिंग जैसी है वैसी ही जाँची जाएगी।",
+    "result_clean": "जैसी दी गई वैसी जाँची गई (फ़ोन लाइन अनुकरण नहीं)।",
+    "result_simulated": "{codec} से फ़ोन लाइन अनुकरण के बाद जाँची गई।",
+    "result_header_clean": "परिणाम: मूल ऑडियो",
+    "result_header_phone": "परिणाम: अनुकरणित फ़ोन लाइन",
     "result_header": "परिणाम",
     "flagged_banner": "चिह्नित: इस रिकॉर्डिंग का स्कोर सीमा के बराबर या उससे अधिक है।",
     "not_flagged_banner": "चिह्नित नहीं: इस रिकॉर्डिंग का स्कोर सीमा से कम है।",
     "m_label": "लेबल",
-    "m_score": "नकली स्कोर",
+    "m_score": "नकली होने का स्कोर",
     "m_threshold": "सीमा",
-    "m_latency": "विलंब",
+    "m_latency": "प्रतिक्रिया समय",
     "m_model": "मॉडल संस्करण",
     "m_flagged": "चिह्नित",
     "m_codec": "लागू कोडेक",
@@ -155,16 +177,16 @@ HI: dict[str, str] = {
     "unit_ms": "{value} मि.से.",
     "refresh": "ताज़ा करें",
     "utc_note": "सभी समय UTC में हैं।",
-    "sessions_header": "चिह्नित सत्र",
+    "sessions_header": "चिह्नित कॉल",
     "blocklist_header": "ब्लॉकलिस्ट",
     "alerts_header": "अलर्ट",
-    "empty_sessions": "अभी तक कोई चिह्नित सत्र नहीं है।",
+    "empty_sessions": "अभी तक कोई चिह्नित कॉल नहीं है।",
     "empty_blocklist": "ब्लॉकलिस्ट खाली है।",
     "empty_alerts": "अभी तक कोई अलर्ट नहीं है।",
     "col_time": "समय (UTC)",
     "col_caller": "कॉलर आईडी",
     "col_label": "लेबल",
-    "col_score": "नकली स्कोर",
+    "col_score": "नकली होने का स्कोर",
     "col_threshold": "सीमा",
     "col_model": "मॉडल",
     "col_hits": "चिह्नित कॉल",
@@ -179,7 +201,14 @@ HI: dict[str, str] = {
     "err_too_large": "फ़ाइल API के लिए बहुत बड़ी है।",
     "err_unsupported": "फ़ाइल को ऑडियो के रूप में पढ़ा नहीं जा सका, या उसका प्रारूप समर्थित नहीं है।",
     "err_invalid": "API ने अनुरोध अस्वीकार कर दिया (जैसे ऑडियो बहुत लंबा है या उसमें बहुत अधिक चैनल हैं)।",
-    "err_not_implemented": "यह सुविधा अभी API में उपलब्ध नहीं है।",
+    "err_not_implemented": (
+        "इस सर्वर पर फ़ोन लाइन अनुकरण चालू नहीं है (VOXGUARD_SIMULATE_CODEC सेट नहीं है)।"
+        " मूल ऑडियो जाँचने के लिए टॉगल बंद करें।"
+    ),
+    "err_unavailable": (
+        "इस सर्वर पर अभी फ़ोन लाइन अनुकरण उपलब्ध नहीं है (उसके ffmpeg में चुना गया कोडेक नहीं है)।"
+        " कुछ भी जाँचा नहीं गया; मूल ऑडियो जाँचने के लिए टॉगल बंद करें।"
+    ),
     "err_server": "API ने आंतरिक त्रुटि बताई। कृपया फिर कोशिश करें।",
     "err_bad_response": "API से अप्रत्याशित उत्तर मिला।",
     "err_other": "अनुरोध विफल रहा।",
