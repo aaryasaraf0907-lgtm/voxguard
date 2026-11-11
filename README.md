@@ -26,8 +26,9 @@ wraps them in an application:
 - Data pipeline, codec simulation, training, evaluation, API, prevention layer, demo UI, Docker
   and benchmarking are implemented.
 - First RawNet2 results (2x2 matrix, per codec, held-out GSM) are in
-  [docs/results.md](docs/results.md). Aarya's STATUS notes a class-weight bug in those runs (both
-  arms alike); RawNet2 is being retrained with the fix. SSL-AASIST training is in progress.
+  [docs/results.md](docs/results.md). They are **preliminary**: Aarya's STATUS notes that those
+  runs used inverted class weights (both arms alike), and RawNet2 is being retrained with the
+  fix. Corrected results will replace them; SSL-AASIST training is in progress.
 - Progress and known issues per person: [docs/STATUS.md](docs/STATUS.md). Scope and roadmap:
   `CLAUDE.md`.
 
@@ -145,15 +146,20 @@ uv run uvicorn voxguard.api.main:create_app --factory --port 8000
 
 - Trained RawNet2 checkpoints are in the private Hugging Face org
   (`voxguard-team/voxguard-rawnet2-clean`, `voxguard-team/voxguard-rawnet2-codec-aug`); access
-  needs a token with permission for that org. SSL-AASIST checkpoints follow when training
-  finishes.
+  needs a token with permission for that org. They come from the runs with the class-weight bug
+  above and will be replaced by the retrained ones; SSL-AASIST checkpoints follow when training
+  finishes. Aarya has loaded one through the API (PR #23 review); other environments have not
+  verified them yet.
 - The model is loaded once at startup; `/health` then reports `"detector": "real"` and the
   checkpoint's `model_version`. If loading fails the API exits with an error that says what to
   fix; it never falls back to the stub.
-- **Threshold:** `VOXGUARD_THRESHOLD` defaults to 0.5, which is not an evaluated operating
-  point. `results/<model>.json` records an `eer_threshold` per checkpoint and test condition;
-  set the one that matches your checkpoint. `VOXGUARD_THRESHOLD_MODE=low_far` with
-  `VOXGUARD_LOW_FAR_THRESHOLD` uses a manually chosen threshold instead.
+- **Threshold:** `VOXGUARD_THRESHOLD` defaults to 0.5. That is a default, not a tuned or
+  validated operating point. `results/<model>.json` records, per checkpoint and test condition,
+  the `eer_threshold`: the score at which false accepts equal false rejects on that evaluation
+  set. It is a reasonable starting value for the matching checkpoint, but it was measured on the
+  evaluation data itself (not on separate validation data), and the current values belong to
+  the pre-fix RawNet2 runs. `VOXGUARD_THRESHOLD_MODE=low_far` with `VOXGUARD_LOW_FAR_THRESHOLD`
+  uses a manually chosen threshold instead.
 
 ## Tests and checks
 
