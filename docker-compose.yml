@@ -1,0 +1,51 @@
+# Local deployment: API (FastAPI + SQLite + ffmpeg) and UI (Streamlit).
+#   docker compose up --build        -> UI http://localhost:8501, API http://localhost:8000
+# Settings come from .env (see .env.example); VOXGUARD_DB_URL and VOXGUARD_API_URL are fixed
+# below so the database lives on the volume and the UI reaches the API by service name.
+name: voxguard
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+      args:
+        INSTALL_ML: ${INSTALL_ML:-0}
+    image: voxguard-api:local
+    env_file:
+      - path: ${VOXGUARD_ENV_FILE:-.env}
+        required: false
+    environment:
+      VOXGUARD_DB_URL: sqlite:////data/voxguard.db
+      HF_HOME: /data/hf-cache
+    volumes:
+      - voxguard-data:/data
+    ports:
+      - "${VOXGUARD_API_PORT:-8000}:8000"
+    healthcheck:
+      # Same check as the image; the grace period is longer for the real detector, whose
+      # first start downloads the checkpoint (set VOXGUARD_API_START_PERIOD=600s).
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4)"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: ${VOXGUARD_API_START_PERIOD:-20s}
+    restart: unless-stopped
+
+  ui:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.ui
+    image: voxguard-ui:local
+    environment:
+      VOXGUARD_API_URL: http://api:8000
+      STREAMLIT_SERVER_MAX_UPLOAD_SIZE: ${VOXGUARD_UI_MAX_UPLOAD_MB:-25}
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "${VOXGUARD_UI_PORT:-8501}:8501"
+    restart: unless-stopped
+
+volumes:
+  voxguard-data:

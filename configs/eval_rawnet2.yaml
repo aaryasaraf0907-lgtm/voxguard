@@ -1,0 +1,25 @@
+# RawNet2 2x2 matrix on a fixed seeded 10k subset of ASVspoof 2019 LA eval (seed 0).
+# Checkpoints come from the Kaggle runs (`kaggle kernels output <user>/voxguard-rawnet2-*`).
+# Test sets (both columns use the same 10k files):
+#   eval_subset10k.csv            datasets.load_rows(eval manifest, max_samples=10000, seed=0)
+#   eval_subset10k_per_codec.csv  augment --mode per-codec --no-clean --seed 0 (G.711 mu/A, AMR-NB, Opus)
+#   eval_subset10k_heldout.csv    same, GSM only (unseen in training; built on Kaggle with
+#                                 `kaggle_runner push-augment --run eval-heldout --codecs gsm`,
+#                                 since local ffmpeg lacks libgsm). AMR-WB: no encoder anywhere yet.
+models:
+  rawnet2:
+    clean: runs/kaggle/rawnet2-clean/runs/rawnet2-clean/best.pt
+    codec_aug: runs/kaggle/rawnet2-codec-aug/runs/rawnet2-codec-aug/best.pt
+test_sets:
+  clean: [data/processed/manifests/eval_subset10k.csv]
+  degraded: [data/processed/manifests/eval_subset10k_per_codec.csv]
+  heldout: [data/processed/manifests/eval_subset10k_heldout.csv]
+roots: [data/raw, data/processed/codec_eval]
+max_samples: null
+batch_size: 32
+device: auto
+latency_clips: 50
+latency_devices: [cpu, auto]
+seed: 0
+out_dir: results
+docs_path: docs/results.md

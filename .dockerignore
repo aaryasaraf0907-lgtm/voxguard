@@ -1,0 +1,27 @@
+# Only pyproject.toml, uv.lock, README.md, LICENSE, src/ and docker/ are needed in images.
+.git
+.github
+.venv
+.benchmarks
+.pytest_cache
+.ruff_cache
+**/__pycache__
+*.py[cod]
+.env
+.env.*
+*.db
+*.db-*
+*.sqlite3
+data/
+runs/
+results/
+models/checkpoints/
+*.pt
+*.pth
+*.ckpt
+wandb/
+tests/
+docs/
+configs/
+scripts/
+docker-compose*.yml

@@ -1,0 +1,20 @@
+{
+  "meta": {
+    "generated_at": "2026-11-10T12:25:09+00:00",
+    "max_samples": null,
+    "test_sets": {
+      "clean": [
+        "data/processed/manifests/eval_subset10k.csv"
+      ],
+      "degraded": [
+        "data/processed/manifests/eval_subset10k_per_codec.csv"
+      ],
+      "heldout": [
+        "data/processed/manifests/eval_subset10k_heldout.csv"
+      ]
+    }
+  },
+  "families": [
+    "rawnet2"
+  ]
+}
