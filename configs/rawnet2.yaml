@@ -15,7 +15,10 @@ train:
   batch_size: 32
   lr: 0.0001
   weight_decay: 0.0001
-  class_weights: [0.1, 0.9]   # [bona fide, fake]; ASVspoof2021 baseline convention
+  # [bona fide, fake]. NOTE: this up-weights fake, the INVERSE of the ASVspoof 2021 baseline
+  # (which labels bona fide 1 and writes [0.1, 0.9]). Kept as-is because the committed RawNet2
+  # results were trained with it; new runs should use [0.9, 0.1].
+  class_weights: [0.1, 0.9]
   seed: 1234
   num_workers: 2
   amp: true
