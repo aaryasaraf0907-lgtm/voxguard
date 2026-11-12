@@ -140,26 +140,33 @@ held-out GSM codec. So the expected effect is only partly shown for the baseline
 disclosure must report this as measured. The SSL-AASIST codec-augmented run is the main test of
 the effect.
 
-## 6. Inventors and contributions (TO CONFIRM)
+## 6. Inventors and contributions
 
-Who conceived what decides inventorship, not who wrote the code; both teammates fill this in.
+Recorded 12 Nov 2026 from Aarya's statement: all ideas described in this disclosure were
+conceived by Aarya Saraf. Aditya (adityadnik) is a team member who implemented the API,
+prevention layer, demo and deployment work to Aarya's specification (CLAUDE.md sections 7
+and 12).
 
 | Person | Role in the project | Conception contribution |
 |---|---|---|
-| Aarya Saraf | Person 1, ML core | **TO CONFIRM** |
-| Aditya (adityadnik) | Person 2, product and platform | **TO CONFIRM** |
+| Aarya Saraf | Person 1, ML core and project lead | Conceived the codec-aware training and evaluation regime (section 4.1-4.3), the channel-matched operating point and the call-level prevention loop (section 4.4), and assigned the implementation tasks. |
+| Aditya (adityadnik) | Person 2, product and platform | Implementation (reduction to practice) of the API, prevention layer, demo and deployment to Aarya's specification. No conception contribution recorded. |
+
+Implementing a specification is generally not inventorship, but the IPR cell decides who is
+named. Aditya should still read and acknowledge this section (section 8, item 5).
 
 ## 7. Conception and reduction-to-practice log
 
 Implementation dates below come from the git history of this repository (author = who
-committed). Add conception entries (ideas, discussions, who proposed what) yourselves; they are
-not recorded in git.
+committed). The earliest dated written record of the ideas in this repository is the project
+brief `CLAUDE.md`, committed by Aarya on 1 Nov 2026 (commit `18ee391`); it already describes the
+codec-aware regime, the 2x2 evaluation and the prevention layer. Add any earlier dated evidence
+(notes, SIH proposal drafts, messages) here.
 
 | Date | Who | Note |
 |---|---|---|
-| 2026-09-25 | Aarya | Repository created. **TO CONFIRM**: date the codec-aware idea was first written down. |
-| **TO CONFIRM** | | Conception of the codec-aware training and evaluation regime. |
-| **TO CONFIRM** | | Conception of the prevention layer (flagging, blocklist, low-FAR mode). |
+| 2026-09-25 | Aarya | Repository created. |
+| On or before 2026-11-01 | Aarya | Conception of the codec-aware training and evaluation regime and of the prevention layer (flagging, blocklist, low-FAR mode); written down in `CLAUDE.md` (`18ee391`). Earlier date **TO CONFIRM** if Aarya has older records. |
 | 2026-11-01 | Aarya | Project scaffold and detector contract. |
 | 2026-11-02 | Aarya | Codec simulation and seeded degradation precompute. |
 | 2026-11-02 | Aditya | Prevention layer: alerts, blocklist, threshold modes. |
@@ -174,7 +181,7 @@ not recorded in git.
 1. Google Patents, InPASS and Espacenet searches on: anti-spoofing / synthetic speech detection
    + codec / telephony / channel augmentation; call screening + deepfake + blocklist;
    channel-specific threshold calibration. Record queries, dates and hits in section 3.
-2. Fill in sections 6 and 7 (both teammates).
+2. Add any conception evidence older than 1 Nov 2026 to section 7 (Aarya).
 3. Add the final 2x2 tables for both models once `docs/results.md` is regenerated.
 4. Decide with the IPR cell which of the section 4.4 features, if any, to claim.
-5. Both teammates review and sign off (CLAUDE.md section 17, item 5).
+5. Both teammates review and sign off, Aditya acknowledging section 6 (CLAUDE.md section 17, item 5).
