@@ -160,6 +160,12 @@ uv run uvicorn voxguard.api.main:create_app --factory --port 8000
   evaluation data itself (not on separate validation data), and the current values belong to
   the pre-fix RawNet2 runs. `VOXGUARD_THRESHOLD_MODE=low_far` with `VOXGUARD_LOW_FAR_THRESHOLD`
   uses a manually chosen threshold instead.
+- **Do not run a trained checkpoint at 0.5.** The committed RawNet2 `eer_threshold` values range
+  from 0.23 to 0.9999 across checkpoints and test conditions, and Aarya reports ~0.001 for the
+  first SSL-AASIST checkpoint (53 % accuracy at 0.5; see her section of
+  [docs/STATUS.md](docs/STATUS.md)). Set `VOXGUARD_THRESHOLD` from the checkpoint's
+  `eer_threshold`. The API logs a warning at startup when the real detector runs on the 0.5
+  default in `eer` mode.
 
 ## Tests and checks
 

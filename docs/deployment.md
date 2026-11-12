@@ -90,6 +90,7 @@ INSTALL_ML=1 docker compose build api     # large download (see below)
 #   VOXGUARD_DETECTOR=real
 #   VOXGUARD_MODEL_REPO=voxguard-team/voxguard-rawnet2-codec-aug   (or -clean, or a mounted path)
 #   HF_TOKEN=<token with read access>                    (only for a private repo)
+#   VOXGUARD_THRESHOLD=<the checkpoint's eer_threshold>  (0.5 is wrong for trained checkpoints)
 #   VOXGUARD_API_START_PERIOD=600s                       (first start downloads the checkpoint)
 docker compose up
 ```
@@ -103,6 +104,11 @@ docker compose up
   (health-check grace period, default 20 s) should be raised for the real detector.
 - `/health` then reports `"detector": "real"` and the checkpoint's `model_version`
   (`<model>:<source>:epoch<N>`).
+- **Threshold:** trained checkpoints score on very different scales (committed RawNet2
+  `eer_threshold` values: 0.23 to 0.9999; first SSL-AASIST checkpoint: ~0.001, per Aarya's
+  STATUS), so the 0.5 default misclassifies most clips. Set `VOXGUARD_THRESHOLD` to the
+  checkpoint's `eer_threshold` from `results/<model>.json`. If the real detector starts on 0.5 in
+  `eer` mode the API logs `VOXGUARD_THRESHOLD is the default 0.50 ...` (a warning; it still starts).
 - To use a local checkpoint instead, mount it, e.g. add `- ./runs/best:/models:ro` under the
   API's `volumes` and set `VOXGUARD_MODEL_REPO=/models` (a directory holding `best.pt`, or the
   file itself).
@@ -169,6 +175,7 @@ Limitations on a Space:
 | `api` exits with `VOXGUARD_... must be ...` | An invalid setting in `.env`; the message names the variable. `docker compose logs api` shows it. |
 | `dependency failed to start: container voxguard-api-1 is unhealthy` | The API did not pass `/health`: see `docker compose logs api`. With the real detector, the checkpoint download may still be running: raise `VOXGUARD_API_START_PERIOD` (e.g. `600s`). |
 | Space log: `VoxGuard API did not become healthy within 60 s` | Raise `VOXGUARD_API_START_TIMEOUT` in the Space variables. |
+| Real detector flags almost everything or nothing; API log warns `VOXGUARD_THRESHOLD is the default` | The threshold is still 0.5: set `VOXGUARD_THRESHOLD` to the checkpoint's `eer_threshold` (`results/<model>.json`). |
 | UI sidebar shows "API unavailable" | `docker compose ps` should show `api` as healthy. In compose the UI must use `http://api:8000`, not `localhost` (each container has its own localhost). |
 | `simulate_codec=true` returns 501 | `VOXGUARD_SIMULATE_CODEC` is not set for the API. |
 | `simulate_codec=true` returns 503 | This ffmpeg has no encoder for the chosen codec; pick one the codec report lists as OK. |
