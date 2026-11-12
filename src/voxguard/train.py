@@ -193,6 +193,47 @@ def _param_groups(model: nn.Module, t: TrainConfig) -> list[dict[str, Any]]:
     return [{"params": [p for p in model.parameters() if p.requires_grad]}]
 
 
+_NORM_BUFFERS = ("running_mean", "running_var", "num_batches_tracked")
+
+
+def _norm_buffers(model: nn.Module) -> dict[str, torch.Tensor]:
+    return {n: b.detach().clone() for n, b in model.named_buffers() if n.endswith(_NORM_BUFFERS)}
+
+
+def train_step(
+    model: nn.Module,
+    core: nn.Module,
+    x: torch.Tensor,
+    y: torch.Tensor,
+    loss_fn: nn.Module,
+    opt: torch.optim.Optimizer,
+    scaler: torch.amp.GradScaler,
+    amp: bool,
+) -> float | None:
+    """One optimizer step. Returns the loss, or None when the batch was skipped.
+
+    A batch is skipped when its input or loss is non-finite (e.g. an fp16 overflow). GradScaler
+    already drops such steps, but the forward pass has updated BatchNorm running stats in place;
+    one NaN there makes every later eval-mode score NaN, so those buffers are restored.
+    """
+    if not torch.isfinite(x).all():
+        return None
+    saved = _norm_buffers(core)
+    opt.zero_grad(set_to_none=True)
+    with torch.autocast(x.device.type, enabled=amp):
+        loss = loss_fn(model(x).float(), y)
+    if not torch.isfinite(loss):
+        buffers = dict(core.named_buffers())
+        with torch.no_grad():
+            for n, v in saved.items():
+                buffers[n].copy_(v)
+        return None
+    scaler.scale(loss).backward()
+    scaler.step(opt)
+    scaler.update()
+    return loss.item()
+
+
 def train(cfg: Config, resume: bool = False, use_wandb: bool = False) -> dict[str, Any]:
     t = cfg.train
     out = Path(t.out_dir)
@@ -246,23 +287,25 @@ def train(cfg: Config, resume: bool = False, use_wandb: bool = False) -> dict[st
         model.train()
         train_dl.dataset.set_epoch(epoch)
         seed_epoch(train_dl, t.seed, epoch)
-        total, n = 0.0, 0
+        total, n, skipped, batches = 0.0, 0, 0, 0
         for x, y in train_dl:
             x, y = x.to(device, non_blocking=True), y.to(device, non_blocking=True)
-            opt.zero_grad(set_to_none=True)
-            with torch.autocast(device.type, enabled=amp):
-                loss = loss_fn(model(x).float(), y)
-            scaler.scale(loss).backward()
-            scaler.step(opt)
-            scaler.update()
-            total += loss.item() * len(y)
+            batches += 1
+            loss = train_step(model, core, x, y, loss_fn, opt, scaler, amp)
+            if loss is None:
+                skipped += 1
+                continue
+            total += loss * len(y)
             n += len(y)
+        if skipped:
+            logger.warning("epoch %d: skipped %d/%d non-finite batches", epoch, skipped, batches)
         dev = evaluate(model, dev_dl, device)
         rec = {
             "epoch": epoch,
             "train_loss": total / max(n, 1),
             "dev_eer": dev["eer"],
             "dev_acc_at_0.5": dev.get("accuracy_at_0.5"),
+            "skipped_batches": skipped,
             "seconds": time.perf_counter() - t0,
         }
         history.append(rec)
