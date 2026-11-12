@@ -1,3 +1,4 @@
+import math
 from pathlib import Path
 
 import pytest
@@ -15,6 +16,7 @@ from voxguard.train import (  # noqa: E402
     pick_device,
     seed_epoch,
     train,
+    train_step,
 )
 
 
@@ -41,6 +43,7 @@ def test_train_writes_checkpoints_and_metrics(tmp_path: Path) -> None:
     assert (out / "last.pt").exists() and (out / "best.pt").exists()
     assert len((out / "metrics.jsonl").read_text().splitlines()) == 2
     assert len(res["history"]) == 2 and all(r["train_loss"] > 0 for r in res["history"])
+    assert all(r["skipped_batches"] == 0 for r in res["history"])
     assert not list(out.glob("*.tmp"))
 
 
@@ -131,3 +134,58 @@ def test_config_upweights_bonafide(name: str) -> None:
     cfg = load_config(Path(__file__).parents[1] / "configs" / name)
     assert cfg.train.class_weights[0] > cfg.train.class_weights[1]
     assert TrainConfig().class_weights[0] > TrainConfig().class_weights[1]
+
+
+class _BNNet(torch.nn.Module):
+    """Linear -> BatchNorm1d -> 2 logits; enough to see running stats move."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.fc = torch.nn.Linear(4, 4)
+        self.bn = torch.nn.BatchNorm1d(4)
+        self.out = torch.nn.Linear(4, 2)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.out(self.bn(self.fc(x)))
+
+
+def _step_parts():
+    torch.manual_seed(0)
+    model = _BNNet().train()
+    opt = torch.optim.SGD(model.parameters(), lr=0.1)
+    scaler = torch.amp.GradScaler("cuda", enabled=False)
+    return model, opt, scaler, torch.nn.CrossEntropyLoss()
+
+
+def test_train_step_trains_on_a_finite_batch() -> None:
+    model, opt, scaler, loss_fn = _step_parts()
+    before = model.bn.running_mean.clone()
+    loss = train_step(
+        model, model, torch.randn(8, 4), torch.randint(0, 2, (8,)), loss_fn, opt, scaler, False
+    )
+    assert loss is not None and math.isfinite(loss)
+    assert not torch.equal(model.bn.running_mean, before)
+
+
+def test_train_step_skips_non_finite_input_without_forward() -> None:
+    model, opt, scaler, loss_fn = _step_parts()
+    x = torch.randn(8, 4)
+    x[3, 1] = float("inf")
+    before = {k: v.clone() for k, v in model.state_dict().items()}
+    assert (
+        train_step(model, model, x, torch.zeros(8, dtype=torch.long), loss_fn, opt, scaler, False)
+        is None
+    )
+    assert all(torch.equal(before[k], v) for k, v in model.state_dict().items())
+
+
+def test_train_step_nan_loss_restores_batchnorm_stats() -> None:
+    # finite input, but a NaN weight makes the forward pass (and the BN stats update) NaN
+    model, opt, scaler, loss_fn = _step_parts()
+    with torch.no_grad():
+        model.fc.weight[0, 0] = float("nan")
+    stats = {k: v.clone() for k, v in model.named_buffers()}
+    y = torch.randint(0, 2, (8,))
+    assert train_step(model, model, torch.randn(8, 4), y, loss_fn, opt, scaler, False) is None
+    for k, v in model.named_buffers():
+        assert torch.equal(v, stats[k]), k  # still finite: eval-mode scoring is not poisoned
