@@ -71,18 +71,34 @@ tests/          pytest suite
 
 ## Setup
 
+Prerequisites:
+
+- `git` and `make`.
+- [`uv`](https://docs.astral.sh/uv/getting-started/installation/), e.g.
+  `curl -LsSf https://astral.sh/uv/install.sh | sh`. You do not need to install Python
+  yourself: uv uses a Python >= 3.11 it finds, or downloads one.
+- Optional: `ffmpeg` for the phone-line simulation (e.g. `sudo apt install ffmpeg`), and Docker
+  with compose for the Docker run. Neither is needed for the basic demo.
+
 ```bash
-make setup                          # uv sync (Python 3.11)
+git clone https://github.com/aaryasaraf0907-lgtm/voxguard.git && cd voxguard
+git checkout dev                    # current work; main holds the last milestone
+make setup                          # uv sync
 uv sync --extra api --extra ui      # what the API and demo need
 uv sync --extra api --extra ui --extra ml   # add torch etc. for the real detector (several GB)
 ```
 
-Phone-line simulation needs `ffmpeg` on `PATH` (`python -m voxguard.data.codecs` lists the
-codecs your ffmpeg supports).
+CI runs Python 3.11. uv picks the newest Python >= 3.11 already on your machine, which may be
+newer; to match CI, add `--python 3.11` to `uv sync` (uv downloads it if needed).
+
+Phone-line simulation needs `ffmpeg` on `PATH` (`uv run python -m voxguard.data.codecs` lists
+the codecs your ffmpeg supports).
 
 ## Configuration
 
-All variables, with defaults, are in [`.env.example`](.env.example). The main ones:
+All variables, with defaults, are in [`.env.example`](.env.example). `docker compose` reads
+`.env` itself; the local run below does not, so export the variables in the shell that starts
+the API, or load the file there with `set -a; . ./.env; set +a`. The main ones:
 
 | Variable | Default | Meaning |
 |---|---|---|
@@ -110,6 +126,16 @@ uv run streamlit run src/voxguard/ui/app.py
 With the default stub detector no weights or GPU are needed; its scores are deterministic
 placeholders, not detection results, and the UI says so.
 
+If port 8000 is taken, start the API with another `--port` and point the UI at it, e.g.
+`VOXGUARD_API_URL=http://localhost:8001 uv run streamlit run src/voxguard/ui/app.py`
+(`--server.port` changes the UI's own port).
+
+For the phone-line toggle, start the API with a codec configured (and ffmpeg installed):
+
+```bash
+VOXGUARD_SIMULATE_CODEC=g711_mulaw uv run uvicorn voxguard.api.main:create_app --factory --port 8000
+```
+
 Using the demo:
 
 1. **Language:** the selector at the top of the sidebar switches between English and Hindi.
@@ -129,6 +155,7 @@ Using the demo:
 ```bash
 cp .env.example .env               # optional; e.g. VOXGUARD_SIMULATE_CODEC=g711_mulaw
 docker compose up --build          # UI http://localhost:8501, API http://localhost:8000
+# ports taken? VOXGUARD_API_PORT=8001 VOXGUARD_UI_PORT=8502 docker compose up --build
 ```
 
 The API image includes ffmpeg (G.711, GSM and Opus; no AMR) and the stub detector; SQLite lives
