@@ -12,7 +12,7 @@ import logging
 import os
 import time
 
-from voxguard.inference import Detector, get_detector
+from voxguard.inference import DEFAULT_THRESHOLD, Detector, get_detector
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,7 @@ def _check_device(device: str) -> None:
         )
 
 
-def load_detector(device: str = "cpu") -> Detector:
+def load_detector(device: str = "cpu", threshold_mode: str = "eer") -> Detector:
     kind = os.environ.get("VOXGUARD_DETECTOR", "stub").strip().lower()
     if kind != "real":
         return get_detector()  # stub, or its own clear error for unknown values
@@ -84,4 +84,12 @@ def load_detector(device: str = "cpu") -> Detector:
         getattr(detector, "device", device),
         time.perf_counter() - t0,
     )
+    if threshold_mode == "eer" and detector.threshold == DEFAULT_THRESHOLD:
+        logger.warning(
+            "VOXGUARD_THRESHOLD is the default %.2f, which is not an operating point for any "
+            "trained checkpoint (their evaluation-set eer_threshold values are far from it, "
+            "see results/<model>.json). Set VOXGUARD_THRESHOLD to the checkpoint's "
+            "eer_threshold, or use VOXGUARD_THRESHOLD_MODE=low_far.",
+            DEFAULT_THRESHOLD,
+        )
     return detector

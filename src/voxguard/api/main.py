@@ -44,7 +44,7 @@ def create_app(detector: Detector | None = None, settings: Settings | None = Non
         engine = make_engine(settings.db_url)
         create_tables(engine)
         app.state.settings = settings
-        app.state.detector = detector or load_detector(settings.device)
+        app.state.detector = detector or load_detector(settings.device, settings.threshold_mode)
         app.state.session_factory = sessionmaker(engine, expire_on_commit=False)
         yield
         engine.dispose()

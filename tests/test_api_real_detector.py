@@ -135,6 +135,54 @@ def test_detector_is_loaded_once_per_process(monkeypatch) -> None:
     assert built == [1]
 
 
+def _fake_real(monkeypatch):
+    """Replace RealDetector with a stub that reads VOXGUARD_THRESHOLD the same way."""
+    import voxguard.inference as inference
+
+    class FakeReal(StubDetector):
+        def __init__(self, repo: str, device: str = "cpu") -> None:
+            super().__init__(model_version="fake-real")
+            self.device = device
+
+    _torch_present(monkeypatch)
+    monkeypatch.setattr(inference, "RealDetector", FakeReal)
+
+
+DEFAULT_WARNING = "VOXGUARD_THRESHOLD is the default"
+
+
+def test_real_detector_on_default_threshold_warns(monkeypatch, caplog) -> None:
+    _fake_real(monkeypatch)
+    monkeypatch.delenv("VOXGUARD_THRESHOLD", raising=False)
+    with _start(monkeypatch, VOXGUARD_DETECTOR="real", VOXGUARD_MODEL_REPO="x/y") as c:
+        assert c.get("/health").json()["detector"] == "fakereal"
+    assert DEFAULT_WARNING in caplog.text and "eer_threshold" in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("env", "settings"),
+    [
+        ({"VOXGUARD_THRESHOLD": "0.229"}, {}),  # set from the checkpoint's eer_threshold
+        ({}, {"threshold_mode": "low_far", "low_far_threshold": 0.3}),  # detector's not used
+    ],
+)
+def test_no_default_threshold_warning_when_chosen(monkeypatch, caplog, env, settings) -> None:
+    _fake_real(monkeypatch)
+    monkeypatch.delenv("VOXGUARD_THRESHOLD", raising=False)
+    for k, v in {"VOXGUARD_DETECTOR": "real", "VOXGUARD_MODEL_REPO": "x/y", **env}.items():
+        monkeypatch.setenv(k, v)
+    with TestClient(create_app(settings=_settings(**settings))) as c:
+        assert c.get("/health").status_code == 200
+    assert DEFAULT_WARNING not in caplog.text
+
+
+def test_stub_on_default_threshold_does_not_warn(monkeypatch, caplog) -> None:
+    monkeypatch.delenv("VOXGUARD_THRESHOLD", raising=False)
+    with _start(monkeypatch, VOXGUARD_DETECTOR="stub") as c:
+        assert c.get("/health").json()["detector"] == "stub"
+    assert DEFAULT_WARNING not in caplog.text
+
+
 # --- with torch: an untrained RawNet2 checkpoint ------------------------------------------
 
 

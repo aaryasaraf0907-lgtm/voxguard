@@ -50,7 +50,7 @@ EN: dict[str, str] = {
     "simulate_label": "Simulate phone line",
     "simulate_help": (
         "The server passes the recording through a telephone codec before the detector scores it."
-        " Which codec is set on the server (VOXGUARD_SIMULATE_CODEC)."
+        " The codec is set on the server (VOXGUARD_SIMULATE_CODEC)."
     ),
     "simulate_on": "Phone-line simulation is on: the next analysis uses the codec-degraded audio.",
     "simulate_off": "Phone-line simulation is off: the recording is analyzed as provided.",
@@ -152,12 +152,12 @@ HI: dict[str, str] = {
         "डिटेक्टर के स्कोर देने से पहले सर्वर रिकॉर्डिंग को टेलीफ़ोन कोडेक से गुज़ारता है।"
         " कौन-सा कोडेक, यह सर्वर पर तय होता है (VOXGUARD_SIMULATE_CODEC)।"
     ),
-    "simulate_on": "फ़ोन लाइन अनुकरण चालू है: अगली जाँच कोडेक से गुज़री ऑडियो पर होगी।",
+    "simulate_on": "फ़ोन लाइन अनुकरण चालू है: अगली जाँच कोडेक से गुज़री रिकॉर्डिंग पर होगी।",
     "simulate_off": "फ़ोन लाइन अनुकरण बंद है: रिकॉर्डिंग जैसी है वैसी ही जाँची जाएगी।",
     "result_clean": "जैसी दी गई वैसी जाँची गई (फ़ोन लाइन अनुकरण नहीं)।",
     "result_simulated": "{codec} से फ़ोन लाइन अनुकरण के बाद जाँची गई।",
     "result_header_clean": "परिणाम: मूल ऑडियो",
-    "result_header_phone": "परिणाम: अनुकरणित फ़ोन लाइन",
+    "result_header_phone": "परिणाम: फ़ोन लाइन अनुकरण के बाद",
     "result_header": "परिणाम",
     "flagged_banner": "चिह्नित: इस रिकॉर्डिंग का स्कोर सीमा के बराबर या उससे अधिक है।",
     "not_flagged_banner": "चिह्नित नहीं: इस रिकॉर्डिंग का स्कोर सीमा से कम है।",
