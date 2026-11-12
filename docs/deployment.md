@@ -38,8 +38,9 @@ the blocklist survive `docker compose down` / `up` and container restarts.
 
 ### Configuration
 
-Compose passes `.env` (or the file named by `VOXGUARD_ENV_FILE`) to the API container; a local `uvicorn` run does not read it (see the README). All variables are listed in
-`.env.example`; the ones that matter for deployment:
+Compose passes `.env` (or the file named by `VOXGUARD_ENV_FILE`) to the API container; a local
+`uvicorn` run does not read it (see the README). All variables are listed in `.env.example`; the
+ones that matter for deployment:
 
 | Variable | Default | Notes |
 |---|---|---|
