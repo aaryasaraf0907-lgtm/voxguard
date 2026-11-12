@@ -76,7 +76,7 @@ Prerequisites:
 - `git` and `make`.
 - [`uv`](https://docs.astral.sh/uv/getting-started/installation/), e.g.
   `curl -LsSf https://astral.sh/uv/install.sh | sh`. You do not need to install Python
-  yourself: uv uses a Python >= 3.11 it finds, or downloads one.
+  yourself: uv uses Python 3.11 (from `.python-version`) and downloads it if needed.
 - Optional: `ffmpeg` for the phone-line simulation (e.g. `sudo apt install ffmpeg`), and Docker
   with compose for the Docker run. Neither is needed for the basic demo.
 
@@ -88,8 +88,9 @@ uv sync --extra api --extra ui      # what the API and demo need
 uv sync --extra api --extra ui --extra ml   # add torch etc. for the real detector (several GB)
 ```
 
-CI runs Python 3.11. uv picks the newest Python >= 3.11 already on your machine, which may be
-newer; to match CI, add `--python 3.11` to `uv sync` (uv downloads it if needed).
+The repository's `.python-version` makes `uv sync` and `make setup` use Python 3.11, the
+version CI and the Docker images use. The package itself also supports 3.12+ (`requires-python`
+is `>=3.11`); `uv sync --python 3.12` (or newer) overrides the pin.
 
 Phone-line simulation needs `ffmpeg` on `PATH` (`uv run python -m voxguard.data.codecs` lists
 the codecs your ffmpeg supports).
