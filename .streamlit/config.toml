@@ -5,3 +5,8 @@ maxUploadSize = 25
 
 [browser]
 gatherUsageStats = false
+
+[client]
+# Hide Streamlit's developer options (Deploy, Rerun, Clear cache) in the demo; viewer options
+# (theme, print, record screen) stay. The Docker images set STREAMLIT_CLIENT_TOOLBAR_MODE instead.
+toolbarMode = "viewer"

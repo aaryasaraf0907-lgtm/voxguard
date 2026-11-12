@@ -23,7 +23,8 @@ USER voxguard
 # The API's default upload limit is 25 MB; keep the uploader in line (integer MB).
 ENV VOXGUARD_API_URL=http://api:8000 \
     STREAMLIT_SERVER_MAX_UPLOAD_SIZE=25 \
-    STREAMLIT_BROWSER_GATHER_USAGE_STATS=false
+    STREAMLIT_BROWSER_GATHER_USAGE_STATS=false \
+    STREAMLIT_CLIENT_TOOLBAR_MODE=viewer
 
 EXPOSE 8501
 HEALTHCHECK --interval=10s --timeout=5s --start-period=20s --retries=3 \
