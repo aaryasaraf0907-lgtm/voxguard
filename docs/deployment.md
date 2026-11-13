@@ -12,23 +12,27 @@ from the committed `uv.lock`, and run as the non-root user `voxguard` (uid 1000)
 The API and Space images take `--build-arg INSTALL_ML=1` to add the `ml` extra (torch,
 torchaudio, transformers, huggingface-hub) that `VOXGUARD_DETECTOR=real` needs. Without it the
 images run the stub detector only. The ML variant is several GB larger (torch from PyPI
-includes CUDA libraries).
+includes CUDA libraries; see [Image size](#image-size-and-the-open-cpu-torch-decision)).
 
 No secrets, tokens, `.env` files or model weights are copied into any image (`.dockerignore`).
 
-**Selected deployment for the MVP: local Docker Compose** (below), the CLAUDE.md MVP item 9
-option that needs no paid service. A hosted Hugging Face Docker Space is an **optional future
-route**: Hugging Face requires a paid plan to create Docker Spaces (PRO for a personal account,
-Team or Enterprise for an organisation), and this project uses free tools only. The Space image
-and its steps are kept, unchanged, in
+**The deployment is local Docker Compose** (below): API + UI with the real detector, as agreed
+for the submission (CLAUDE.md section 3, MVP item 9). A hosted Hugging Face Docker Space is only
+an **optional route that needs a paid plan**: Hugging Face requires one to create Docker Spaces
+(PRO for a personal account, Team or Enterprise for an organisation), and this project uses free
+tools only. The Space image and its steps are kept, unchanged, in
 [Private Hugging Face Space](#private-hugging-face-space-optional-future-route-needs-a-paid-plan).
 
-## Local: docker compose (the selected MVP deployment)
+## Local: docker compose (the deployment)
+
+With the stub detector (no model, no Hugging Face access, small images):
 
 ```bash
 cp .env.example .env                  # optional; every setting has a default
 docker compose up --build             # or: make docker-up (detached, waits for health)
 ```
+
+With the real detector, see [Real detector](#real-detector) below.
 
 - UI: http://localhost:8501, API: http://localhost:8000 (`/health`, `/docs`).
 - The UI container reaches the API as `http://api:8000` (compose service name). Compose sets
@@ -92,16 +96,50 @@ The response's `codec_applied` names the codec. Behaviour and errors are in
 
 ### Real detector
 
-```bash
-INSTALL_ML=1 docker compose build api     # large download (see below)
-# .env:
-#   VOXGUARD_DETECTOR=real
-#   VOXGUARD_MODEL_REPO=voxguard-team/voxguard-rawnet2-codec-aug   (or -clean, or a mounted path)
-#   HF_TOKEN=<token with read access>                    (only for a private repo)
-#   VOXGUARD_THRESHOLD=                                  (leave empty: thresholds.json is used)
-#   VOXGUARD_API_START_PERIOD=600s                       (first start downloads the checkpoint)
-docker compose up
-```
+**Before you start:**
+- Docker with compose v2 (on Windows: Docker Desktop with WSL integration for your distro).
+- A Hugging Face account that is a member of the private `voxguard-team` organisation (ask
+  Aarya), and a **read** token for it (huggingface.co > Settings > Access Tokens). A read token
+  is enough; never use a write token here.
+- Network and disk for the downloads: the `INSTALL_ML=1` image installs about **3.0 GB** of
+  Python wheels (torch 2.15.0 with its CUDA libraries, compressed sizes from `uv.lock`), and the
+  first start downloads the checkpoint (RawNet2: 212 MB; SSL-AASIST: GBs). The built image's size
+  has not been measured yet; leave plenty of free disk (Docker Desktop's disk limit included).
+
+**Steps:**
+
+1. `cp .env.example .env`, then set in `.env` (keep each comment on its own line; values only):
+
+   ```bash
+   INSTALL_ML=1
+   VOXGUARD_DETECTOR=real
+   VOXGUARD_MODEL_REPO=voxguard-team/voxguard-rawnet2-codec-aug
+   HF_TOKEN=<your read token>
+   VOXGUARD_API_START_PERIOD=600s
+   VOXGUARD_SIMULATE_CODEC=g711_mulaw
+   ```
+
+   Leave `VOXGUARD_THRESHOLD` empty so the checkpoint's `thresholds.json` is used. Set
+   `INSTALL_ML=1` **in `.env`**, not only on the command line: compose reads it from `.env` on
+   every `--build`, and a later `docker compose up --build` or `make docker-up` with the
+   `.env.example` value `0` would rebuild the API image without torch (the API then exits with
+   `needs the 'ml' extra`). `.env` is git-ignored; never commit it or paste the token anywhere.
+2. `docker compose up --build` (or `make docker-up`). The first build downloads the wheels; the
+   first start downloads the checkpoint into the `voxguard-data` volume. The UI starts once the
+   API is healthy.
+3. Check: `curl http://localhost:8000/health` shows `"detector": "real"` and the checkpoint's
+   `model_version`; the UI sidebar shows "Connected" and "Detector: real".
+
+The RawNet2 checkpoints published today were trained with the class-weight bug (README,
+Status): use them to check that the pipeline runs and how long it takes, not to judge
+detection. They have no `thresholds.json` yet, so the API logs that it uses the 0.5 default.
+
+**Not verified yet:** this compose path with `INSTALL_ML=1` has not been run end to end; the
+real detector has been run through the API and UI only with `uv` (13 Nov, CUDA). How long a new
+user needs is therefore not known, and the size of the torch download is the main cost (see
+[Image size](#image-size-and-the-open-cpu-torch-decision)).
+
+**Notes:**
 
 - The detector is built **once**, when the API starts, and requests reuse it. It then runs one
   warm-up inference on 4 s of 16 kHz silence (one window), so the first request's `latency_ms`
@@ -119,8 +157,9 @@ docker compose up
 - **SSL-AASIST loads slowly on CPU.** Aarya measured it on a Mac CPU (13 Nov): about 10 s to
   load, then a 235 ms warm-up (RawNet2: 53 ms). On a first start the multi-GB download comes
   before that, so expect tens of seconds or more on a small CPU host (e.g. a Space's CPU Basic,
-  not measured). The warm-up adds well under a second. The default `600s` grace period for the
-  real detector (and `VOXGUARD_API_START_TIMEOUT` in the Space image) covers this.
+  not measured). The warm-up adds well under a second. `VOXGUARD_API_START_PERIOD=600s` (compose;
+  the 20 s default is too short) and the Space image's `VOXGUARD_API_START_TIMEOUT` (600 s by
+  default for the real detector) cover this.
 - `/health` then reports `"detector": "real"` and the checkpoint's `model_version`
   (`<model>:<source>:epoch<N>`).
 - **Threshold:** at startup the API reads `thresholds.json` next to the checkpoint (the same
@@ -136,10 +175,18 @@ docker compose up
 - `VOXGUARD_DEVICE` (`cpu` default, `cuda`, `auto`) picks the device. The compose file does not
   request a GPU: running on CUDA in Docker additionally needs the NVIDIA Container Toolkit and a
   `deploy.resources.reservations.devices` entry, which this project has not set up or tested.
-- **Image size:** `INSTALL_ML=1` installs the locked torch from PyPI, which on Linux pulls the
-  CUDA build and its `nvidia-*` wheels (several GB), even for CPU-only use. A CPU wheel index
-  would need a `pyproject.toml` source entry and a re-lock (shared files; to be decided with
-  Aarya). The ML image has not been built yet.
+
+### Image size and the open CPU torch decision
+
+`INSTALL_ML=1` installs the torch locked in `uv.lock` (2.15.0 from PyPI). On Linux that is the
+CUDA build: about 3.0 GB of compressed wheels, of which torch is 539 MB and the rest CUDA
+libraries (cuDNN 519 MB, cuBLAS 405 MB, triton 286 MB, other `nvidia-*` wheels), although the
+compose deployment runs on CPU. The CPU-only build of the same version
+(`torch==2.15.0+cpu` from `https://download.pytorch.org/whl/cpu`) is 210 MB. The model code
+needs no change for it: CUDA is only used when `VOXGUARD_DEVICE` selects it. Switching means
+either a CPU index in `pyproject.toml` and a re-lock (shared files), or installing the CPU wheel
+in the Dockerfiles only; it is a joint decision with Aarya and not made yet. The ML image has not
+been built yet.
 
 ## Private Hugging Face Space (optional future route; needs a paid plan)
 
@@ -212,6 +259,9 @@ Limitations on a Space:
 | `api` exits at startup with `VOXGUARD_DETECTOR=real needs the 'ml' extra` | The image was built without the ML stack: `INSTALL_ML=1 docker compose build api`. |
 | `api` exits with `VOXGUARD_... must be ...` | An invalid setting in `.env`; the message names the variable. `docker compose logs api` shows it. |
 | `dependency failed to start: container voxguard-api-1 is unhealthy` | The API did not pass `/health`: see `docker compose logs api`. With the real detector, the checkpoint download may still be running: raise `VOXGUARD_API_START_PERIOD` (e.g. `600s`). |
+| `api` exits with `could not download the checkpoint from the Hugging Face Hub` (401, 403 or repository not found) | `HF_TOKEN` is missing from `.env`, mistyped, or belongs to an account that is not in `voxguard-team`; or `VOXGUARD_MODEL_REPO` is misspelt. Check the token on huggingface.co, fix `.env`, then `docker compose up`. |
+| `api` exits with `VOXGUARD_MODEL_REPO checkpoint not found` for a Hugging Face repo id | The container could not reach huggingface.co and the checkpoint is not in the `voxguard-data` cache yet: check the network or proxy, then start again. |
+| Build fails with `no space left on device` | The ML image needs several GB: free disk, or raise Docker Desktop's disk limit; `docker system df` shows what Docker uses. |
 | Space log: `VoxGuard API did not become healthy within 60 s` | Raise `VOXGUARD_API_START_TIMEOUT` in the Space variables. |
 | Real detector flags almost everything or nothing; API log warns `VOXGUARD_THRESHOLD is the default` | The checkpoint has no `thresholds.json` (or `VOXGUARD_THRESHOLD` is set): upload its `thresholds.json`, or set `VOXGUARD_THRESHOLD` explicitly. |
 | `api` exits with `unusable thresholds for VOXGUARD_MODEL_REPO=...` | `thresholds.json` is malformed, has a value outside [0, 1], or its `model_version` names a different model or epoch than the loaded checkpoint: fix the file. |
