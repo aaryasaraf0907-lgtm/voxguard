@@ -14,6 +14,7 @@ Three separate times. They are never added up, and only the last one is end-to-e
 | `detector_inference.reported_latency_ms` | the detector's own `Prediction.latency_ms` (what the API returns as `latency_ms`) | same as above, measured inside `predict` |
 | `codec_preprocessing.<codec>` | `api.codec_sim.simulate_phone_line` | resampling to 16 kHz (if needed) and an ffmpeg encode/decode; no inference |
 | `api_request.clean` / `.simulated` | client wall time of `POST /v1/analyze` over HTTP to a uvicorn server started by the benchmark (loopback, temporary SQLite file) | multipart upload, decoding, codec (simulated only), inference, prevention and the SQLite commit |
+| `api_request.*.server_latency_ms` / `api_request.simulated.server_codec_ms` | the API's own `latency_ms` (detector only) and `codec_ms` (whole phone-line simulation) from each timed response | split of the request time as the API reports it; `codec_ms` is part of the simulated request time, not of `latency_ms` |
 
 Also recorded:
 - `detector.load_ms`: building the detector once (checkpoint load, moving the model to the
@@ -74,7 +75,15 @@ uv run python -m voxguard.benchmark --render results/benchmarks   # -> docs/benc
   reach the private org. Trained runs should replace the untrained files once the retrained
   checkpoints are reachable from the benchmark machine.
 - The CLAUDE.md targets (CPU < 2 s, GPU < 300 ms per 4 s clip) apply to
-  `detector_inference`. The phone-line demo path costs `codec_preprocessing` on top, and
-  `api_request.simulated` is the end-to-end time a client sees.
+  `detector_inference` only. The phone-line demo path costs `codec_ms` (in-process:
+  `codec_preprocessing`) on top, and `api_request.simulated` is the end-to-end time a client
+  sees. Never add `codec_ms` to the detector numbers or compare it against those targets.
+- `codec_ms` is dominated by starting ffmpeg processes (resample, encode, decode), not by the
+  codec itself: in PR #45's checks in the Docker API image on WSL 2 it was about 100-130 ms per
+  4 s clip (spot checks, not a benchmark run). It is the same for every detector.
+- The committed runs (commit `22e8a0a`) predate PR #45: their `codec_preprocessing` used
+  ffmpeg's default bitrates rather than the evaluation ones (`default_spec`), and they have no
+  `server_*` fields (`n/a` in the report). New runs record both; the files are not re-measured
+  here.
 - The numbers belong to the recorded machine (here: a laptop under WSL 2), not to a deployment
   target such as a CPU Hugging Face Space.

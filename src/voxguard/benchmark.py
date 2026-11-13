@@ -7,7 +7,8 @@ Three times are measured separately and never added together:
 - ``codec_preprocessing``: ``api.codec_sim.simulate_phone_line`` per codec (resampling plus an
   ffmpeg encode/decode), without inference;
 - ``api_request``: client-side wall time of ``POST /v1/analyze`` over HTTP to a uvicorn server
-  in this process (multipart upload, decoding, optional codec, inference, SQLite commit).
+  in this process (multipart upload, decoding, optional codec, inference, SQLite commit), plus
+  the server's own ``latency_ms`` (detector) and, when simulated, ``codec_ms`` per response.
 
 Model loading is timed once, on its own. Warm-up iterations are run and discarded.
 
@@ -180,15 +181,21 @@ def bench_api(
             out: dict[str, Any] = {}
             modes = [("clean", {})] + ([("simulated", {"simulate_codec": "true"})] if codec else [])
             for name, form in modes:
+                bodies: list[dict[str, Any]] = []
 
-                def post(form: dict = form) -> None:
+                def post(form: dict = form, bodies: list = bodies) -> None:
                     r = http.post(url, files={"file": ("bench.wav", audio)}, data=form, timeout=120)
                     r.raise_for_status()
+                    bodies.append(r.json())
 
                 samples = timed_runs(post, warmup, iterations, clock)
-                stats = summarize(samples, warmup)
+                stats: dict[str, Any] = summarize(samples, warmup)
                 # one client, one request at a time: not a concurrent load test
                 stats["sequential_requests_per_s"] = len(samples) / (sum(samples) / 1000.0)
+                timed = bodies[warmup:]  # what the API itself reports, per timed request
+                stats["server_latency_ms"] = summarize([b["latency_ms"] for b in timed], warmup)
+                if name == "simulated":
+                    stats["server_codec_ms"] = summarize([b["codec_ms"] for b in timed], warmup)
                 out[name] = stats
             return out
         finally:
@@ -376,9 +383,13 @@ def render_markdown(results: list[dict[str, Any]]) -> str:
         " `results/benchmarks/*.json`. Do not edit by hand. Times are p50 / p95 in ms."
         " Method: `docs/benchmarking.md`.",
         "",
+        "The CLAUDE.md latency targets (CPU < 2 s, GPU < 300 ms per 4 s clip) apply to Inference"
+        " only. API codec_ms is the codec time the API reports for the simulated requests; it is"
+        " already inside API simulated and is never added to Inference.",
+        "",
         "| Run | Detector | Weights | Device | Load (s) | Inference | Codec | API clean |"
-        " API simulated |",
-        "|---|---|---|---|---|---|---|---|---|",
+        " API simulated | API codec_ms |",
+        "|---|---|---|---|---|---|---|---|---|---|",
     ]
     for r in results:
         det, env = r["detector"], r["environment"]
@@ -395,7 +406,8 @@ def render_markdown(results: list[dict[str, Any]]) -> str:
             f"| {label} | {det['model_version']} | {det.get('weights', 'n/a')} | "
             f"{det['device']}: {hardware} | {load} | "
             f"{_ms(r['detector_inference']['wall'])} | {codec_cell or 'n/a'} | "
-            f"{_ms(api.get('clean'))} | {_ms(api.get('simulated'))} |"
+            f"{_ms(api.get('clean'))} | {_ms(api.get('simulated'))} | "
+            f"{_ms((api.get('simulated') or {}).get('server_codec_ms'))} |"
         )
     lines += ["", "Notes per run:", ""]
     for r in results:
