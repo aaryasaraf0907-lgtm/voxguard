@@ -96,11 +96,16 @@ INSTALL_ML=1 docker compose build api     # large download (see below)
 docker compose up
 ```
 
-- The detector is built **once**, when the API starts, and runs one warm-up inference on
-  silence so the first request's `latency_ms` does not include CUDA start-up; requests reuse it. If it cannot be built
-  the API exits with an error naming the problem (missing `ml` extra, missing
-  `VOXGUARD_MODEL_REPO`, checkpoint not found, Hugging Face download error, corrupt checkpoint,
-  `VOXGUARD_DEVICE=cuda` without a GPU). It never falls back to the stub.
+- The detector is built **once**, when the API starts, and requests reuse it. It then runs one
+  warm-up inference on 4 s of 16 kHz silence (one window), so the first request's `latency_ms`
+  does not include CUDA/cuDNN start-up. Only that path is warmed: the first clip at another
+  sample rate (resampling) or longer than about 5 s (several windows at once) can still be
+  slower once. Measured on CUDA with RawNet2: a 4 s 16 kHz first request took 15.8 ms (1163.8 ms
+  before the warm-up existed); a 6 s 44.1 kHz stereo one took 46.9 ms first, then 15.7 ms.
+- If the detector cannot be built or fails its warm-up, the API exits with an error naming the
+  problem (missing `ml` extra, missing `VOXGUARD_MODEL_REPO`, checkpoint not found, Hugging Face
+  download error, corrupt checkpoint, `VOXGUARD_DEVICE=cuda` without a GPU, warm-up inference
+  failed). It never falls back to the stub.
 - The checkpoint is downloaded at startup into the `/data/hf-cache` volume, so later restarts
   reuse it. A full SSL-AASIST checkpoint is GBs, which is why `VOXGUARD_API_START_PERIOD`
   (health-check grace period, default 20 s) should be raised for the real detector.
