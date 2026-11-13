@@ -52,6 +52,17 @@ def _threshold_map(value: Any, where: str) -> dict[str, float]:
     return {str(k): _threshold(v, f"{where}.{k}") for k, v in value.items()}
 
 
+def model_identity(model_version: str) -> tuple[str, ...]:
+    """The part of a model_version that names the model, not where it was loaded from.
+
+    ``RealDetector.model_version`` is ``<name>:<source>:epoch<N>``, and ``<source>`` depends on
+    the load location (``best.pt``, a mounted ``models`` directory, the HF repo name), so only
+    the first and last parts are compared. Other strings (e.g. the stub's) are compared whole.
+    """
+    parts = model_version.split(":")
+    return (parts[0], parts[-1]) if len(parts) >= 3 else (model_version,)
+
+
 def parse_thresholds(data: Any, expected_model_version: str) -> ThresholdSet:
     """Validate a decoded thresholds.json against the loaded detector's model_version."""
     if not isinstance(data, dict):
@@ -59,10 +70,11 @@ def parse_thresholds(data: Any, expected_model_version: str) -> ThresholdSet:
     version = data.get("model_version")
     if not isinstance(version, str) or not version:
         raise ThresholdsError(f"{FILENAME}: model_version must be a non-empty string")
-    if version != expected_model_version:
+    if model_identity(version) != model_identity(expected_model_version):
         raise ThresholdsError(
             f"{FILENAME} is for model_version {version!r}, but the loaded checkpoint is "
-            f"{expected_model_version!r}"
+            f"{expected_model_version!r} (model name and epoch must match; the load location "
+            "in between is ignored)"
         )
     selected_on = data.get("selected_on")
     if selected_on is not None and not isinstance(selected_on, str):

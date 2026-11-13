@@ -129,6 +129,36 @@ def test_model_version_mismatch_is_rejected() -> None:
         parse_thresholds(DUMMY, "ssl_aasist:best.pt:epoch8")
 
 
+LOCAL = "ssl_aasist:best.pt:epoch8"  # as evaluate.py writes it after evaluating a local best.pt
+
+
+@pytest.mark.parametrize(
+    "loaded",
+    [
+        LOCAL,
+        "ssl_aasist:voxguard-ssl-aasist:epoch8",  # the same checkpoint loaded from its HF repo
+        "ssl_aasist:models:epoch8",  # ... or from a mounted /models directory
+        "ssl_aasist:a:b:epoch8",  # the load location may itself contain ":"
+    ],
+)
+def test_same_model_and_epoch_match_wherever_it_was_loaded_from(loaded) -> None:
+    ts = parse_thresholds({**DUMMY, "model_version": LOCAL}, loaded)
+    assert ts.model_version == LOCAL and ts.phone == 0.33
+
+
+@pytest.mark.parametrize(
+    "loaded",
+    [
+        "ssl_aasist:voxguard-ssl-aasist:epoch7",  # other epoch
+        "rawnet2:voxguard-ssl-aasist:epoch8",  # other model
+        "ssl_aasist:epoch8",  # not the <name>:<source>:epoch<N> shape: compared whole
+    ],
+)
+def test_other_model_or_epoch_is_rejected(loaded) -> None:
+    with pytest.raises(ThresholdsError, match="model name and epoch must match"):
+        parse_thresholds({**DUMMY, "model_version": LOCAL}, loaded)
+
+
 def test_load_from_a_local_checkpoint_directory_or_file(tmp_path) -> None:
     assert load_thresholds(str(tmp_path), VERSION) is None  # no file: legacy behaviour
     (tmp_path / "best.pt").write_bytes(b"x")
@@ -143,12 +173,12 @@ def test_load_from_a_local_checkpoint_directory_or_file(tmp_path) -> None:
 # --- startup with the configured (real) detector ------------------------------------------
 
 
-def _start_real(monkeypatch, repo, **settings) -> TestClient:
+def _start_real(monkeypatch, repo, version=VERSION, **settings) -> TestClient:
     import voxguard.inference as inference
 
     class FakeReal(StubDetector):  # model_version must match the file's
         def __init__(self, repo: str, device: str = "cpu") -> None:
-            super().__init__(threshold=0.5, model_version=VERSION)
+            super().__init__(threshold=0.5, model_version=version)
 
     monkeypatch.setitem(sys.modules, "torch", types.ModuleType("torch"))  # no ml extra in CI
     monkeypatch.setattr(inference, "RealDetector", FakeReal)
@@ -165,6 +195,15 @@ def test_startup_loads_thresholds_next_to_the_checkpoint(monkeypatch, tmp_path, 
         assert c.app.state.thresholds == DUMMY_SET
         assert _post(c)["threshold"] == 0.33
     assert "VOXGUARD_THRESHOLD is the default" not in caplog.text
+
+
+def test_startup_accepts_local_thresholds_for_a_hub_loaded_checkpoint(monkeypatch, tmp_path):
+    """Regression: evaluate.py writes the local model_version; the API loads from the Hub."""
+    (tmp_path / "thresholds.json").write_text(json.dumps({**DUMMY, "model_version": LOCAL}))
+    hub_version = "ssl_aasist:voxguard-ssl-aasist:epoch8"
+    with _start_real(monkeypatch, tmp_path, version=hub_version) as c:
+        assert c.app.state.thresholds.model_version == LOCAL
+        assert _post(c)["threshold"] == 0.33
 
 
 @pytest.mark.parametrize(
