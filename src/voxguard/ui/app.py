@@ -176,7 +176,7 @@ def render_analyze(client: Any, lang: str) -> None:
 
 def render_table(rows: list[dict[str, Any]], empty_key: str, lang: str) -> None:
     if rows:
-        st.dataframe(rows, hide_index=True, use_container_width=True)
+        st.dataframe(rows, hide_index=True, width="stretch")
     else:
         st.info(t(empty_key, lang))
 

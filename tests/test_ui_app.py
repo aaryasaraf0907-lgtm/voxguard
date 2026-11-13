@@ -192,6 +192,29 @@ def test_populated_tables_show_api_data_in_utc() -> None:
     assert alerts[t("col_message", "en")].tolist() == ["Flagged call: x"]
 
 
+def test_tables_use_no_deprecated_streamlit_arguments(monkeypatch) -> None:
+    """Streamlit warns (in the server log) for deprecated arguments such as use_container_width."""
+    import streamlit.deprecation_util as deprecation_util
+    import streamlit.elements.arrow as arrow
+
+    warnings: list[str] = []
+    real = deprecation_util.show_deprecation_warning
+
+    def record(message: str, *args, **kwargs) -> None:
+        warnings.append(message)
+        real(message, *args, **kwargs)
+
+    for module in (deprecation_util, arrow):
+        monkeypatch.setattr(module, "show_deprecation_warning", record)
+    client = FakeClient()
+    client.blocklist_response = [
+        BlocklistEntry(caller_id="x", hit_count=1, first_seen=T0, last_seen=T0)
+    ]
+    at = _run(client)
+    assert not at.exception and at.dataframe
+    assert warnings == []
+
+
 def test_table_headers_follow_language() -> None:
     client = FakeClient()
     client.blocklist_response = [
