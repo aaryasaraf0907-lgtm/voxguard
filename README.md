@@ -177,8 +177,9 @@ uv run uvicorn voxguard.api.main:create_app --factory --port 8000
   (`voxguard-team/voxguard-rawnet2-clean`, `voxguard-team/voxguard-rawnet2-codec-aug`); access
   needs a token with permission for that org. They come from the runs with the class-weight bug
   above and will be replaced by the retrained ones; SSL-AASIST checkpoints follow when training
-  finishes. Aarya has loaded one through the API (PR #23 review); other environments have not
-  verified them yet.
+  finishes. The codec-aug RawNet2 checkpoint (epoch 17) has been loaded through the API and
+  the demo on CUDA (13 Nov). Because of the class-weight bug its scores are for checking
+  integration and latency only, not detection results.
 - The model is loaded once at startup; `/health` then reports `"detector": "real"` and the
   checkpoint's `model_version`. If loading fails the API exits with an error that says what to
   fix; it never falls back to the stub.
