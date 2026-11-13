@@ -143,10 +143,16 @@ REST API (schemas in `schemas.py`):
 | Method + path | Purpose |
 |---|---|
 | `GET /health` | `{status, detector, model_version}` |
-| `POST /v1/analyze` | multipart `file`; optional form `caller_id`, `simulate_codec` -> `{session_id, label, fake_score, threshold, latency_ms, model_version, flagged, codec_applied}` |
+| `POST /v1/analyze` | multipart `file`; optional form `caller_id`, `simulate_codec`, `codec` -> `{session_id, label, fake_score, threshold, latency_ms, model_version, flagged, codec_applied, codec_ms}` |
+| `GET /v1/codecs` | `{default, codecs: [{name, available, bitrate}]}`: every codec in `data/codecs.CODECS`; `available` = this server's ffmpeg has the encoder; `bitrate` = `data.augment.default_spec(name).bitrate` (null for fixed-rate G.711); `default` = `VOXGUARD_SIMULATE_CODEC` or null |
 | `GET /v1/sessions?flagged_only=&limit=` | stored sessions |
 | `GET /v1/blocklist` | caller ids auto-blocked, with hit counts |
 | `GET /v1/alerts?since=` | alerts raised by the prevention layer |
+
+Phone-line simulation in `/v1/analyze` (agreed in #44's review):
+- `codec=<name>` selects the codec and implies simulation, whatever `simulate_codec` says. Without `codec`, `simulate_codec=true` uses `VOXGUARD_SIMULATE_CODEC` (501 if unset). An empty `codec` counts as omitted. An unknown name is 422; a known codec this server's ffmpeg lacks is 503. Another codec is never substituted, and nothing is scored or stored on these errors.
+- The codec runs at `default_spec(codec)`'s bitrate, the evaluation sets' condition (no noise in the demo), after resampling to 16 kHz.
+- `codec_applied` is the codec actually used, or null. `codec_ms` is the wall time of the whole simulation (resample + ffmpeg encode/decode), null without simulation; response-only, not stored. `latency_ms` stays detector inference only.
 
 Prevention rule (MVP): `fake_score >= threshold` -> session stored as flagged, alert created, `caller_id` (if given) upserted into blocklist with a counter. Threshold modes: `eer` (default) and `low_far` (operating point shifted to reduce missed fakes).
 

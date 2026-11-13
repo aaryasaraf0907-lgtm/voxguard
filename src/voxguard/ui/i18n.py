@@ -49,9 +49,13 @@ EN: dict[str, str] = {
     "analyzing": "Analyzing…",
     "simulate_label": "Simulate phone line",
     "simulate_help": (
-        "The server passes the recording through a telephone codec before the detector scores it."
-        " The codec is set on the server (VOXGUARD_SIMULATE_CODEC)."
+        "The server passes the recording through the selected telephone codec, at the bitrate"
+        " used in evaluation, before the detector scores it."
     ),
+    "codec_label": "Phone codec",
+    "codec_gsm": "GSM — not used in training",
+    "codecs_error": "Could not load the codec list; the server's default codec is used.",
+    "no_codecs": "This server's ffmpeg has none of the phone codecs, so simulation is unavailable.",
     "simulate_on": "Phone-line simulation is on: the next analysis uses the codec-degraded audio.",
     "simulate_off": "Phone-line simulation is off: the recording is analyzed as provided.",
     "result_clean": "Analyzed as provided (no phone-line simulation).",
@@ -64,7 +68,8 @@ EN: dict[str, str] = {
     "m_label": "Label",
     "m_score": "Fake score",
     "m_threshold": "Threshold",
-    "m_latency": "Latency",
+    "m_latency": "Detector latency",
+    "m_codec_ms": "Codec processing",
     "m_model": "Model version",
     "m_flagged": "Flagged",
     "m_codec": "Codec applied",
@@ -112,7 +117,7 @@ EN: dict[str, str] = {
     ),
     "err_unavailable": (
         "Phone-line simulation isn't available on this server right now (its ffmpeg lacks the"
-        " configured codec). Nothing was analyzed; turn the toggle off to analyze the original"
+        " selected codec). Nothing was analyzed; turn the toggle off to analyze the original"
         " audio."
     ),
     "err_server": "The API reported an internal error. Please try again.",
@@ -149,9 +154,13 @@ HI: dict[str, str] = {
     "analyzing": "जाँच हो रही है…",
     "simulate_label": "फ़ोन लाइन का अनुकरण करें",
     "simulate_help": (
-        "डिटेक्टर के स्कोर देने से पहले सर्वर रिकॉर्डिंग को टेलीफ़ोन कोडेक से गुज़ारता है।"
-        " कौन-सा कोडेक, यह सर्वर पर तय होता है (VOXGUARD_SIMULATE_CODEC)।"
+        "डिटेक्टर के स्कोर देने से पहले सर्वर रिकॉर्डिंग को चुने गए टेलीफ़ोन कोडेक से, मूल्यांकन"
+        " वाले बिटरेट पर, गुज़ारता है।"
     ),
+    "codec_label": "फ़ोन कोडेक",
+    "codec_gsm": "GSM — प्रशिक्षण में उपयोग नहीं हुआ",
+    "codecs_error": "API से कोडेक सूची नहीं मिल सकी; सर्वर का डिफ़ॉल्ट कोडेक इस्तेमाल होगा।",
+    "no_codecs": "इस सर्वर के ffmpeg में कोई फ़ोन कोडेक नहीं है, इसलिए अनुकरण उपलब्ध नहीं है।",
     "simulate_on": "फ़ोन लाइन अनुकरण चालू है: अगली जाँच कोडेक से गुज़री रिकॉर्डिंग पर होगी।",
     "simulate_off": "फ़ोन लाइन अनुकरण बंद है: रिकॉर्डिंग जैसी है वैसी ही जाँची जाएगी।",
     "result_clean": "जैसी दी गई वैसी जाँची गई (फ़ोन लाइन अनुकरण नहीं)।",
@@ -164,7 +173,8 @@ HI: dict[str, str] = {
     "m_label": "लेबल",
     "m_score": "नकली होने का स्कोर",
     "m_threshold": "सीमा",
-    "m_latency": "प्रतिक्रिया समय",
+    "m_latency": "डिटेक्टर प्रतिक्रिया समय",
+    "m_codec_ms": "कोडेक प्रोसेसिंग समय",
     "m_model": "मॉडल संस्करण",
     "m_flagged": "चिह्नित",
     "m_codec": "लागू कोडेक",

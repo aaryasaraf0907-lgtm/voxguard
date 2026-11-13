@@ -13,7 +13,7 @@ from typing import Any
 
 import streamlit as st
 
-from voxguard.schemas import AnalyzeResponse
+from voxguard.schemas import AnalyzeResponse, CodecsResponse
 from voxguard.ui.api_client import ApiError, VoxGuardClient
 from voxguard.ui.i18n import DEFAULT_LANGUAGE, LANGUAGES, t
 
@@ -24,6 +24,13 @@ CACHE_TTL_S = 5.0
 AUDIO_TYPES = ["wav", "flac", "ogg", "mp3"]  # formats the API's decoder (libsndfile) reads
 SESSIONS_LIMIT = 50
 ALERTS_LIMIT = 100
+CODEC_NAMES = {  # proper names, the same in every language
+    "g711_mulaw": "G.711 µ-law",
+    "g711_alaw": "G.711 A-law",
+    "amr_nb": "AMR-NB",
+    "amr_wb": "AMR-WB",
+    "opus": "Opus",
+}
 
 
 def get_client() -> Any:
@@ -102,10 +109,17 @@ def render_result(result: AnalyzeResponse, lang: str, header_key: str = "result_
     cols[1].metric(t("m_score", lang), f"{result.fake_score:.4f}")
     cols[2].metric(t("m_threshold", lang), f"{result.threshold:.4f}")
     cols[3].metric(t("m_latency", lang), t("unit_ms", lang, value=f"{result.latency_ms:.1f}"))
-    cols = st.columns(3)
+    cols = st.columns(4)
     cols[0].metric(t("m_model", lang), result.model_version)
     cols[1].metric(t("m_flagged", lang), t("yes" if result.flagged else "no", lang))
     cols[2].metric(t("m_codec", lang), result.codec_applied or t("none_value", lang))
+    codec_ms = result.codec_ms
+    cols[3].metric(
+        t("m_codec_ms", lang),
+        t("unit_ms", lang, value=f"{codec_ms:.1f}")
+        if codec_ms is not None
+        else t("none_value", lang),
+    )
     st.caption(t("m_session", lang, session_id=result.session_id))
 
 
@@ -118,6 +132,32 @@ def current_results(digest: str | None) -> dict[str, AnalyzeResponse]:
     return {mode: r for mode, r in results.items() if mode != "audio"}
 
 
+def codec_label(name: str, lang: str) -> str:
+    return t("codec_gsm", lang) if name == "gsm" else CODEC_NAMES.get(name, name)
+
+
+def pick_codec(client: Any, lang: str) -> str | None:
+    """Codec dropdown from GET /v1/codecs, offering only codecs this server can run.
+
+    None means no choice was made; the request then uses the server default codec."""
+    try:
+        info: CodecsResponse = cached("codecs", client.codecs)
+    except ApiError:
+        st.warning(t("codecs_error", lang))
+        return None
+    options = [c.name for c in info.codecs if c.available]
+    if not options:
+        st.warning(t("no_codecs", lang))
+        return None
+    return st.selectbox(
+        t("codec_label", lang),
+        options,
+        index=options.index(info.default) if info.default in options else 0,
+        format_func=lambda name: codec_label(name, lang),
+        key="codec",
+    )
+
+
 def render_analyze(client: Any, lang: str) -> None:
     st.header(t("analyze_header", lang))
     caller_id = st.text_input(
@@ -127,6 +167,7 @@ def render_analyze(client: Any, lang: str) -> None:
         t("simulate_label", lang), value=False, help=t("simulate_help", lang), key="simulate_line"
     )
     st.caption(t("simulate_on" if simulate else "simulate_off", lang))
+    codec = pick_codec(client, lang) if simulate else None
 
     source = st.radio(
         t("source_label", lang),
@@ -158,6 +199,7 @@ def render_analyze(client: Any, lang: str) -> None:
                         filename=audio.name or "audio.wav",
                         caller_id=caller_id.strip() or None,
                         simulate_codec=simulate,
+                        codec=codec,
                     )
                 invalidate("sessions", "blocklist", "alerts")
             except ApiError as err:

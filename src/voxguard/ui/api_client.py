@@ -14,6 +14,7 @@ from voxguard.schemas import (
     AlertRecord,
     AnalyzeResponse,
     BlocklistEntry,
+    CodecsResponse,
     HealthResponse,
     SessionRecord,
 )
@@ -126,13 +127,17 @@ class VoxGuardClient:
         filename: str = "audio.wav",
         caller_id: str | None = None,
         simulate_codec: bool = False,
+        codec: str | None = None,
     ) -> AnalyzeResponse:
-        """POST /v1/analyze. ``simulate_codec`` is only sent when true (the API default is off)."""
+        """POST /v1/analyze. Fields are only sent when set: ``codec`` picks the codec (and implies
+        simulation); ``simulate_codec`` alone uses the server's default codec."""
         data: dict[str, str] = {}
         if caller_id:
             data["caller_id"] = caller_id
         if simulate_codec:
             data["simulate_codec"] = "true"
+        if codec:
+            data["codec"] = codec
         payload = self._request(
             "POST",
             "/v1/analyze",
@@ -141,6 +146,9 @@ class VoxGuardClient:
             data=data or None,
         )
         return self._parse(AnalyzeResponse, payload)
+
+    def codecs(self) -> CodecsResponse:
+        return self._parse(CodecsResponse, self._request("GET", "/v1/codecs"))
 
     def sessions(self, flagged_only: bool = False, limit: int = 50) -> list[SessionRecord]:
         params = {"flagged_only": str(flagged_only).lower(), "limit": limit}
