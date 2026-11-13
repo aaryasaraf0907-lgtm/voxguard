@@ -39,6 +39,10 @@ ANALYZE_PATH = "/v1/analyze"
 MULTIPART_OVERHEAD_BYTES = 64 * 1024  # boundaries and form fields around the file
 
 
+def _codec_unavailable(codec: str) -> str:
+    return f"Codec simulation for {codec} is unavailable on this server."
+
+
 def create_app(detector: Detector | None = None, settings: Settings | None = None) -> FastAPI:
     """Build the app. Invalid VOXGUARD_* settings raise ValueError here (fail fast)."""
     settings = settings or Settings.from_env()
@@ -93,7 +97,7 @@ def create_app(detector: Detector | None = None, settings: Settings | None = Non
                 codec_sim.ensure_available(chosen)
             except codec_sim.CodecUnavailableError as exc:
                 logger.error("codec simulation unavailable: %s", exc)
-                raise HTTPException(503, f"Codec {chosen} is unavailable on this server") from None
+                raise HTTPException(503, _codec_unavailable(chosen)) from None
 
         # sync handler: read the underlying file object, bounded by the upload limit
         data = file.file.read(cfg.max_upload_bytes + 1)
@@ -111,7 +115,7 @@ def create_app(detector: Detector | None = None, settings: Settings | None = Non
             try:
                 waveform, sample_rate = codec_sim.simulate_phone_line(waveform, sample_rate, chosen)
             except codec_sim.CodecUnavailableError:
-                raise HTTPException(503, "Codec simulation is unavailable on this server") from None
+                raise HTTPException(503, _codec_unavailable(chosen)) from None
             except codec_sim.CodecSimulationError:
                 raise HTTPException(500, "Codec simulation failed") from None
             codec_ms = (time.perf_counter() - t0) * 1000.0

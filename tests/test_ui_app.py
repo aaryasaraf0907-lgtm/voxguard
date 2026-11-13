@@ -562,3 +562,35 @@ def test_no_available_codec_is_explained() -> None:
     at.toggle[0].set_value(True).run()
     assert not [b for b in at.selectbox if b.key == "codec"]
     assert t("no_codecs", "en") in _text(at)
+
+
+def _clean_then_opus() -> tuple[FakeClient, AppTest]:
+    client = FakeClient()
+    client.analyze_response = lambda simulate: _result(
+        not simulate,
+        0.2 if simulate else 0.95,
+        "opus" if simulate else None,
+        5.0 if simulate else None,
+    )
+    at = _analyze(client)  # clean
+    at.toggle[0].set_value(True).run()
+    _codec_box(at).set_value("opus").run()
+    return client, _click_analyze(at)  # same clip through opus
+
+
+def test_changing_codec_drops_the_phone_result_and_keeps_the_clean_one() -> None:
+    client, at = _clean_then_opus()
+    assert t("result_header_phone", "en") in _text(at)  # side by side
+    at = _codec_box(at).set_value("gsm").run()
+    text = _text(at)
+    assert t("result_header_phone", "en") not in text and "opus" not in text
+    assert t("result_header", "en") in [h.value for h in at.subheader]  # the clean result stays
+    assert {m.label: m.value for m in at.metric}[t("m_score", "en")] == "0.9500"
+    at = _codec_box(at).set_value("opus").run()  # switching back does not bring it back
+    assert "opus" not in _text(at) and len(_analyze_calls(client)) == 2
+
+
+def test_rerun_with_the_same_codec_keeps_the_phone_result() -> None:
+    _, at = _clean_then_opus()
+    at = at.run()
+    assert t("result_header_phone", "en") in _text(at) and "opus" in _text(at)

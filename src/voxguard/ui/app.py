@@ -184,6 +184,10 @@ def render_analyze(client: Any, lang: str) -> None:
     data = audio.getvalue() if audio is not None else None
     digest = hashlib.sha256(data).hexdigest() if data else None
     results = current_results(digest)  # a new file or recording drops the previous results
+    phone = results.get("phone")
+    if codec is not None and phone is not None and phone.codec_applied != codec:
+        del results["phone"]  # made with another codec: drop it, as for a new clip
+        st.session_state[RESULTS_KEY] = {"audio": digest, **results}
 
     if audio is None:
         st.info(t("no_audio", lang))
