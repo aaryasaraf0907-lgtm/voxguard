@@ -110,7 +110,8 @@ docker compose up
   phone threshold for every request today (uploads of unknown origin and simulated phone lines).
   An explicit `VOXGUARD_THRESHOLD` overrides the file, so keep it empty in `.env`. A missing file
   keeps the 0.5 default and logs `VOXGUARD_THRESHOLD is the default 0.50 ...`; a malformed file,
-  out-of-range values or a `model_version` different from the loaded checkpoint stop startup.
+  out-of-range values or a `model_version` naming a different model or epoch than the loaded
+  checkpoint stop startup (where the checkpoint was loaded from is ignored).
 - To use a local checkpoint instead, mount it, e.g. add `- ./runs/best:/models:ro` under the
   API's `volumes` and set `VOXGUARD_MODEL_REPO=/models` (a directory holding `best.pt`, or the
   file itself).
@@ -178,7 +179,7 @@ Limitations on a Space:
 | `dependency failed to start: container voxguard-api-1 is unhealthy` | The API did not pass `/health`: see `docker compose logs api`. With the real detector, the checkpoint download may still be running: raise `VOXGUARD_API_START_PERIOD` (e.g. `600s`). |
 | Space log: `VoxGuard API did not become healthy within 60 s` | Raise `VOXGUARD_API_START_TIMEOUT` in the Space variables. |
 | Real detector flags almost everything or nothing; API log warns `VOXGUARD_THRESHOLD is the default` | The checkpoint has no `thresholds.json` (or `VOXGUARD_THRESHOLD` is set): upload its `thresholds.json`, or set `VOXGUARD_THRESHOLD` explicitly. |
-| `api` exits with `unusable thresholds for VOXGUARD_MODEL_REPO=...` | `thresholds.json` is malformed, has a value outside [0, 1], or its `model_version` is not the loaded checkpoint's: fix the file. |
+| `api` exits with `unusable thresholds for VOXGUARD_MODEL_REPO=...` | `thresholds.json` is malformed, has a value outside [0, 1], or its `model_version` names a different model or epoch than the loaded checkpoint: fix the file. |
 | UI sidebar shows "API unavailable" | `docker compose ps` should show `api` as healthy. In compose the UI must use `http://api:8000`, not `localhost` (each container has its own localhost). |
 | `simulate_codec=true` returns 501 | `VOXGUARD_SIMULATE_CODEC` is not set for the API. |
 | `simulate_codec=true` returns 503 | This ffmpeg has no encoder for the chosen codec; pick one the codec report lists as OK. |
