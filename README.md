@@ -77,8 +77,11 @@ Prerequisites:
 - [`uv`](https://docs.astral.sh/uv/getting-started/installation/), e.g.
   `curl -LsSf https://astral.sh/uv/install.sh | sh`. You do not need to install Python
   yourself: uv uses Python 3.11 (from `.python-version`) and downloads it if needed.
-- Optional: `ffmpeg` for the phone-line simulation (e.g. `sudo apt install ffmpeg`), and Docker
-  with compose for the Docker run. Neither is needed for the basic demo.
+- Optional: `ffmpeg` for the phone-line simulation (e.g. `sudo apt install ffmpeg`). Not needed
+  for the basic demo.
+- For the deployment: Docker with compose v2 (on Windows, Docker Desktop with WSL integration).
+  For the real detector also a Hugging Face account in the private `voxguard-team` organisation
+  with a **read** token (see [Run with Docker Compose](#run-with-docker-compose-the-deployment)).
 
 ```bash
 git clone https://github.com/aaryasaraf0907-lgtm/voxguard.git && cd voxguard
@@ -152,7 +155,10 @@ Using the demo:
 4. **Monitoring:** the other tabs list flagged sessions, the caller blocklist and alerts
    (times in UTC). A new file or recording clears the previous result.
 
-## Run with Docker
+## Run with Docker Compose (the deployment)
+
+Local Docker Compose is how VoxGuard is deployed: the API and the UI in two containers on your
+machine. With the stub detector:
 
 ```bash
 cp .env.example .env               # optional; e.g. VOXGUARD_SIMULATE_CODEC=g711_mulaw
@@ -160,11 +166,31 @@ docker compose up --build          # UI http://localhost:8501, API http://localh
 # ports taken? VOXGUARD_API_PORT=8001 VOXGUARD_UI_PORT=8502 docker compose up --build
 ```
 
-The API image includes ffmpeg (G.711, GSM and Opus; no AMR) and the stub detector; SQLite lives
-on the `voxguard-data` volume. The real detector image (`INSTALL_ML=1`), the Hugging Face Space
-image, every variable and troubleshooting are in [docs/deployment.md](docs/deployment.md).
+With the real detector, set these values in `.env`, then run `docker compose up --build` again:
 
-## Using the real detector
+```bash
+INSTALL_ML=1
+VOXGUARD_DETECTOR=real
+VOXGUARD_MODEL_REPO=voxguard-team/voxguard-rawnet2-codec-aug
+HF_TOKEN=<your read token for voxguard-team>
+VOXGUARD_API_START_PERIOD=600s
+VOXGUARD_SIMULATE_CODEC=g711_mulaw
+```
+
+`INSTALL_ML=1` builds the API image with torch (about 3 GB of downloads); keep it in `.env` so a
+later `--build` does not rebuild the image without torch. The first start downloads the
+checkpoint, hence the longer health-check grace period. `.env` is git-ignored: never commit it
+or share the token. `curl localhost:8000/health` should then show `"detector": "real"`. The checkpoints published today are for checking
+integration and latency only (see Status). This compose path with the real detector has not
+been run end to end yet; see [docs/deployment.md](docs/deployment.md#real-detector) for the
+prerequisites, downloads, what is verified and troubleshooting.
+
+The API image includes ffmpeg (G.711, GSM and Opus; no AMR); SQLite and the downloaded
+checkpoint live on the `voxguard-data` volume. A hosted Hugging Face Space is not part of the
+deployment: Docker Spaces need a paid Hugging Face plan, so it is kept only as an optional route
+in [docs/deployment.md](docs/deployment.md).
+
+## Using the real detector without Docker
 
 ```bash
 export VOXGUARD_DETECTOR=real
