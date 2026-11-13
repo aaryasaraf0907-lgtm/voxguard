@@ -1,0 +1,119 @@
+{
+  "schema": 1,
+  "id": "6704bc5111fd",
+  "created_at": "2026-11-13T16:37:40+00:00",
+  "mocked": false,
+  "note": "RawNet2 codec-aug epoch17; pre-class-weight-fix checkpoint; latency and integration testing only; not valid for accuracy evaluation",
+  "detector": {
+    "kind": "real",
+    "model_version": "rawnet2:voxguard-rawnet2-codec-aug:epoch17",
+    "threshold": 0.5,
+    "device": "cpu",
+    "load_ms": 2847.01587699999,
+    "weights": "checkpoint"
+  },
+  "input": {
+    "seconds": 4.0,
+    "sample_rate": 16000,
+    "seed": 0,
+    "channels": 1
+  },
+  "method": {
+    "warmup": 5,
+    "iterations": 50,
+    "timer": "time.perf_counter"
+  },
+  "environment": {
+    "platform": "Linux-6.18.58.1-microsoft-standard-WSL2-x86_64-with-glibc2.43",
+    "python": "3.11.18",
+    "cpu": "13th Gen Intel(R) Core(TM) i5-13450HX",
+    "cpu_count": 16,
+    "ffmpeg": "ffmpeg version 7.0.2-static https://johnvansickle.com/ffmpeg/  Copyright (c) 2000-2024 the FFmpeg developers",
+    "git_commit": "27927bc",
+    "device": "cpu",
+    "torch": "2.15.0+cu132",
+    "torch_threads": 8,
+    "cuda_available": true
+  },
+  "detector_inference": {
+    "wall": {
+      "n": 50,
+      "mean_ms": 56.57000400000015,
+      "p50_ms": 53.29021299999681,
+      "p95_ms": 73.4172923000031,
+      "min_ms": 46.89962200001219,
+      "max_ms": 118.01476399998023,
+      "warmup": 5
+    },
+    "reported_latency_ms": {
+      "n": 50,
+      "mean_ms": 56.55308354000169,
+      "p50_ms": 53.272577999990745,
+      "p95_ms": 73.39886480000642,
+      "min_ms": 46.889550000003055,
+      "max_ms": 118.00161700000444,
+      "warmup": 5
+    }
+  },
+  "codec_preprocessing": {
+    "g711_mulaw": {
+      "n": 50,
+      "mean_ms": 9.01345071999856,
+      "p50_ms": 8.6468134999933,
+      "p95_ms": 11.437676450002243,
+      "min_ms": 7.310138999997662,
+      "max_ms": 11.912389000002577,
+      "warmup": 5
+    }
+  },
+  "api_request": {
+    "clean": {
+      "n": 50,
+      "mean_ms": 89.14704185999769,
+      "p50_ms": 88.29201749999527,
+      "p95_ms": 107.86782425002313,
+      "min_ms": 61.06369700000869,
+      "max_ms": 134.09869999998136,
+      "warmup": 5,
+      "sequential_requests_per_s": 11.217422127931794,
+      "server_latency_ms": {
+        "n": 50,
+        "mean_ms": 83.92246528000271,
+        "p50_ms": 83.6794190000063,
+        "p95_ms": 100.30906195002842,
+        "min_ms": 52.93944599998213,
+        "max_ms": 127.99185199997964,
+        "warmup": 5
+      }
+    },
+    "simulated": {
+      "n": 50,
+      "mean_ms": 94.9368021599969,
+      "p50_ms": 94.4904774999884,
+      "p95_ms": 106.10801264999168,
+      "min_ms": 81.54840099996363,
+      "max_ms": 116.10977899999853,
+      "warmup": 5,
+      "sequential_requests_per_s": 10.53332298168945,
+      "server_latency_ms": {
+        "n": 50,
+        "mean_ms": 81.66267098000162,
+        "p50_ms": 81.18017350003015,
+        "p95_ms": 91.28307775000906,
+        "min_ms": 68.8236839999945,
+        "max_ms": 101.36595500000567,
+        "warmup": 5
+      },
+      "server_codec_ms": {
+        "n": 50,
+        "mean_ms": 8.388232319996405,
+        "p50_ms": 8.310305999970069,
+        "p95_ms": 9.554766999963249,
+        "min_ms": 7.219875000032516,
+        "max_ms": 11.872605000007752,
+        "warmup": 5
+      }
+    },
+    "codec": "g711_mulaw"
+  }
+}

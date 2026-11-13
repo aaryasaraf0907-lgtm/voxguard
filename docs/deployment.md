@@ -16,7 +16,14 @@ includes CUDA libraries).
 
 No secrets, tokens, `.env` files or model weights are copied into any image (`.dockerignore`).
 
-## Local: docker compose (the supported fallback)
+**Selected deployment for the MVP: local Docker Compose** (below), the CLAUDE.md MVP item 9
+option that needs no paid service. A hosted Hugging Face Docker Space is an **optional future
+route**: Hugging Face requires a paid plan to create Docker Spaces (PRO for a personal account,
+Team or Enterprise for an organisation), and this project uses free tools only. The Space image
+and its steps are kept, unchanged, in
+[Private Hugging Face Space](#private-hugging-face-space-optional-future-route-needs-a-paid-plan).
+
+## Local: docker compose (the selected MVP deployment)
 
 ```bash
 cp .env.example .env                  # optional; every setting has a default
@@ -109,6 +116,11 @@ docker compose up
 - The checkpoint is downloaded at startup into the `/data/hf-cache` volume, so later restarts
   reuse it. A full SSL-AASIST checkpoint is GBs, which is why `VOXGUARD_API_START_PERIOD`
   (health-check grace period, default 20 s) should be raised for the real detector.
+- **SSL-AASIST loads slowly on CPU.** Aarya measured it on a Mac CPU (13 Nov): about 10 s to
+  load, then a 235 ms warm-up (RawNet2: 53 ms). On a first start the multi-GB download comes
+  before that, so expect tens of seconds or more on a small CPU host (e.g. a Space's CPU Basic,
+  not measured). The warm-up adds well under a second. The default `600s` grace period for the
+  real detector (and `VOXGUARD_API_START_TIMEOUT` in the Space image) covers this.
 - `/health` then reports `"detector": "real"` and the checkpoint's `model_version`
   (`<model>:<source>:epoch<N>`).
 - **Threshold:** at startup the API reads `thresholds.json` next to the checkpoint (the same
@@ -129,7 +141,15 @@ docker compose up
   would need a `pyproject.toml` source entry and a re-lock (shared files; to be decided with
   Aarya). The ML image has not been built yet.
 
-## Private Hugging Face Space (prepared, not deployed)
+## Private Hugging Face Space (optional future route; needs a paid plan)
+
+**Not part of the MVP and not deployed.** Hugging Face requires a paid plan to create Docker
+Spaces: PRO for a personal account, Team or Enterprise for an organisation (the CPU Basic
+hardware itself is free). On 13 Nov 2026 creating a Docker Space under `voxguard-team` was still
+locked, even with the write role in the organisation. The project uses free tools only and is not
+buying a plan for this, so local Docker Compose (above) is the selected deployment. The image and
+steps below are kept so the Space can be deployed later if a plan becomes available; nothing in
+them has changed.
 
 `docker/Dockerfile.space` runs the API on 127.0.0.1:8000 inside the container and Streamlit on
 port 7860, which is what a Docker Space exposes. `docker/space_start.sh` starts the API, waits
@@ -137,7 +157,8 @@ for `/health`, and exits with the API's error if it fails to start, so the Space
 logs. The wait is `VOXGUARD_API_START_TIMEOUT` seconds: 600 by default with
 `VOXGUARD_DETECTOR=real` (the first start downloads the checkpoint), 60 otherwise.
 
-Manual steps (need your Hugging Face account; nothing here has been deployed):
+Manual steps (need your Hugging Face account and a plan that allows Docker Spaces; nothing here
+has been deployed):
 
 1. On huggingface.co: **New Space**, SDK **Docker**, visibility **Private** (CLAUDE.md section 15),
    hardware **CPU basic**. Creating the Space and pushing to it need **write** access: do step 1
