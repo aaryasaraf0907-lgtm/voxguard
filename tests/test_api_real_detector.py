@@ -342,3 +342,44 @@ def test_gpu_and_cpu_scores_agree(checkpoint: Path) -> None:
     cpu = RealDetector(str(checkpoint), device="cpu").predict(x, 16_000).fake_score
     gpu = RealDetector(str(checkpoint), device="cuda").predict(x, 16_000).fake_score
     assert gpu == pytest.approx(cpu, abs=1e-4)
+
+
+def test_real_detector_is_warmed_up_once_before_serving(monkeypatch) -> None:
+    import voxguard.inference as inference
+
+    seen = []
+
+    class CountingReal(StubDetector):
+        def __init__(self, repo: str, device: str = "cpu") -> None:
+            super().__init__(model_version="fake-real")
+
+        def predict(self, waveform, sample_rate):
+            seen.append((len(waveform), sample_rate, float(np.abs(waveform).max())))
+            return super().predict(waveform, sample_rate)
+
+    _torch_present(monkeypatch)
+    monkeypatch.setattr(inference, "RealDetector", CountingReal)
+    monkeypatch.setattr(detector_loader.thresholds_mod, "load_thresholds", lambda *a: None)
+    with _start(monkeypatch, VOXGUARD_DETECTOR="real", VOXGUARD_MODEL_REPO="x/y") as c:
+        assert seen == [(64_600, 16_000, 0.0)]  # one 4 s silent window, before any request
+        c.post("/v1/analyze", files={"file": ("a.wav", make_wav(0.5))})
+    assert len(seen) == 2
+
+
+def test_failed_warm_up_stops_startup(monkeypatch) -> None:
+    import voxguard.inference as inference
+
+    class BrokenReal(StubDetector):
+        def __init__(self, repo: str, device: str = "cpu") -> None:
+            super().__init__(model_version="fake-real")
+
+        def predict(self, waveform, sample_rate):
+            raise RuntimeError("CUDA error: device-side assert")
+
+    _torch_present(monkeypatch)
+    monkeypatch.setattr(inference, "RealDetector", BrokenReal)
+    with (
+        pytest.raises(RuntimeError, match="warm-up inference"),
+        _start(monkeypatch, VOXGUARD_DETECTOR="real", VOXGUARD_MODEL_REPO="x/y"),
+    ):
+        pass
