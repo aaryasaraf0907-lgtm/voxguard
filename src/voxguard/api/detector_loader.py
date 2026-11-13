@@ -103,7 +103,7 @@ def _warm_up(detector: Detector) -> None:
     t0 = time.perf_counter()
     try:
         detector.predict(np.zeros(NUM_SAMPLES, dtype=np.float32), TARGET_SR)
-    except Exception as exc:  # a broken model fails the first request with a clear 500 anyway
+    except Exception as exc:  # fail at startup rather than on the first request
         raise RuntimeError(f"the real detector failed its warm-up inference: {exc}") from exc
     logger.info("warm-up inference took %.0f ms", (time.perf_counter() - t0) * 1000)
 
