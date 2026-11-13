@@ -68,12 +68,12 @@ uv run python -m voxguard.benchmark --render results/benchmarks   # -> docs/benc
   configuration do. The committed RawNet2 numbers come from an **untrained** RawNet2 built with
   the training configuration (`configs/rawnet2.yaml`): valid as compute latency for that
   architecture, meaningless for detection quality. The run's `note` and `weights` field say so.
-- Trained RawNet2 checkpoints now exist in the private Hugging Face org, trained before the
-  class-weight fix (RawNet2 is being retrained). Aarya ran this benchmark on one (macOS, CPU)
-  in her PR #23 review; that run is reported there and is not in `results/benchmarks/`. No
-  trained-model run has been made on the machine recorded in the committed files, which cannot
-  reach the private org. Trained runs should replace the untrained files once the retrained
-  checkpoints are reachable from the benchmark machine.
+- The trained run in the report (`rawnet2:voxguard-rawnet2-codec-aug:epoch17`, CUDA,
+  13 Nov) uses a checkpoint trained **before the class-weight fix**. Its timings are valid,
+  since weights do not change compute, but its scores mean nothing for detection; its `note`
+  says so. It is the first run with the API's own `codec_ms` and post-#45 (evaluation-bitrate)
+  codec timings. The untrained runs are kept as history. Runs on the retrained RawNet2 and on
+  SSL-AASIST, CPU and GPU, should follow.
 - The CLAUDE.md targets (CPU < 2 s, GPU < 300 ms per 4 s clip) apply to
   `detector_inference` only. The phone-line demo path costs `codec_ms` (in-process:
   `codec_preprocessing`) on top, and `api_request.simulated` is the end-to-end time a client
