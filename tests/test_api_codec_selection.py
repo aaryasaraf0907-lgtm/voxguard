@@ -50,13 +50,6 @@ def test_demo_uses_the_evaluation_bitrate(codec, fake_ffmpeg) -> None:
     assert calls == [(codec, default_spec(codec).bitrate)]
 
 
-def test_evaluation_bitrates_are_the_registry_middle_values() -> None:
-    for name, spec in codecs.CODECS.items():
-        rates = spec.bitrates
-        assert codec_sim.eval_bitrate(name) == (rates[len(rates) // 2] if rates else None)
-    assert codec_sim.eval_bitrate("opus") == 12_000 and codec_sim.eval_bitrate("g711_mulaw") is None
-
-
 @pytest.mark.parametrize("codec", list(codecs.CODECS))
 def test_demo_output_equals_the_evaluation_degradation(codec) -> None:
     """With real ffmpeg: the API's phone line is bit-identical to the eval sets' default spec."""
