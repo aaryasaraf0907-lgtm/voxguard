@@ -6,6 +6,7 @@ The CLAUDE.md latency targets (CPU < 2 s, GPU < 300 ms per 4 s clip) apply to In
 
 | Run | Detector | Weights | Device | Load (s) | Inference | Codec | API clean | API simulated | API codec_ms |
 |---|---|---|---|---|---|---|---|---|---|
+| 6704bc5111fd | rawnet2:voxguard-rawnet2-codec-aug:epoch17 | checkpoint | cpu: 13th Gen Intel(R) Core(TM) i5-13450HX | 2.85 | 53.3 / 73.4 | g711_mulaw 8.6 / 11.4 | 88.3 / 107.9 | 94.5 / 106.1 | 8.3 / 9.6 |
 | af5a05af535d | rawnet2:voxguard-rawnet2-codec-aug:epoch17 | checkpoint | cuda: NVIDIA GeForce RTX 3050 6GB Laptop GPU | 2.34 | 11.6 / 15.1 | g711_mulaw 9.1 / 10.4 | 16.2 / 18.7 | 24.1 / 27.0 | 7.9 / 8.7 |
 | 4736434ce9ea | rawnet2:best.pt:epoch0 | untrained | cpu: 13th Gen Intel(R) Core(TM) i5-13450HX | 0.11 | 48.4 / 51.7 | g711_mulaw 7.4 / 7.9 | 78.8 / 83.4 | 87.5 / 92.8 | n/a |
 | 3091e9185427 | rawnet2:best.pt:epoch0 | untrained | cuda: NVIDIA GeForce RTX 3050 6GB Laptop GPU | 0.90 | 11.5 / 14.4 | g711_mulaw 7.6 / 8.2 | 15.9 / 18.5 | 24.2 / 28.1 | n/a |
@@ -13,6 +14,7 @@ The CLAUDE.md latency targets (CPU < 2 s, GPU < 300 ms per 4 s clip) apply to In
 
 Notes per run:
 
+- `6704bc5111fd` (2026-11-13T16:37:40+00:00, commit 27927bc): 4.0 s at 16000 Hz, 5 warm-up + 50 timed runs. RawNet2 codec-aug epoch17; pre-class-weight-fix checkpoint; latency and integration testing only; not valid for accuracy evaluation
 - `af5a05af535d` (2026-11-13T12:34:14+00:00, commit 76c4db6): 4.0 s at 16000 Hz, 5 warm-up + 50 timed runs. RawNet2 codec-aug epoch17; pre-class-weight-fix checkpoint; latency and integration testing only; not valid for accuracy evaluation
 - `4736434ce9ea` (2026-11-10T12:20:30+00:00, commit 22e8a0a): 4.0 s at 16000 Hz, 5 warm-up + 50 timed runs. UNTRAINED weights from configs/rawnet2.yaml (latency only). RawNet2 at the training configuration.
 - `3091e9185427` (2026-11-10T12:20:49+00:00, commit 22e8a0a): 4.0 s at 16000 Hz, 5 warm-up + 50 timed runs. UNTRAINED weights from configs/rawnet2.yaml (latency only). RawNet2 at the training configuration.
