@@ -42,7 +42,7 @@ Stretch evidence: train on a subset of codecs, test on an unseen codec.
 6. FastAPI service with analyze endpoint, SQLite persistence, **prevention layer** (flagged sessions + blocklist + alerts)
 7. Streamlit demo (English + Hindi UI), incl. "simulate phone line" toggle (same clip, clean vs codec-degraded)
 8. Docker, GitHub Actions CI (ruff + pytest), README, architecture + results docs
-9. Private deployment (HF Space, CPU) or local docker-compose demo as fallback
+9. Local docker-compose deployment (API + UI, real detector). A private HF Space is optional only: since 2026, Docker Spaces need a paid HF plan (PRO / Team / Enterprise), which the free-only rule excludes (checked 13 Nov 2026)
 
 **Stretch (only after MVP is green, in this order):**
 1. Unseen-codec generalization experiment
@@ -86,7 +86,7 @@ Stretch evidence: train on a subset of codecs, test on an unseen codec.
 | UI | Streamlit (>=1.39 for `st.audio_input`) |
 | Quality | pytest, pytest-benchmark, ruff (lint + format), pre-commit (optional) |
 | CI/CD | GitHub Actions (ruff + pytest on PRs to `dev`/`main`) |
-| Packaging/deploy | Docker + docker-compose; HF Space (CPU, **private**) |
+| Packaging/deploy | Docker + docker-compose (local); HF Space only if a free route exists again (Docker Spaces need a paid plan as of Nov 2026) |
 | Training compute | Kaggle Notebooks / Colab free GPUs; MacBook for dev + smoke tests only |
 
 ## 6. Repo layout
@@ -194,7 +194,7 @@ Thresholds (agreed 13 Nov): `thresholds.json` next to each checkpoint (`{model_v
 | | **Person 1 - ML Core + repo owner (Aarya)** | **Person 2 - Product & Platform (teammate)** |
 |---|---|---|
 | Owns | `data/`, `models/`, `metrics.py`, `train.py`, `evaluate.py`, `inference.py` (RealDetector), `configs/`, `scripts/`, results docs | `api/`, `ui/`, `schemas.py`, `docker/`, `.github/`, API/UI tests, README, `architecture.md`, deployment |
-| Delivers | pipeline, 2 models, 2x2 results, latency numbers, checkpoint on HF Hub | working API + prevention layer, EN/HI demo, CI, Docker, private deploy, demo script/video |
+| Delivers | pipeline, 2 models, 2x2 results, latency numbers, checkpoint on HF Hub | working API + prevention layer, EN/HI demo, CI, Docker, local compose deployment, demo script/video |
 | Shared | `CLAUDE.md`, `pyproject.toml`, `docs/STATUS.md`, `docs/invention-disclosure.md`, the section-7 contract | |
 
 Person 1 lands the scaffold + contract first (small PR, within a day) so Person 2 is never blocked. Person 2 builds against `StubDetector` until the real checkpoint exists.
@@ -225,7 +225,7 @@ Python 3.11, type hints everywhere, ruff (lint + format), pydantic v2, `logging`
 | 1 (2-8 Nov) | scaffold PR + contract; ASVspoof download; codec pipeline | review scaffold; FastAPI + SQLite skeleton on StubDetector; UI skeleton |
 | 2 (9-15 Nov) | dataset loaders, EER, RawNet2 + smoke run; SSL-AASIST code | prevention layer, alerts, UI (EN/HI), API tests, CI. **M1** |
 | 3 (16-22 Nov) | full training runs (clean vs codec-aug) on Kaggle/Colab | Docker/compose, benchmark harness, "simulate phone line" toggle (uses `codecs.py`) |
-| 4 (23-29 Nov) | evaluation matrix, per-codec results, RealDetector + checkpoint to HF Hub. **M2** | integrate real detector, private deploy, demo polish |
+| 4 (23-29 Nov) | evaluation matrix, per-codec results, RealDetector + checkpoint to HF Hub. **M2** | integrate real detector, compose deployment with the real detector, demo polish |
 | 5 (30 Nov-6 Dec) | stretch: unseen codec / Hindi; results write-up | docs, README, demo video/script; **M3 (8 Dec) feature freeze** |
 | 6 (7-13 Dec) | final numbers, report sections, invention disclosure | final report/presentation support, rehearsal, buffer |
 
