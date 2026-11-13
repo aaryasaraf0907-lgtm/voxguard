@@ -112,7 +112,9 @@ def test_compose_config_is_valid(compose: Compose) -> None:
         cwd=ROOT, env=env, capture_output=True, text=True, check=True,
     ).stdout  # fmt: skip
     api_env = json.loads(out)["services"]["api"]["environment"]
-    assert api_env["VOXGUARD_DETECTOR"] == "stub" and api_env["VOXGUARD_THRESHOLD"] == "0.5"
+    assert api_env["VOXGUARD_DETECTOR"] == "stub" and api_env["VOXGUARD_THRESHOLD_MODE"] == "eer"
+    # empty values stay empty (compose keeps an inline comment after an empty value as the value)
+    assert api_env["VOXGUARD_THRESHOLD"] == "" and api_env["VOXGUARD_MODEL_REPO"] == ""
     assert api_env["VOXGUARD_DB_URL"] == "sqlite:////data/voxguard.db"
 
 
