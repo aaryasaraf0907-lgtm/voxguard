@@ -146,6 +146,8 @@ def _fake_real(monkeypatch):
 
     _torch_present(monkeypatch)
     monkeypatch.setattr(inference, "RealDetector", FakeReal)
+    # no checkpoint was downloaded, so there is no thresholds.json to look for
+    monkeypatch.setattr(detector_loader.thresholds_mod, "load_thresholds", lambda *a: None)
 
 
 DEFAULT_WARNING = "VOXGUARD_THRESHOLD is the default"
@@ -162,7 +164,7 @@ def test_real_detector_on_default_threshold_warns(monkeypatch, caplog) -> None:
 @pytest.mark.parametrize(
     ("env", "settings"),
     [
-        ({"VOXGUARD_THRESHOLD": "0.229"}, {}),  # set from the checkpoint's eer_threshold
+        ({"VOXGUARD_THRESHOLD": "0.229"}, {"threshold_override": 0.229}),  # as from_env sets it
         ({}, {"threshold_mode": "low_far", "low_far_threshold": 0.3}),  # detector's not used
     ],
 )

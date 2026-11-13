@@ -18,9 +18,14 @@ from sqlalchemy.orm import Session, sessionmaker
 from voxguard.api import codec_sim, prevention
 from voxguard.api.audio import decode_audio
 from voxguard.api.db import AlertRow, BlocklistRow, SessionRow, create_tables, make_engine
-from voxguard.api.deps import Settings, get_db, get_detector_dep, get_settings
-from voxguard.api.detector_loader import load_detector
+from voxguard.api.deps import Settings, get_db, get_detector_dep, get_settings, get_thresholds
+from voxguard.api.detector_loader import (
+    load_detector,
+    load_model_thresholds,
+    warn_if_default_threshold,
+)
 from voxguard.api.limits import BodySizeLimitMiddleware
+from voxguard.api.thresholds import ThresholdSet
 from voxguard.data.codecs import CODECS
 from voxguard.inference import Detector
 from voxguard.schemas import (
@@ -43,8 +48,15 @@ def _codec_unavailable(codec: str) -> str:
     return f"Codec simulation for {codec} is unavailable on this server."
 
 
-def create_app(detector: Detector | None = None, settings: Settings | None = None) -> FastAPI:
-    """Build the app. Invalid VOXGUARD_* settings raise ValueError here (fail fast)."""
+def create_app(
+    detector: Detector | None = None,
+    settings: Settings | None = None,
+    thresholds: ThresholdSet | None = None,
+) -> FastAPI:
+    """Build the app. Invalid VOXGUARD_* settings raise ValueError here (fail fast).
+
+    Without ``detector`` the configured one is loaded at startup, with its thresholds.json
+    (real detector only). ``thresholds`` is given directly in tests."""
     settings = settings or Settings.from_env()
 
     @asynccontextmanager
@@ -52,7 +64,16 @@ def create_app(detector: Detector | None = None, settings: Settings | None = Non
         engine = make_engine(settings.db_url)
         create_tables(engine)
         app.state.settings = settings
-        app.state.detector = detector or load_detector(settings.device, settings.threshold_mode)
+        det = detector or load_detector(settings.device)
+        if detector is None and thresholds is None:
+            found = load_model_thresholds(det)
+            warn_if_default_threshold(
+                det, found, settings.threshold_mode, settings.threshold_override
+            )
+        else:
+            found = thresholds
+        app.state.detector = det
+        app.state.thresholds = found
         app.state.session_factory = sessionmaker(engine, expire_on_commit=False)
         yield
         engine.dispose()
@@ -75,6 +96,7 @@ def create_app(detector: Detector | None = None, settings: Settings | None = Non
         det: Annotated[Detector, Depends(get_detector_dep)],
         db: Annotated[Session, Depends(get_db)],
         cfg: Annotated[Settings, Depends(get_settings)],
+        model_thresholds: Annotated[ThresholdSet | None, Depends(get_thresholds)],
         caller_id: Annotated[str | None, Form(max_length=128)] = None,
         simulate_codec: Annotated[bool, Form()] = False,
         codec: Annotated[str | None, Form(max_length=32)] = None,
@@ -123,7 +145,9 @@ def create_app(detector: Detector | None = None, settings: Settings | None = Non
 
         try:
             pred = det.predict(waveform, sample_rate)
-            decision = prevention.decide(pred, cfg)
+            # no request field says audio is known to be clean: uploads are of unknown origin
+            channel = prevention.channel_for(known_clean=False, codec_applied=codec_applied)
+            decision = prevention.decide(pred, cfg, model_thresholds, channel)
         except Exception:
             logger.exception("Detector failed")
             raise HTTPException(500, "Detector failed") from None

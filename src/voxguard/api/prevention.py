@@ -13,7 +13,10 @@ from sqlalchemy.orm import Session
 
 from voxguard.api.db import AlertRow, BlocklistRow, SessionRow
 from voxguard.api.deps import Settings
+from voxguard.api.thresholds import ThresholdSet
 from voxguard.inference import Prediction
+
+Channel = Literal["clean", "phone"]
 
 
 @dataclass(frozen=True)
@@ -32,15 +35,38 @@ def is_flagged(fake_score: float, threshold: float) -> bool:
     return fake_score >= threshold
 
 
-def effective_threshold(pred: Prediction, settings: Settings) -> float:
+def channel_for(known_clean: bool, codec_applied: str | None) -> Channel:
+    """Which threshold applies (agreed with Aarya): phone-line audio and audio of unknown
+    origin use the phone threshold; only audio known to be clean uses the clean one."""
+    return "clean" if known_clean and codec_applied is None else "phone"
+
+
+def effective_threshold(
+    pred: Prediction,
+    settings: Settings,
+    thresholds: ThresholdSet | None = None,
+    channel: Channel = "phone",
+) -> float:
+    """Precedence: low_far mode's explicit threshold, then an explicit VOXGUARD_THRESHOLD,
+    then the checkpoint's thresholds.json (one clean and one phone value; per-codec values
+    are never used here), then the detector's own threshold (legacy behaviour)."""
     if settings.threshold_mode == "low_far":
         assert settings.low_far_threshold is not None  # enforced by Settings
         return settings.low_far_threshold
+    if settings.threshold_override is not None:
+        return settings.threshold_override
+    if thresholds is not None:
+        return thresholds.clean if channel == "clean" else thresholds.phone
     return pred.threshold
 
 
-def decide(pred: Prediction, settings: Settings) -> Decision:
-    threshold = effective_threshold(pred, settings)
+def decide(
+    pred: Prediction,
+    settings: Settings,
+    thresholds: ThresholdSet | None = None,
+    channel: Channel = "phone",
+) -> Decision:
+    threshold = effective_threshold(pred, settings, thresholds, channel)
     flagged = is_flagged(pred.fake_score, threshold)
     return Decision(threshold=threshold, flagged=flagged, label="fake" if flagged else "real")
 
