@@ -1,4 +1,8 @@
-"""Phone-line simulation for /v1/analyze: reuses ``voxguard.data.codecs.apply_codec`` (ffmpeg)."""
+"""Phone-line simulation for /v1/analyze: reuses ``voxguard.data.codecs.apply_codec`` (ffmpeg).
+
+The codec runs at the bitrate the evaluation sets use (``voxguard.data.augment.default_spec``),
+so the demo's phone line is the condition the reported numbers were measured on.
+"""
 
 from __future__ import annotations
 
@@ -6,6 +10,7 @@ import logging
 
 import numpy as np
 
+from voxguard.data.augment import default_spec
 from voxguard.data.codecs import (
     CODECS,
     SAMPLE_RATE,
@@ -27,6 +32,11 @@ class CodecUnavailableError(Exception):
 
 class CodecSimulationError(Exception):
     """ffmpeg ran but the transformation failed or produced unusable audio."""
+
+
+def eval_bitrate(codec: str) -> int | None:
+    """Bitrate (bit/s) the evaluation sets use for ``codec``; None for fixed-rate codecs (G.711)."""
+    return default_spec(codec).bitrate
 
 
 def ensure_available(codec: str) -> None:
@@ -83,13 +93,15 @@ def simulate_phone_line(
     """Encode and decode ``waveform`` with ``codec``; returns (16 kHz mono float32, 16000).
 
     ``apply_codec`` expects 16 kHz mono input, so other rates are resampled first with
-    ``resample_to_16k`` (band-limited). Never falls back to the original audio.
+    ``resample_to_16k`` (band-limited). The codec runs at ``default_spec(codec)``'s bitrate, as in
+    the evaluation sets, without their optional noise. Never falls back to the original audio.
     """
     ensure_available(codec)
     x = np.asarray(waveform, dtype=np.float32)
     x = resample_to_16k(x, sample_rate)
     try:
-        y = apply_codec(x, codec)
+        spec = default_spec(codec)
+        y = apply_codec(x, spec.codec, spec.bitrate)  # no noise in the demo
     except CodecError as exc:
         logger.error("codec simulation failed (%s): %s", codec, exc)
         raise CodecSimulationError(f"{codec} processing failed") from None
