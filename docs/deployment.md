@@ -96,10 +96,16 @@ INSTALL_ML=1 docker compose build api     # large download (see below)
 docker compose up
 ```
 
-- The detector is built **once**, when the API starts; requests reuse it. If it cannot be built
-  the API exits with an error naming the problem (missing `ml` extra, missing
-  `VOXGUARD_MODEL_REPO`, checkpoint not found, Hugging Face download error, corrupt checkpoint,
-  `VOXGUARD_DEVICE=cuda` without a GPU). It never falls back to the stub.
+- The detector is built **once**, when the API starts, and requests reuse it. It then runs one
+  warm-up inference on 4 s of 16 kHz silence (one window), so the first request's `latency_ms`
+  does not include CUDA/cuDNN start-up. Only that path is warmed: the first clip at another
+  sample rate (resampling) or longer than about 5 s (several windows at once) can still be
+  slower once. Measured on CUDA with RawNet2: a 4 s 16 kHz first request took 15.8 ms (1163.8 ms
+  before the warm-up existed); a 6 s 44.1 kHz stereo one took 46.9 ms first, then 15.7 ms.
+- If the detector cannot be built or fails its warm-up, the API exits with an error naming the
+  problem (missing `ml` extra, missing `VOXGUARD_MODEL_REPO`, checkpoint not found, Hugging Face
+  download error, corrupt checkpoint, `VOXGUARD_DEVICE=cuda` without a GPU, warm-up inference
+  failed). It never falls back to the stub.
 - The checkpoint is downloaded at startup into the `/data/hf-cache` volume, so later restarts
   reuse it. A full SSL-AASIST checkpoint is GBs, which is why `VOXGUARD_API_START_PERIOD`
   (health-check grace period, default 20 s) should be raised for the real detector.
@@ -134,7 +140,9 @@ logs. The wait is `VOXGUARD_API_START_TIMEOUT` seconds: 600 by default with
 Manual steps (need your Hugging Face account; nothing here has been deployed):
 
 1. On huggingface.co: **New Space**, SDK **Docker**, visibility **Private** (CLAUDE.md section 15),
-   hardware **CPU basic**.
+   hardware **CPU basic**. Creating the Space and pushing to it need **write** access: do step 1
+   on the website, and use a token with write access to that Space for the `git push` in step 6.
+   A read-only token cannot push.
 2. Clone the Space repo and copy the files the image needs:
 
    ```bash
@@ -157,12 +165,18 @@ Manual steps (need your Hugging Face account; nothing here has been deployed):
 
 4. In the Space **Settings > Variables and secrets**: add `VOXGUARD_SIMULATE_CODEC` (e.g.
    `g711_mulaw`) and any other variable from the table above as **Variables**; add `HF_TOKEN` as
-   a **Secret** only if the real detector loads a private model repo.
+   a **Secret** only if the real detector loads a private model repo. That token needs only
+   **read** access to the `voxguard-team` org; Spaces pass secrets to the container as
+   environment variables, and it is never written to the image or the repo.
 5. For the real detector, set the build arg by changing `ARG INSTALL_ML=0` to `ARG INSTALL_ML=1`
    in the Space's `Dockerfile` (Spaces do not take build args), and set `VOXGUARD_DETECTOR=real`
-   and `VOXGUARD_MODEL_REPO`.
+   and `VOXGUARD_MODEL_REPO` (e.g. `voxguard-team/voxguard-rawnet2-codec-aug`). Leave
+   `VOXGUARD_DEVICE` unset (CPU). The locked torch is the CUDA build from PyPI, so this image is
+   several GB and builds slowly even on CPU hardware (see Real detector above).
 6. `git add . && git commit -m "Deploy VoxGuard" && git push`. The Space builds and starts; open
-   it and check the sidebar shows "Connected".
+   it and check the sidebar shows "Connected" and, for the real detector, "Detector: real" with
+   the checkpoint's model version. If the API cannot load the model, the Space log shows the
+   API's error and the container stops; it never falls back to the stub.
 
 Limitations on a Space:
 - Without Space persistent storage (a paid add-on mounted at `/data`), the SQLite database and

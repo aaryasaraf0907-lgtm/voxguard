@@ -12,9 +12,11 @@ import logging
 import os
 import time
 
+import numpy as np
+
 from voxguard.api import thresholds as thresholds_mod
 from voxguard.api.thresholds import ThresholdsError, ThresholdSet
-from voxguard.inference import DEFAULT_THRESHOLD, Detector, get_detector
+from voxguard.inference import DEFAULT_THRESHOLD, NUM_SAMPLES, TARGET_SR, Detector, get_detector
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +88,24 @@ def load_detector(device: str = "cpu") -> Detector:
         getattr(detector, "device", device),
         time.perf_counter() - t0,
     )
+    _warm_up(detector)
     return detector
+
+
+def _warm_up(detector: Detector) -> None:
+    """One inference on 4 s of silence (one 16 kHz mono window, a batch of one) before serving.
+
+    It absorbs CUDA / cuDNN initialisation (about 1 s on a laptop GPU), which the first request
+    would otherwise report as detector latency. It warms only that path: the first clip at
+    another sample rate (torch resampling) or longer than about 5 s (several windows per batch)
+    can still be somewhat slower once; stereo is averaged to mono in numpy and needs no warm-up.
+    """
+    t0 = time.perf_counter()
+    try:
+        detector.predict(np.zeros(NUM_SAMPLES, dtype=np.float32), TARGET_SR)
+    except Exception as exc:  # a broken model fails the first request with a clear 500 anyway
+        raise RuntimeError(f"the real detector failed its warm-up inference: {exc}") from exc
+    logger.info("warm-up inference took %.0f ms", (time.perf_counter() - t0) * 1000)
 
 
 def load_model_thresholds(detector: Detector) -> ThresholdSet | None:
