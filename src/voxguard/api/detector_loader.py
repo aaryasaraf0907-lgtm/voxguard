@@ -12,6 +12,8 @@ import logging
 import os
 import time
 
+from voxguard.api import thresholds as thresholds_mod
+from voxguard.api.thresholds import ThresholdsError, ThresholdSet
 from voxguard.inference import DEFAULT_THRESHOLD, Detector, get_detector
 
 logger = logging.getLogger(__name__)
@@ -40,7 +42,7 @@ def _check_device(device: str) -> None:
         )
 
 
-def load_detector(device: str = "cpu", threshold_mode: str = "eer") -> Detector:
+def load_detector(device: str = "cpu") -> Detector:
     kind = os.environ.get("VOXGUARD_DETECTOR", "stub").strip().lower()
     if kind != "real":
         return get_detector()  # stub, or its own clear error for unknown values
@@ -84,12 +86,46 @@ def load_detector(device: str = "cpu", threshold_mode: str = "eer") -> Detector:
         getattr(detector, "device", device),
         time.perf_counter() - t0,
     )
-    if threshold_mode == "eer" and detector.threshold == DEFAULT_THRESHOLD:
+    return detector
+
+
+def load_model_thresholds(detector: Detector) -> ThresholdSet | None:
+    """The real detector's thresholds.json (next to its checkpoint), or None.
+
+    The stub has none. A missing file keeps the legacy single threshold; an unusable one
+    (malformed, out of range, for another model_version) stops startup.
+    """
+    if os.environ.get("VOXGUARD_DETECTOR", "stub").strip().lower() != "real":
+        return None
+    repo = os.environ.get("VOXGUARD_MODEL_REPO", "").strip()
+    try:
+        found = thresholds_mod.load_thresholds(repo, detector.model_version)
+    except ThresholdsError as exc:
+        raise RuntimeError(f"unusable thresholds for VOXGUARD_MODEL_REPO={repo!r}: {exc}") from exc
+    except Exception as exc:  # hub/network errors while looking for thresholds.json
+        raise RuntimeError(
+            f"could not fetch {thresholds_mod.FILENAME} (VOXGUARD_MODEL_REPO={repo!r}): "
+            f"{type(exc).__name__}: {exc}"
+        ) from exc
+    if found is None:
+        logger.warning("%s has no %s; using one threshold", repo, thresholds_mod.FILENAME)
+    else:
+        logger.info(
+            "thresholds for %s (selected on %s): clean %.4g, phone %.4g",
+            found.model_version, found.selected_on, found.clean, found.phone,
+        )  # fmt: skip
+    return found
+
+
+def warn_if_default_threshold(
+    detector: Detector, thresholds: ThresholdSet | None, threshold_mode: str, override: float | None
+) -> None:
+    """Warn when the real detector would decide at the untuned 0.5 default."""
+    real = os.environ.get("VOXGUARD_DETECTOR", "stub").strip().lower() == "real"
+    if real and threshold_mode == "eer" and override is None and thresholds is None:
         logger.warning(
             "VOXGUARD_THRESHOLD is the default %.2f, which is not an operating point for any "
-            "trained checkpoint (their evaluation-set eer_threshold values are far from it, "
-            "see results/<model>.json). Set VOXGUARD_THRESHOLD to the checkpoint's "
-            "eer_threshold, or use VOXGUARD_THRESHOLD_MODE=low_far.",
-            DEFAULT_THRESHOLD,
-        )
-    return detector
+            "trained checkpoint, and the checkpoint has no %s. Upload its %s, set "
+            "VOXGUARD_THRESHOLD to its eer_threshold, or use VOXGUARD_THRESHOLD_MODE=low_far.",
+            DEFAULT_THRESHOLD, thresholds_mod.FILENAME, thresholds_mod.FILENAME,
+        )  # fmt: skip

@@ -156,6 +156,8 @@ Phone-line simulation in `/v1/analyze` (agreed in #44's review):
 
 Prevention rule (MVP): `fake_score >= threshold` -> session stored as flagged, alert created, `caller_id` (if given) upserted into blocklist with a counter. Threshold modes: `eer` (default) and `low_far` (operating point shifted to reduce missed fakes).
 
+Thresholds (agreed 13 Nov): `thresholds.json` next to each checkpoint (`{model_version, selected_on: "dev", clean, phone, low_far: {clean, phone}, per_codec: {...}}`), chosen on dev by `evaluate.py`; GSM is never used to choose one. In `eer` mode the API uses, in order: an explicit `VOXGUARD_THRESHOLD`; else the file's **phone** threshold for audio of unknown origin and for simulated phone lines, its **clean** threshold only for audio known to be clean (no request field says that yet); else the detector's threshold (0.5). `per_codec` and `low_far` are for reporting only. A malformed file or a `model_version` mismatch stops startup; a missing file keeps the old behaviour. The response's `threshold` is the one applied.
+
 ## 8. Data and codec spec
 
 - **Primary dataset:** ASVspoof 2019 LA (train/dev/eval), English, 16 kHz. Source: Edinburgh DataShare (handle 10283/3336) - verify URL, size, licence. Ask the user before downloading; check free disk first (`df -h`).

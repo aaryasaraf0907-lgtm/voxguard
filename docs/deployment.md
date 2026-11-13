@@ -47,7 +47,7 @@ ones that matter for deployment:
 | `VOXGUARD_DETECTOR` | `stub` | `real` needs an image built with `INSTALL_ML=1` and `VOXGUARD_MODEL_REPO` |
 | `VOXGUARD_MODEL_REPO` | (none) | local path inside the container or a Hugging Face repo id |
 | `HF_TOKEN` | (none) | only for a private model repo; read by `huggingface_hub` at runtime |
-| `VOXGUARD_THRESHOLD` | `0.5` | a default, not a tuned or validated operating point; `results/<model>.json` records the evaluation-set `eer_threshold` per checkpoint and test condition (see README) |
+| `VOXGUARD_THRESHOLD` | (none) | explicit threshold; overrides the checkpoint's `thresholds.json`. Without either the detector's 0.5 default applies, which is not a tuned operating point |
 | `VOXGUARD_THRESHOLD_MODE` / `VOXGUARD_LOW_FAR_THRESHOLD` | `eer` / (none) | `low_far` refuses to start without an explicit threshold |
 | `VOXGUARD_SIMULATE_CODEC` | (none) | codec for `simulate_codec=true`; unset means the API answers 501. With these images use `g711_mulaw` (or `gsm`/`opus`); AMR is not available |
 | `VOXGUARD_DEVICE` | `cpu` | real detector device: `cpu`, `cuda` or `auto` |
@@ -91,7 +91,7 @@ INSTALL_ML=1 docker compose build api     # large download (see below)
 #   VOXGUARD_DETECTOR=real
 #   VOXGUARD_MODEL_REPO=voxguard-team/voxguard-rawnet2-codec-aug   (or -clean, or a mounted path)
 #   HF_TOKEN=<token with read access>                    (only for a private repo)
-#   VOXGUARD_THRESHOLD=<the checkpoint's eer_threshold>  (0.5 is wrong for trained checkpoints)
+#   VOXGUARD_THRESHOLD=                                  (leave empty: thresholds.json is used)
 #   VOXGUARD_API_START_PERIOD=600s                       (first start downloads the checkpoint)
 docker compose up
 ```
@@ -105,11 +105,12 @@ docker compose up
   (health-check grace period, default 20 s) should be raised for the real detector.
 - `/health` then reports `"detector": "real"` and the checkpoint's `model_version`
   (`<model>:<source>:epoch<N>`).
-- **Threshold:** trained checkpoints score on very different scales (committed RawNet2
-  `eer_threshold` values: 0.23 to 0.9999; first SSL-AASIST checkpoint: ~0.001, per Aarya's
-  STATUS), so the 0.5 default misclassifies most clips. Set `VOXGUARD_THRESHOLD` to the
-  checkpoint's `eer_threshold` from `results/<model>.json`. If the real detector starts on 0.5 in
-  `eer` mode the API logs `VOXGUARD_THRESHOLD is the default 0.50 ...` (a warning; it still starts).
+- **Threshold:** at startup the API reads `thresholds.json` next to the checkpoint (the same
+  directory, or the same HF model repo) and logs its `clean` and `phone` values. It uses the
+  phone threshold for every request today (uploads of unknown origin and simulated phone lines).
+  An explicit `VOXGUARD_THRESHOLD` overrides the file, so keep it empty in `.env`. A missing file
+  keeps the 0.5 default and logs `VOXGUARD_THRESHOLD is the default 0.50 ...`; a malformed file,
+  out-of-range values or a `model_version` different from the loaded checkpoint stop startup.
 - To use a local checkpoint instead, mount it, e.g. add `- ./runs/best:/models:ro` under the
   API's `volumes` and set `VOXGUARD_MODEL_REPO=/models` (a directory holding `best.pt`, or the
   file itself).
@@ -176,7 +177,8 @@ Limitations on a Space:
 | `api` exits with `VOXGUARD_... must be ...` | An invalid setting in `.env`; the message names the variable. `docker compose logs api` shows it. |
 | `dependency failed to start: container voxguard-api-1 is unhealthy` | The API did not pass `/health`: see `docker compose logs api`. With the real detector, the checkpoint download may still be running: raise `VOXGUARD_API_START_PERIOD` (e.g. `600s`). |
 | Space log: `VoxGuard API did not become healthy within 60 s` | Raise `VOXGUARD_API_START_TIMEOUT` in the Space variables. |
-| Real detector flags almost everything or nothing; API log warns `VOXGUARD_THRESHOLD is the default` | The threshold is still 0.5: set `VOXGUARD_THRESHOLD` to the checkpoint's `eer_threshold` (`results/<model>.json`). |
+| Real detector flags almost everything or nothing; API log warns `VOXGUARD_THRESHOLD is the default` | The checkpoint has no `thresholds.json` (or `VOXGUARD_THRESHOLD` is set): upload its `thresholds.json`, or set `VOXGUARD_THRESHOLD` explicitly. |
+| `api` exits with `unusable thresholds for VOXGUARD_MODEL_REPO=...` | `thresholds.json` is malformed, has a value outside [0, 1], or its `model_version` is not the loaded checkpoint's: fix the file. |
 | UI sidebar shows "API unavailable" | `docker compose ps` should show `api` as healthy. In compose the UI must use `http://api:8000`, not `localhost` (each container has its own localhost). |
 | `simulate_codec=true` returns 501 | `VOXGUARD_SIMULATE_CODEC` is not set for the API. |
 | `simulate_codec=true` returns 503 | This ffmpeg has no encoder for the chosen codec; pick one the codec report lists as OK. |

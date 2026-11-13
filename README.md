@@ -107,7 +107,7 @@ the API, or load the file there with `set -a; . ./.env; set +a`. The main ones:
 | `VOXGUARD_MODEL_REPO` | (none) | real detector: a `best.pt` path, a directory holding it, or a Hugging Face repo id |
 | `HF_TOKEN` | (none) | needed to download from the private Hugging Face org |
 | `VOXGUARD_DEVICE` | `cpu` | real detector device: `cpu`, `cuda` or `auto` |
-| `VOXGUARD_THRESHOLD` | `0.5` | decision threshold (see below) |
+| `VOXGUARD_THRESHOLD` | (none) | explicit decision threshold; overrides the checkpoint's `thresholds.json` (see below); without either, 0.5 |
 | `VOXGUARD_SIMULATE_CODEC` | (none) | default codec for the phone-line toggle, e.g. `g711_mulaw` |
 | `VOXGUARD_DB_URL` | `sqlite:///./voxguard.db` | SQLite only |
 | `VOXGUARD_API_URL` | `http://localhost:8000` | where the UI finds the API |
@@ -182,19 +182,14 @@ uv run uvicorn voxguard.api.main:create_app --factory --port 8000
 - The model is loaded once at startup; `/health` then reports `"detector": "real"` and the
   checkpoint's `model_version`. If loading fails the API exits with an error that says what to
   fix; it never falls back to the stub.
-- **Threshold:** `VOXGUARD_THRESHOLD` defaults to 0.5. That is a default, not a tuned or
-  validated operating point. `results/<model>.json` records, per checkpoint and test condition,
-  the `eer_threshold`: the score at which false accepts equal false rejects on that evaluation
-  set. It is a reasonable starting value for the matching checkpoint, but it was measured on the
-  evaluation data itself (not on separate validation data), and the current values belong to
-  the pre-fix RawNet2 runs. `VOXGUARD_THRESHOLD_MODE=low_far` with `VOXGUARD_LOW_FAR_THRESHOLD`
-  uses a manually chosen threshold instead.
-- **Do not run a trained checkpoint at 0.5.** The committed RawNet2 `eer_threshold` values range
-  from 0.23 to 0.9999 across checkpoints and test conditions, and Aarya reports ~0.001 for the
-  first SSL-AASIST checkpoint (53 % accuracy at 0.5; see her section of
-  [docs/STATUS.md](docs/STATUS.md)). Set `VOXGUARD_THRESHOLD` from the checkpoint's
-  `eer_threshold`. The API logs a warning at startup when the real detector runs on the 0.5
-  default in `eer` mode.
+- **Threshold:** each checkpoint's thresholds are chosen on the dev set and published as
+  `thresholds.json` next to `best.pt` (a `clean` and a `phone` value). The API reads it at
+  startup and uses the **phone** threshold for uploads of unknown origin and for simulated phone
+  lines; the clean one is only for audio known to be clean (no request can say that yet). An
+  explicit `VOXGUARD_THRESHOLD` overrides the file; `low_far` mode uses its own threshold.
+  Without a file the detector's default of 0.5 applies, which is not an operating point for any
+  trained checkpoint (their scores sit on very different scales; see `docs/results.md`), and the
+  API logs a warning. Trained checkpoints' `thresholds.json` files are not published yet.
 
 ## Tests and checks
 

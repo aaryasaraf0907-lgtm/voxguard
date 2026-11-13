@@ -12,8 +12,9 @@ from fastapi import Request
 from sqlalchemy.orm import Session
 
 from voxguard.api.db import require_sqlite_url
+from voxguard.api.thresholds import ThresholdSet
 from voxguard.data.codecs import CODECS
-from voxguard.inference import Detector
+from voxguard.inference import Detector, threshold_from_env
 
 DEFAULT_DB_URL = "sqlite:///./voxguard.db"
 DEFAULT_MAX_UPLOAD_MB = 25.0
@@ -41,6 +42,7 @@ class Settings:
     threshold_mode: Literal["eer", "low_far"] = "eer"
     low_far_threshold: float | None = None
     simulate_codec: str | None = None  # codec used when a request sets simulate_codec=true
+    threshold_override: float | None = None  # VOXGUARD_THRESHOLD if set: beats thresholds.json
     device: str = "cpu"  # VOXGUARD_DEVICE for the real detector: cpu | cuda | auto
 
     def __post_init__(self) -> None:
@@ -52,6 +54,9 @@ class Settings:
                 f"VOXGUARD_SIMULATE_CODEC must be one of {sorted(CODECS)}, "
                 f"got {self.simulate_codec!r}"
             )
+        t = self.threshold_override
+        if t is not None and (not math.isfinite(t) or not 0.0 <= t <= 1.0):
+            raise ValueError(f"VOXGUARD_THRESHOLD must be in [0, 1], got {t!r}")
         if self.threshold_mode not in ("eer", "low_far"):
             raise ValueError(
                 f"VOXGUARD_THRESHOLD_MODE must be 'eer' or 'low_far', got {self.threshold_mode!r}"
@@ -88,6 +93,9 @@ class Settings:
             threshold_mode=mode,  # type: ignore[arg-type]  # validated in __post_init__
             low_far_threshold=low_far,
             simulate_codec=os.environ.get("VOXGUARD_SIMULATE_CODEC", "").strip() or None,
+            threshold_override=(  # unset or empty: not an override
+                threshold_from_env() if os.environ.get("VOXGUARD_THRESHOLD", "").strip() else None
+            ),
             device=os.environ.get("VOXGUARD_DEVICE", "").strip().lower() or "cpu",
         )
 
@@ -98,6 +106,10 @@ def get_settings(request: Request) -> Settings:
 
 def get_detector_dep(request: Request) -> Detector:
     return request.app.state.detector
+
+
+def get_thresholds(request: Request) -> ThresholdSet | None:
+    return request.app.state.thresholds
 
 
 def get_db(request: Request) -> Iterator[Session]:
