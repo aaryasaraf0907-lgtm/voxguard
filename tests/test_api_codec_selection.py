@@ -134,3 +134,19 @@ def test_codecs_all_unavailable_without_ffmpeg(client_factory, monkeypatch) -> N
     monkeypatch.setattr(codec_sim, "ffmpeg_path", lambda: None)
     with client_factory(simulate_codec="opus") as c:
         assert not any(e["available"] for e in c.get("/v1/codecs").json()["codecs"])
+
+
+@pytest.mark.parametrize("path", ["pre-check", "simulation"])
+def test_503_names_the_codec_on_both_paths(client_factory, fake_ffmpeg, monkeypatch, path) -> None:
+    if path == "pre-check":
+        fake_ffmpeg[1]["available"]["gsm"] = False
+    else:  # the pre-check passes, then ffmpeg disappears during the simulation step
+
+        def gone(*args, **kwargs):
+            raise codec_sim.CodecUnavailableError("ffmpeg was not found on PATH")
+
+        monkeypatch.setattr(codec_sim, "simulate_phone_line", gone)
+    with client_factory(FixedDetector(0.9), simulate_codec="opus") as c:
+        r = _post(c, codec="gsm")
+        assert r.status_code == 503 and _stored(c) == 0
+    assert r.json()["detail"] == "Codec simulation for gsm is unavailable on this server."
