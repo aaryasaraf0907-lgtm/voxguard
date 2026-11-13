@@ -108,7 +108,7 @@ the API, or load the file there with `set -a; . ./.env; set +a`. The main ones:
 | `HF_TOKEN` | (none) | needed to download from the private Hugging Face org |
 | `VOXGUARD_DEVICE` | `cpu` | real detector device: `cpu`, `cuda` or `auto` |
 | `VOXGUARD_THRESHOLD` | `0.5` | decision threshold (see below) |
-| `VOXGUARD_SIMULATE_CODEC` | (none) | codec used when the phone-line toggle is on, e.g. `g711_mulaw` |
+| `VOXGUARD_SIMULATE_CODEC` | (none) | default codec for the phone-line toggle, e.g. `g711_mulaw` |
 | `VOXGUARD_DB_URL` | `sqlite:///./voxguard.db` | SQLite only |
 | `VOXGUARD_API_URL` | `http://localhost:8000` | where the UI finds the API |
 
@@ -144,10 +144,11 @@ Using the demo:
 2. **Analyze:** upload a WAV/FLAC/OGG/MP3 file (up to 25 MB, 60 s) or record with the
    microphone, optionally enter a caller ID, and press **Analyze**. The result shows the label,
    score, threshold, detector latency, model version and whether the call was flagged.
-3. **Phone line:** turn on **Simulate phone line** and analyze again to score the same clip after
-   a telephone codec; when both results exist they are shown side by side. The API must have
-   `VOXGUARD_SIMULATE_CODEC` set and ffmpeg with that codec, otherwise the UI explains why
-   nothing was analyzed.
+3. **Phone line:** turn on **Simulate phone line**, pick a codec (the list shows the codecs this
+   server's ffmpeg has; GSM is marked "not used in training", the held-out codec) and analyze
+   again to score the same clip after that codec, at the bitrate used in evaluation. When both
+   results exist they are shown side by side, with detector latency and codec processing time
+   separately. Without ffmpeg (or any codec) the UI explains why nothing was analyzed.
 4. **Monitoring:** the other tabs list flagged sessions, the caller blocklist and alerts
    (times in UTC). A new file or recording clears the previous result.
 

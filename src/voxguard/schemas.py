@@ -25,6 +25,26 @@ class AnalyzeResponse(BaseModel):
     model_version: str
     flagged: bool
     codec_applied: str | None = None
+    codec_ms: float | None = Field(
+        default=None,
+        ge=0.0,
+        description=(
+            "Wall time (ms) of the phone-line simulation: resampling to 16 kHz plus the ffmpeg "
+            "encode/decode. Null when no codec was applied. Not included in latency_ms, which "
+            "is detector inference only."
+        ),
+    )
+
+
+class CodecInfo(BaseModel):
+    name: str
+    available: bool  # this server's ffmpeg has the encoder
+    bitrate: int | None  # bit/s used, as in the evaluation sets; None for fixed-rate codecs
+
+
+class CodecsResponse(BaseModel):
+    default: str | None  # VOXGUARD_SIMULATE_CODEC, or None when not configured
+    codecs: list[CodecInfo]
 
 
 class SessionRecord(BaseModel):

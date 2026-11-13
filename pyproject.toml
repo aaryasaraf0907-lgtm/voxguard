@@ -31,7 +31,7 @@ api = [
     "soundfile>=0.12",
 ]
 ui = [
-    "streamlit>=1.39",
+    "streamlit>=1.49",
     "requests>=2.31",
 ]
 

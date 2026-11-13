@@ -4,10 +4,13 @@ from pathlib import Path
 import pytest
 from streamlit.testing.v1 import AppTest
 
+from voxguard.data.codecs import CODECS
 from voxguard.schemas import (
     AlertRecord,
     AnalyzeResponse,
     BlocklistEntry,
+    CodecInfo,
+    CodecsResponse,
     HealthResponse,
     SessionRecord,
 )
@@ -30,7 +33,12 @@ class FakeClient:
         self.blocklist_response: list[BlocklistEntry] = []
         self.alerts_response: list[AlertRecord] = []
         self.analyze_response: AnalyzeResponse | ApiError | None = None
+        self.codecs_response: CodecsResponse | ApiError = CodecsResponse(
+            default="g711_mulaw",
+            codecs=[CodecInfo(name=n, available=n != "amr_wb", bitrate=None) for n in CODECS],
+        )
         self.calls: list[tuple] = []
+        self.codecs_sent: list[str | None] = []  # the codec field of each analyze request
 
     def _check(self) -> None:
         if self.down:
@@ -41,14 +49,22 @@ class FakeClient:
         self._check()
         return self.health_response
 
-    def analyze(self, audio, filename="audio.wav", caller_id=None, simulate_codec=False):
+    def analyze(
+        self, audio, filename="audio.wav", caller_id=None, simulate_codec=False, codec=None
+    ):
         self.calls.append(("analyze", audio, filename, caller_id, simulate_codec))
+        self.codecs_sent.append(codec)
         response = self.analyze_response
         if callable(response):  # lets a test answer per request (e.g. clean vs simulated)
             response = response(simulate_codec)
         if isinstance(response, ApiError):
             raise response
         return response
+
+    def codecs(self):
+        if isinstance(self.codecs_response, ApiError):
+            raise self.codecs_response
+        return self.codecs_response
 
     def sessions(self, flagged_only=False, limit=50):
         self.calls.append(("sessions", flagged_only, limit))
@@ -70,11 +86,13 @@ def _analyze_calls(client: FakeClient) -> list[tuple]:
     return [c for c in client.calls if c[0] == "analyze"]
 
 
-def _result(flagged: bool, score: float = 0.9, codec: str | None = None) -> AnalyzeResponse:
+def _result(
+    flagged: bool, score: float = 0.9, codec: str | None = None, codec_ms: float | None = None
+) -> AnalyzeResponse:
     return AnalyzeResponse(
         session_id="sess-1", label="fake" if flagged else "real", fake_score=score,
         threshold=0.5, latency_ms=12.34, model_version="m-1", flagged=flagged,
-        codec_applied=codec,
+        codec_applied=codec, codec_ms=codec_ms,
     )  # fmt: skip
 
 
@@ -476,3 +494,71 @@ def test_api_errors_are_not_cached() -> None:
     client.down = None
     at.text_input[0].set_value("x").run()
     assert t("status_connected", "en") in _text(at)
+
+
+# --- codec choice ---------------------------------------------------------------------------
+
+
+def _codec_box(at: AppTest):
+    return at.selectbox(key="codec")
+
+
+def test_codec_dropdown_only_when_simulating() -> None:
+    at = _run(FakeClient())
+    assert not [b for b in at.selectbox if b.key == "codec"]
+    at.toggle[0].set_value(True).run()
+    assert _codec_box(at).label == t("codec_label", "en")
+
+
+@pytest.mark.parametrize("lang", ["en", "hi"])
+def test_codec_dropdown_offers_only_available_codecs_and_labels_gsm(lang: str) -> None:
+    at = _run(FakeClient(), lang)
+    at.toggle[0].set_value(True).run()
+    box = _codec_box(at)
+    assert "amr_wb" not in box.options and "AMR-WB" not in box.options  # unavailable on server
+    assert t("codec_gsm", lang) in box.options and box.options[0] == "G.711 µ-law"
+    assert box.value == "g711_mulaw"  # the server default is preselected
+
+
+def test_selected_codec_is_sent_and_codec_time_shown_separately() -> None:
+    client = FakeClient()
+    client.analyze_response = _result(True, codec="gsm", codec_ms=7.25)
+    at = _run(client)
+    at.toggle[0].set_value(True).run()
+    _codec_box(at).set_value("gsm").run()
+    at.file_uploader[0].set_value(("clip.wav", b"RIFFfake", "audio/wav")).run()
+    at = _click_analyze(at)
+    assert client.codecs_sent == ["gsm"]
+    values = {m.label: m.value for m in at.metric}
+    assert values[t("m_latency", "en")] == t("unit_ms", "en", value="12.3")  # detector only
+    assert values[t("m_codec_ms", "en")] == t("unit_ms", "en", value="7.2")
+
+
+def test_clean_analysis_sends_no_codec_and_shows_no_codec_time() -> None:
+    client = FakeClient()
+    client.analyze_response = _result(False)
+    at = _analyze(client)
+    assert client.codecs_sent == [None]
+    values = {m.label: m.value for m in at.metric}
+    assert values[t("m_codec_ms", "en")] == t("none_value", "en")
+
+
+def test_codec_list_error_falls_back_to_the_server_default() -> None:
+    client = FakeClient()
+    client.codecs_response = ApiError("unreachable")
+    client.analyze_response = _result(False, codec="g711_mulaw", codec_ms=3.0)
+    at = _analyze(client, simulate=True)
+    assert not at.exception and t("codecs_error", "en") in _text(at)
+    assert client.codecs_sent == [None]
+    assert _analyze_calls(client)[0][-1] is True  # simulate_codec=true: server default codec
+
+
+def test_no_available_codec_is_explained() -> None:
+    client = FakeClient()
+    client.codecs_response = CodecsResponse(
+        default=None, codecs=[CodecInfo(name=n, available=False, bitrate=None) for n in CODECS]
+    )
+    at = _run(client)
+    at.toggle[0].set_value(True).run()
+    assert not [b for b in at.selectbox if b.key == "codec"]
+    assert t("no_codecs", "en") in _text(at)

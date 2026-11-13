@@ -19,13 +19,14 @@ What is implemented on `dev`. The overall pipeline diagram is in `CLAUDE.md` sec
 ### Request flow (`POST /v1/analyze`)
 
 1. Body size check (413), bounded read, decode (400/415/422).
-2. If `simulate_codec=true`: check the codec is configured (501) and available (503), then
+2. If `codec` is given or `simulate_codec=true`: check the codec is known (422), configured
+   (501, server default only) and available (503), then
    resample to 16 kHz and encode/decode with ffmpeg (500 on failure; never falls back to the
    original audio).
 3. `Detector.predict(waveform, sample_rate)`.
 4. Prevention decision; store session (+ alert + blocklist when flagged) in one transaction.
 5. Return `AnalyzeResponse` (label, score, threshold, detector latency, model version, flagged,
-   `codec_applied`).
+   `codec_applied`, `codec_ms`).
 
 ### UI state
 
@@ -40,10 +41,12 @@ What is implemented on `dev`. The overall pipeline diagram is in `CLAUDE.md` sec
 
 ## Codec simulation in `/v1/analyze`
 
-`POST /v1/analyze` accepts the optional form field `simulate_codec` (boolean, default false).
+`POST /v1/analyze` accepts the optional form fields `simulate_codec` (boolean, default false)
+and `codec` (a codec name; it implies simulation). `GET /v1/codecs` lists every codec with its
+availability on this server and bitrate; the UI's codec dropdown offers only available ones.
 
-- **false or absent:** the audio goes to the detector unchanged and `codec_applied` is `null`.
-- **true:** after decoding and before inference, the waveform is resampled to 16 kHz mono (only
+- **neither:** the audio goes to the detector unchanged and `codec_applied` is `null`.
+- **simulated:** after decoding and before inference, the waveform is resampled to 16 kHz mono (only
   if it is not already) and passed through a real encode/decode cycle by
   `voxguard.data.codecs.apply_codec`, the same ffmpeg function used to build the degraded
   training and evaluation sets. The detector then receives the degraded 16 kHz waveform.
@@ -51,9 +54,12 @@ What is implemented on `dev`. The overall pipeline diagram is in `CLAUDE.md` sec
   session row stores it too. Prevention (flagging, alerts, blocklist) works on the degraded
   audio's score exactly as for normal requests.
 
-**Which codec:** the repository does not define a default, so the operator chooses one with
-`VOXGUARD_SIMULATE_CODEC` (`g711_mulaw`, `g711_alaw`, `amr_nb`, `amr_wb`, `gsm` or `opus`; any
-other value stops startup). The request cannot pick a codec. Bitrate is the codec's default.
+**Which codec:** the request's `codec` field, else the server default `VOXGUARD_SIMULATE_CODEC`
+(`g711_mulaw`, `g711_alaw`, `amr_nb`, `amr_wb`, `gsm` or `opus`; any other value stops startup;
+no default is defined). A requested codec is never replaced by another one. **Bitrate:** the
+evaluation sets' `voxguard.data.augment.default_spec(codec)` (the middle bitrate of the codec's
+list, e.g. Opus 12 kbit/s, GSM 13; G.711 is fixed-rate), so the demo's phone line is the
+condition the reported results were measured on.
 
 **Requirements:** `ffmpeg` on `PATH` with an encoder for the chosen codec
 (`python -m voxguard.data.codecs` prints what is available). G.711 needs no extra libraries.
@@ -63,7 +69,8 @@ a fallback):**
 
 | Situation | Status |
 |---|---|
-| `simulate_codec=true` but `VOXGUARD_SIMULATE_CODEC` unset | 501 |
+| `codec` is not a known codec name | 422 |
+| `simulate_codec=true`, no `codec`, `VOXGUARD_SIMULATE_CODEC` unset | 501 |
 | ffmpeg or the encoder is missing | 503 |
 | ffmpeg fails or times out (30 s per process), or returns wrong-length, non-finite or silent output for non-silent input | 500 |
 
@@ -81,18 +88,19 @@ curl -F file=@call.wav -F simulate_codec=true http://localhost:8000/v1/analyze
   into the band; input already at 16 kHz is not resampled. This reuses the ffmpeg this feature
   already requires and adds no Python dependency. It is separate from the detector's own
   preprocessing, which still resamples when simulation is off.
-- The codec is fixed per server, not per request, and there is no noise or bitrate variation;
-  this is a deterministic single-codec demo, not the randomized training augmentation.
+- One fixed bitrate per codec and no noise: this is the deterministic evaluation condition, not
+  the randomized training augmentation.
 - The set of available encoders is read once per process; install ffmpeg before starting the API.
 
 ## Latency
 
-Three different times exist, and the API reports only the first:
+Three different times exist, and the API reports the first two separately:
 
 - **Detector inference latency:** `latency_ms` in the response (and in the stored session) is
   `Prediction.latency_ms`, measured inside the detector around `predict`. With simulation on,
   it is measured on the degraded audio.
-- **Codec preprocessing time** (resampling plus encode/decode through ffmpeg): not measured and
+- **Codec preprocessing time:** `codec_ms` in the response (not stored), the wall time of the
+  whole simulation (resampling plus encode/decode through ffmpeg); `null` without simulation and
   not included in `latency_ms`.
 - **Total request time** (upload read, decoding, codec, inference, database commit): not
   measured by the API either, so `latency_ms` must not be read as end-to-end latency.

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -20,11 +21,14 @@ from voxguard.api.db import AlertRow, BlocklistRow, SessionRow, create_tables, m
 from voxguard.api.deps import Settings, get_db, get_detector_dep, get_settings
 from voxguard.api.detector_loader import load_detector
 from voxguard.api.limits import BodySizeLimitMiddleware
+from voxguard.data.codecs import CODECS
 from voxguard.inference import Detector
 from voxguard.schemas import (
     AlertRecord,
     AnalyzeResponse,
     BlocklistEntry,
+    CodecInfo,
+    CodecsResponse,
     HealthResponse,
     SessionRecord,
 )
@@ -69,17 +73,27 @@ def create_app(detector: Detector | None = None, settings: Settings | None = Non
         cfg: Annotated[Settings, Depends(get_settings)],
         caller_id: Annotated[str | None, Form(max_length=128)] = None,
         simulate_codec: Annotated[bool, Form()] = False,
+        codec: Annotated[str | None, Form(max_length=32)] = None,
     ) -> AnalyzeResponse:
-        if simulate_codec:
+        # A `codec` field selects the codec and implies simulation; otherwise simulate_codec=true
+        # uses the server default (VOXGUARD_SIMULATE_CODEC). Never substituted with another codec.
+        chosen: str | None = None
+        if codec is not None:
+            if codec not in CODECS:
+                raise HTTPException(422, f"Unknown codec {codec!r}; known: {sorted(CODECS)}")
+            chosen = codec
+        elif simulate_codec:
             if cfg.simulate_codec is None:
                 raise HTTPException(
                     501, "Codec simulation is not configured (set VOXGUARD_SIMULATE_CODEC)"
                 )
+            chosen = cfg.simulate_codec
+        if chosen is not None:
             try:
-                codec_sim.ensure_available(cfg.simulate_codec)
+                codec_sim.ensure_available(chosen)
             except codec_sim.CodecUnavailableError as exc:
                 logger.error("codec simulation unavailable: %s", exc)
-                raise HTTPException(503, "Codec simulation is unavailable on this server") from None
+                raise HTTPException(503, f"Codec {chosen} is unavailable on this server") from None
 
         # sync handler: read the underlying file object, bounded by the upload limit
         data = file.file.read(cfg.max_upload_bytes + 1)
@@ -91,16 +105,17 @@ def create_app(detector: Detector | None = None, settings: Settings | None = Non
         waveform, sample_rate = decode_audio(data, cfg.max_audio_seconds)
 
         codec_applied: str | None = None
-        if simulate_codec:  # before inference; on failure nothing is stored or scored
+        codec_ms: float | None = None
+        if chosen is not None:  # before inference; on failure nothing is stored or scored
+            t0 = time.perf_counter()
             try:
-                waveform, sample_rate = codec_sim.simulate_phone_line(
-                    waveform, sample_rate, cfg.simulate_codec
-                )
+                waveform, sample_rate = codec_sim.simulate_phone_line(waveform, sample_rate, chosen)
             except codec_sim.CodecUnavailableError:
                 raise HTTPException(503, "Codec simulation is unavailable on this server") from None
             except codec_sim.CodecSimulationError:
                 raise HTTPException(500, "Codec simulation failed") from None
-            codec_applied = cfg.simulate_codec
+            codec_ms = (time.perf_counter() - t0) * 1000.0
+            codec_applied = chosen
 
         try:
             pred = det.predict(waveform, sample_rate)
@@ -140,6 +155,23 @@ def create_app(detector: Detector | None = None, settings: Settings | None = Non
             model_version=pred.model_version,
             flagged=decision.flagged,
             codec_applied=codec_applied,
+            codec_ms=codec_ms,
+        )
+
+    @app.get("/v1/codecs", response_model=CodecsResponse)
+    def list_codecs(cfg: Annotated[Settings, Depends(get_settings)]) -> CodecsResponse:
+        """Every registered codec, whether this server's ffmpeg can run it, and its bitrate."""
+        available = codec_sim.available_codecs() if codec_sim.ffmpeg_path() else {}
+        return CodecsResponse(
+            default=cfg.simulate_codec,
+            codecs=[
+                CodecInfo(
+                    name=name,
+                    available=bool(available.get(name)),
+                    bitrate=codec_sim.eval_bitrate(name),
+                )
+                for name in CODECS
+            ],
         )
 
     @app.get("/v1/sessions", response_model=list[SessionRecord])
