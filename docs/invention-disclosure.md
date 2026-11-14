@@ -34,8 +34,14 @@ unusable (see the SSL-AASIST preview in `docs/STATUS.md`; final numbers will be 
 
 ## 3. Prior art found
 
-Search so far (12 Nov 2026): web search with generic terms; **Google Patents and InPASS searches
-are still TO DO** (both teammates, see section 7). Findings:
+Search so far: web search with generic terms (12 Nov 2026), then a patent-focused web search
+(14 Nov 2026) with these queries: "patent synthetic speech deepfake detection telephone codec
+augmentation training anti-spoofing"; "patent call screening voice deepfake detection blocklist
+caller alert threshold"; "patent spoof detection decision threshold calibrated per channel codec
+type telephony". The search engine indexes Google Patents, Justia and USPTO pages only partly, so
+this is **not** a complete patent search: searches directly on Google Patents, InPASS and
+Espacenet (CPC G10L 17/, G10L 25/51, H04M 3/436, H04L 63/) are still **TO DO** (section 8).
+Findings:
 
 | Ref | What it covers | Overlap with our method |
 |---|---|---|
@@ -45,10 +51,20 @@ are still TO DO** (both teammates, see section 7). Findings:
 | Pindrop Labs, ASVspoof 2021 submission | Training audio played through a real telephony service and re-recorded | Medium (real channel rather than simulated). |
 | PhoneSpoof dataset (arXiv:2211.06546, **TO CONFIRM** exact title) | Spoofed speech under telephone conditions, GSM 06.10 at 13 kbit/s | Medium (dataset, not a training regime). |
 | Tak et al., RawBoost (ICASSP 2022) and SSL-AASIST (Odyssey 2022) | Signal-level augmentation for channel/noise robustness; our model architecture | Medium (augmentation, but not a codec chain). |
-| Patents | None found yet by web search | **TO DO**: Google Patents, InPASS, Espacenet. |
+| US 2025/0055937 A1, "Automated vishing detection to prevent deepfake and chatbot attacks" (Google Patents) | Detects vishing calls; verification threshold scaled with the value of the requested transaction | Medium (call-level vishing defence with a variable threshold; the threshold depends on transaction risk, not on the channel). |
+| US 2024/0363103 and US 2024/0363099 A1, "Deepfake detection" (Justia / Google Patents) | Caller liveness or machine-likelihood score compared with a threshold; accept or reject the call; label shown in a UI; a "consortium" of known synthetic voiceprints | **High for 4.4 item 2** (call screening on a deepfake score). |
+| US 12,132,862, "Detecting scam callers using conversational agent and machine learning" | Live call audio scored; above a confidence threshold the caller is a scammer and the call is disconnected; notes number blacklists miss scammers | **High for 4.4 item 2** (threshold, then a blocking action). |
+| USPTO "Deepfake detection" family (e.g. US 12,562,150; 12,711,951) | Analytics server estimating whether a caller is a deepfake or a human | Medium-high (call-centre deepfake screening). |
+| CA 3054063 A1, "Method and apparatus for detecting spoofing conditions" | Speaker-verification spoof detector with a predetermined threshold; mentions telephony channel artefacts | Medium (fixed threshold; no per-channel calibration found in the abstract). |
+| "How Fast, How Sure, and Where It Breaks: A Streaming Sequential-Decision Layer for Voice-Deepfake Detection under Real Telephony Codecs" (Research Square preprint, 2026) | Streaming decisions with calibrated confidence under Opus, Speex-WB, EVS, AMR-WB | **High for 4.4 item 1** (calibration under telephony codecs, though per duration rather than per channel). **TO CONFIRM**: read the full text. |
 
 **Honest assessment.** "Train a deepfake detector with codec augmentation and test it on
-codec-degraded audio", stated broadly, is anticipated by the papers above. A claim has to rest
+codec-degraded audio", stated broadly, is anticipated by the papers above. The 14 Nov search
+also weakens 4.4 item 2: screening calls on a deepfake or scam score against a threshold and
+then rejecting or disconnecting them is already in published US applications and a granted US
+patent. No document found so far stores an operating point calibrated on codec-degraded audio
+with the model and applies it automatically to telephone audio (4.4 item 1), but the 2026
+streaming-calibration preprint is close and must be read in full. A claim has to rest
 on something narrower and concrete. Candidates are listed in section 4.4; whether any of them is
 novel and non-obvious is for the IPR cell. In India, Section 3(k) of the Patents Act excludes
 "a mathematical or business method or a computer programme per se or algorithms", so a claim
@@ -178,7 +194,7 @@ codec-aware regime, the 2x2 evaluation and the prevention layer. Add any earlier
 
 ## 8. To do before filing
 
-1. Google Patents, InPASS and Espacenet searches on: anti-spoofing / synthetic speech detection
+1. Direct Google Patents, InPASS and Espacenet searches (a first web-based pass is in section 3) on: anti-spoofing / synthetic speech detection
    + codec / telephony / channel augmentation; call screening + deepfake + blocklist;
    channel-specific threshold calibration. Record queries, dates and hits in section 3.
 2. Add any conception evidence older than 1 Nov 2026 to section 7 (Aarya).
