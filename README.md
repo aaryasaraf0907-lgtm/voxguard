@@ -184,8 +184,10 @@ period. `.env` is git-ignored: never commit it or share the token.
 
 `curl localhost:8000/health` should then show `"detector": "real"`, and the UI sidebar
 "Detector: real". The checkpoints published today are for checking integration and latency only
-(see Status). This path has been run end to end on amd64 (Windows with WSL2 and Docker Desktop);
-arm64 (Apple Silicon) has not been run yet. Prerequisites, what was verified, timings and
+(see Status). This path has been run end to end on amd64 (Windows with WSL2 and Docker Desktop):
+from a fresh clone with nothing cached, the first analysis in the UI came 10 min 51 s after
+`git clone`, machine time only (installing Docker, getting Hugging Face access and editing `.env`
+not included). arm64 (Apple Silicon) has not been run yet. Prerequisites, what was verified, timings and
 troubleshooting are in [docs/deployment.md](docs/deployment.md#real-detector).
 
 The API image includes ffmpeg (G.711, GSM and Opus; no AMR); SQLite and the downloaded

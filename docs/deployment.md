@@ -158,6 +158,18 @@ with the `.env` above, `docker compose up --build` built the CPU-only ML image, 
   checkpoint from the Hugging Face Hub`), no network with an empty cache (`checkpoint not
   found`), and `VOXGUARD_DETECTOR=real` on an image built without `INSTALL_ML=1`.
 
+**15-minute check (CLAUDE.md section 17), measured 14 Nov 2026 on the same machine:** a fresh
+`git clone` of this branch, `.env` from `.env.example` with the six values above (written by a
+script), then `docker compose up --build`, with an empty build cache (a separate buildx builder)
+and an empty volume. Time from `git clone` to the first successful analysis in the UI:
+**10 min 51 s** (the stack was healthy after 10 min 33 s). The slow steps were Debian's ffmpeg
+(`apt-get`, 4 min 12 s) and the Python packages other than torch (4 min 42 s); CPU torch took
+19 s (200 MB in about 10 s). The separate builder adds about 1 min of image export that a normal
+build mostly skips. **Not included:** installing Docker, getting access to `voxguard-team` and a
+read token, and the time a person needs to read the README and edit `.env`. This is machine time
+on one connection; a run by a person following the README has not been timed yet, and a slower
+network or Debian mirror can take longer.
+
 **Not verified:** arm64 (Apple Silicon) has not been built or run. Its CPU wheels are pinned with
 their own hashes and resolve without CUDA packages, but no arm64 image exists yet. GPU in Docker
 is not set up (see below).
