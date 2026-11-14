@@ -1,0 +1,19 @@
+# CPU-only torch and torchaudio for the INSTALL_ML=1 images (agreed with Aarya, 13-14 Nov 2026:
+# Dockerfile-only, so pyproject.toml and uv.lock stay as they are for local, Kaggle and Colab
+# setups). Installed by docker/ml_cpu.sh with --no-deps --require-hashes from
+# https://download.pytorch.org/whl/cpu; tests/test_docker_ml_pins.py keeps this file in step
+# with uv.lock. Each package lists one hash per architecture (checked against a download,
+# 14 Nov 2026):
+#   amd64 = manylinux_2_28_x86_64, arm64 = manylinux_2_28_aarch64, both cp311.
+#
+# torch: the same version as uv.lock (2.15.0), CPU build.
+# torchaudio: 2.11.0+cpu, while uv.lock has 2.11.1. PyPI's torchaudio 2.11.1 Linux wheels are
+# CUDA builds (they link libcudart.so.13 and libtorch_cuda.so, so they cannot load with a CPU
+# torch), and the CPU index has no 2.11.1. On amd64, 2.11.0+cpu with torch 2.15.0+cpu gave
+# bit-identical resampling output and RawNet2 scores to the locked pair (14 Nov 2026).
+torch==2.15.0+cpu \
+    --hash=sha256:cee15855a32ad89a9bb27b8a9d6e07a859dcd2e11ed1b5561f3d6206e31a103b \
+    --hash=sha256:97dc6b0a7cbad2109e615da3eac03df626c61e821e9486438b0248ba896178c6
+torchaudio==2.11.0+cpu \
+    --hash=sha256:2ddcb49458aa9783121222c535c0eb9cd54445ec44bb8dd22c9e52cdb730dbc2 \
+    --hash=sha256:7a5ecdd20fb26d8eb1d62135ddc6db0f806b17667c10e82df913fd509d1f5cfe

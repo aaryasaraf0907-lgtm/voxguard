@@ -1,4 +1,4 @@
-.PHONY: setup lint format test smoke smoke-eval docker-up docker-down docker-smoke
+.PHONY: setup lint format test smoke smoke-eval docker-up docker-down docker-smoke docker-ml-smoke
 
 setup:
 	uv sync
@@ -37,3 +37,7 @@ docker-down:
 
 docker-smoke:
 	VOXGUARD_DOCKER_TESTS=1 uv run pytest tests/test_docker_smoke.py -v
+
+# INSTALL_ML=1 image: CPU-only torch audit + real detector on an untrained checkpoint
+docker-ml-smoke:
+	VOXGUARD_DOCKER_ML_TESTS=1 uv run pytest tests/test_docker_ml.py -v

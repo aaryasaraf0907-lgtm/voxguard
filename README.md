@@ -177,13 +177,18 @@ VOXGUARD_API_START_PERIOD=600s
 VOXGUARD_SIMULATE_CODEC=g711_mulaw
 ```
 
-`INSTALL_ML=1` builds the API image with torch (about 3 GB of downloads); keep it in `.env` so a
-later `--build` does not rebuild the image without torch. The first start downloads the
-checkpoint, hence the longer health-check grace period. `.env` is git-ignored: never commit it
-or share the token. `curl localhost:8000/health` should then show `"detector": "real"`. The checkpoints published today are for checking
-integration and latency only (see Status). This compose path with the real detector has not
-been run end to end yet; see [docs/deployment.md](docs/deployment.md#real-detector) for the
-prerequisites, downloads, what is verified and troubleshooting.
+`INSTALL_ML=1` builds the API image with a CPU-only torch (about 0.4 GB of Python wheels on
+amd64); keep it in `.env` so a later `--build` does not rebuild the image without torch. The
+first start downloads the checkpoint (RawNet2: 212 MB), hence the longer health-check grace
+period. `.env` is git-ignored: never commit it or share the token.
+
+`curl localhost:8000/health` should then show `"detector": "real"`, and the UI sidebar
+"Detector: real". The checkpoints published today are for checking integration and latency only
+(see Status). This path has been run end to end on amd64 (Windows with WSL2 and Docker Desktop):
+from a fresh clone with nothing cached, the first analysis in the UI came 10 min 51 s after
+`git clone`, machine time only (installing Docker, getting Hugging Face access and editing `.env`
+not included). arm64 (Apple Silicon) has not been run yet. Prerequisites, what was verified, timings and
+troubleshooting are in [docs/deployment.md](docs/deployment.md#real-detector).
 
 The API image includes ffmpeg (G.711, GSM and Opus; no AMR); SQLite and the downloaded
 checkpoint live on the `voxguard-data` volume. A hosted Hugging Face Space is not part of the
