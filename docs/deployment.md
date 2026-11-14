@@ -11,8 +11,9 @@ from the committed `uv.lock`, and run as the non-root user `voxguard` (uid 1000)
 
 The API and Space images take `--build-arg INSTALL_ML=1` to add the `ml` extra (torch,
 torchaudio, transformers, huggingface-hub) that `VOXGUARD_DETECTOR=real` needs. Without it the
-images run the stub detector only. The ML variant is several GB larger (torch from PyPI
-includes CUDA libraries; see [Image size](#image-size-and-the-open-cpu-torch-decision)).
+images run the stub detector only. The ML variant installs CPU-only torch and torchaudio, not
+the CUDA build that `uv.lock` describes for Linux (see
+[CPU-only torch](#cpu-only-torch-in-the-ml-images)).
 
 No secrets, tokens, `.env` files or model weights are copied into any image (`.dockerignore`).
 
@@ -101,10 +102,12 @@ The response's `codec_applied` names the codec. Behaviour and errors are in
 - A Hugging Face account that is a member of the private `voxguard-team` organisation (ask
   Aarya), and a **read** token for it (huggingface.co > Settings > Access Tokens). A read token
   is enough; never use a write token here.
-- Network and disk for the downloads: the `INSTALL_ML=1` image installs about **3.0 GB** of
-  Python wheels (torch 2.15.0 with its CUDA libraries, compressed sizes from `uv.lock`), and the
-  first start downloads the checkpoint (RawNet2: 212 MB; SSL-AASIST: GBs). The built image's size
-  has not been measured yet; leave plenty of free disk (Docker Desktop's disk limit included).
+- Network and disk for the downloads: the `INSTALL_ML=1` API image installs about **0.4 GB**
+  of Python wheels on amd64 (CPU-only torch 210 MB, torchaudio, and the other `ml` and `api`
+  packages, compressed), on top of the Python base image and Debian's ffmpeg. The first start
+  downloads the checkpoint (RawNet2: 212 MB; SSL-AASIST: GBs). The built image takes about
+  2.6 GB (sum of its layers; Docker Desktop reports 3.2 GB), so leave several GB free, Docker
+  Desktop's disk limit included.
 
 **Steps:**
 
@@ -134,10 +137,30 @@ The RawNet2 checkpoints published today were trained with the class-weight bug (
 Status): use them to check that the pipeline runs and how long it takes, not to judge
 detection. They have no `thresholds.json` yet, so the API logs that it uses the 0.5 default.
 
-**Not verified yet:** this compose path with `INSTALL_ML=1` has not been run end to end; the
-real detector has been run through the API and UI only with `uv` (13 Nov, CUDA). How long a new
-user needs is therefore not known, and the size of the torch download is the main cost (see
-[Image size](#image-size-and-the-open-cpu-torch-decision)).
+**Verified on amd64 (14 Nov 2026; Windows with WSL2, Docker Desktop 29.8.2, i5-13450HX):**
+with the `.env` above, `docker compose up --build` built the CPU-only ML image, downloaded
+`voxguard-team/voxguard-rawnet2-codec-aug` through a read token and served it:
+- `/health` reported `"detector": "real"` and
+  `rawnet2/rawnet2-codec-aug:voxguard-rawnet2-codec-aug:epoch17`;
+- `/v1/analyze` on a 17.7 s, 16 kHz speech recording: clean, and through G.711 µ-law, G.711
+  A-law, GSM and Opus (`codec_applied` set, `codec_ms` reported); AMR-NB and AMR-WB answered
+  503, as this ffmpeg has no AMR encoders;
+- latency on CPU, 20 requests each, p50 (p95): detector `latency_ms` 98 ms (111) clean and 97 ms
+  (103) with G.711; `codec_ms` 95 ms (103); the whole request 114 ms (124) clean and 205 ms (209)
+  with G.711. These are timings only: the checkpoint's scores are not detection results;
+- the UI (headless Chromium): "Connected", "Detector: real", clean and phone-line results side
+  by side, the Hindi UI; no errors;
+- persistence: after `docker compose down` and `up`, all sessions, alerts and the blocklist were
+  still there and the checkpoint was not downloaded again (healthy in 12 s); with the cache
+  filled, the API also starts without network;
+- startup failures stop the API with exit code 3 and a message naming the cause, never falling
+  back to the stub: an invalid token, no token, a wrong repo id (`could not download the
+  checkpoint from the Hugging Face Hub`), no network with an empty cache (`checkpoint not
+  found`), and `VOXGUARD_DETECTOR=real` on an image built without `INSTALL_ML=1`.
+
+**Not verified:** arm64 (Apple Silicon) has not been built or run. Its CPU wheels are pinned with
+their own hashes and resolve without CUDA packages, but no arm64 image exists yet. GPU in Docker
+is not set up (see below).
 
 **Notes:**
 
@@ -176,17 +199,36 @@ user needs is therefore not known, and the size of the torch download is the mai
   request a GPU: running on CUDA in Docker additionally needs the NVIDIA Container Toolkit and a
   `deploy.resources.reservations.devices` entry, which this project has not set up or tested.
 
-### Image size and the open CPU torch decision
+### CPU-only torch in the ML images
 
-`INSTALL_ML=1` installs the torch locked in `uv.lock` (2.15.0 from PyPI). On Linux that is the
-CUDA build: about 3.0 GB of compressed wheels, of which torch is 539 MB and the rest CUDA
-libraries (cuDNN 519 MB, cuBLAS 405 MB, triton 286 MB, other `nvidia-*` wheels), although the
-compose deployment runs on CPU. The CPU-only build of the same version
-(`torch==2.15.0+cpu` from `https://download.pytorch.org/whl/cpu`) is 210 MB. The model code
-needs no change for it: CUDA is only used when `VOXGUARD_DEVICE` selects it. Switching means
-either a CPU index in `pyproject.toml` and a re-lock (shared files), or installing the CPU wheel
-in the Dockerfiles only; it is a joint decision with Aarya and not made yet. The ML image has not
-been built yet.
+Agreed with Aarya (13-14 Nov 2026). `uv.lock` describes torch 2.15.0 from PyPI, which on Linux is
+the CUDA build: about 3.0 GB of compressed wheels (torch 539 MB, cuDNN 519 MB, cuBLAS 405 MB,
+triton 286 MB, other `nvidia-*` wheels), although the compose deployment runs on CPU. The ML
+images therefore install the CPU builds instead, in the Dockerfiles only, so `pyproject.toml` and
+`uv.lock` stay as they are for local, Kaggle and Colab setups:
+
+- `docker/torch-cpu.txt` pins `torch==2.15.0+cpu` and `torchaudio==2.11.0+cpu` from
+  `https://download.pytorch.org/whl/cpu`, each with one sha256 per architecture (amd64 and
+  arm64); `docker/ml_cpu.sh` installs them with `--require-hashes --no-deps`.
+- `uv sync` in the image skips torch, torchaudio and the 19 CUDA packages torch pulls in
+  (`docker/ml-cpu-skip.txt`), and runs `--inexact` so it keeps the pinned pair.
+- **torchaudio is 2.11.0+cpu while `uv.lock` has 2.11.1:** PyPI's 2.11.1 Linux wheels are CUDA
+  builds (they need `libcudart.so.13` and `libtorch_cuda.so`, so they cannot load with a CPU
+  torch), and the CPU index has no 2.11.1. On amd64 the pinned pair gave bit-identical
+  resampling output and RawNet2 scores to the locked pair (14 Nov 2026).
+- The build fails unless the result is CPU-only (`docker/check_ml_cpu.py`, run after the torch
+  install and again after the last `uv sync`): `torch.version.cuda is None`, `import torchaudio`
+  works, the installed versions match the pins, no CUDA, NVIDIA or Triton package is installed,
+  and a 44.1 kHz to 16 kHz resample runs.
+- Nothing in the running container brings the CUDA build back: `UV_NO_SYNC=1` makes `uv run`
+  use the environment as built, and the default user cannot write `/opt/venv`, so a `uv sync`
+  fails. Only a root shell in the container (`docker exec -u 0 ... uv sync`) could replace torch
+  with uv.lock's CUDA build; do not do that.
+- `tests/test_docker_ml_pins.py` (normal CI) keeps the pins and the skip list consistent with
+  `uv.lock`; `tests/test_docker_ml.py` (CI job `docker-ml`, or `make docker-ml-smoke`) builds the
+  amd64 ML image, audits it, and starts the real detector on an untrained RawNet2 checkpoint.
+- The `ml` extra also brings training-only packages (wandb, scikit-learn, numba/llvmlite for
+  librosa; about 320 MB installed). Leaving them out would need a `pyproject.toml` change.
 
 ## Private Hugging Face Space (optional future route; needs a paid plan)
 
@@ -261,6 +303,8 @@ Limitations on a Space:
 | `dependency failed to start: container voxguard-api-1 is unhealthy` | The API did not pass `/health`: see `docker compose logs api`. With the real detector, the checkpoint download may still be running: raise `VOXGUARD_API_START_PERIOD` (e.g. `600s`). |
 | `api` exits with `could not download the checkpoint from the Hugging Face Hub` (401, 403 or repository not found) | `HF_TOKEN` is missing from `.env`, mistyped, or belongs to an account that is not in `voxguard-team`; or `VOXGUARD_MODEL_REPO` is misspelt. Check the token on huggingface.co, fix `.env`, then `docker compose up`. |
 | `api` exits with `VOXGUARD_MODEL_REPO checkpoint not found` for a Hugging Face repo id | The container could not reach huggingface.co and the checkpoint is not in the `voxguard-data` cache yet: check the network or proxy, then start again. |
+| Build fails in `sh docker/ml_cpu.sh torch` or `... check` | The CPU-only check failed (the message names the cause: a CUDA package, a version that differs from `docker/torch-cpu.txt`, or a wheel whose hash does not match). Do not loosen the check; see [CPU-only torch](#cpu-only-torch-in-the-ml-images). |
+| API log shows `Temporary failure in name resolution ... thresholds.json` at startup | No network, but the checkpoint is cached: the API retries the `thresholds.json` lookup, then starts normally. |
 | Build fails with `no space left on device` | The ML image needs several GB: free disk, or raise Docker Desktop's disk limit; `docker system df` shows what Docker uses. |
 | Space log: `VoxGuard API did not become healthy within 60 s` | Raise `VOXGUARD_API_START_TIMEOUT` in the Space variables. |
 | Real detector flags almost everything or nothing; API log warns `VOXGUARD_THRESHOLD is the default` | The checkpoint has no `thresholds.json` (or `VOXGUARD_THRESHOLD` is set): upload its `thresholds.json`, or set `VOXGUARD_THRESHOLD` explicitly. |
