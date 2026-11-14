@@ -39,3 +39,17 @@ jobs:
         env:
           VOXGUARD_DOCKER_TESTS: "1"
         run: uv run pytest tests/test_docker_smoke.py -v -s
+
+  docker-ml:
+    # INSTALL_ML=1 API image (CPU-only torch, docker/torch-cpu.txt): build check, CUDA audit, and
+    # the real detector serving an untrained RawNet2 checkpoint (no token, no private weights).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Install test dependencies
+        run: uv sync --python 3.11 --extra api --extra ui
+      - name: ML image smoke tests
+        env:
+          VOXGUARD_DOCKER_ML_TESTS: "1"
+        run: uv run pytest tests/test_docker_ml.py -v -s
