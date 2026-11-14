@@ -124,7 +124,50 @@ def test_best_checkpoint_is_weights_only(tmp_path: Path) -> None:
     from voxguard.models import load_from_checkpoint
 
     _, info = load_from_checkpoint(tmp_path / "run" / "best.pt", "cpu")
-    assert info["epoch"] == 0
+    assert info["epoch"] == 0 and info["run"] == "run"  # train.out_dir's basename
+
+
+@pytest.mark.parametrize(
+    ("out_dir", "run"),
+    [
+        ("/kaggle/working/runs/ssl-aasist-codec-aug-v2", "ssl-aasist-codec-aug-v2"),
+        ("/kaggle/working/runs/ssl-aasist-codec-aug-v2-p2", "ssl-aasist-codec-aug-v2"),  # resume
+        ("runs/rawnet2-clean-v2/", "rawnet2-clean-v2"),
+        ("C:\\runs\\rawnet2-clean", "rawnet2-clean"),
+        ("runs/v2-plus", "v2-plus"),  # only a trailing -p<digits> is a part suffix
+        ("", None),
+    ],
+)
+def test_run_name_from_out_dir(out_dir: str, run: str | None) -> None:
+    from voxguard.models import run_name
+
+    assert run_name({"train": {"out_dir": out_dir}}) == run
+
+
+def test_run_name_missing_for_hand_built_checkpoints() -> None:
+    from voxguard.models import run_name
+
+    assert run_name({"model": {"name": "rawnet2"}}) is None
+
+
+def test_model_version_tells_runs_apart() -> None:
+    from voxguard.inference import model_version
+
+    clean = {"name": "ssl_aasist", "run": "ssl-aasist-clean", "epoch": 7}
+    aug = {"name": "ssl_aasist", "run": "ssl-aasist-codec-aug-v2", "epoch": 7}
+    assert model_version(clean, "best.pt") == "ssl_aasist/ssl-aasist-clean:best.pt:epoch7"
+    assert model_version(aug, "voxguard-team/voxguard-ssl-aasist-codec-aug") == (
+        "ssl_aasist/ssl-aasist-codec-aug-v2:voxguard-ssl-aasist-codec-aug:epoch7"
+    )
+    assert model_version({"name": "rawnet2", "run": None, "epoch": 3}, "/x/best.pt") == (
+        "rawnet2:best.pt:epoch3"  # no run recorded: the old format
+    )
+    from voxguard.api.thresholds import model_identity
+
+    # thresholds.json matching (name and epoch) now separates the two runs
+    assert model_identity(model_version(clean, "best.pt")) != model_identity(
+        model_version(aug, "best.pt")
+    )
 
 
 @pytest.mark.parametrize("name", ["ssl_aasist.yaml", "rawnet2.yaml"])

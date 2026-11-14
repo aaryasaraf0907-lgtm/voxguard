@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+import re
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 
@@ -17,6 +18,19 @@ def build_model(name: str, **params: Any):
 
         return SSLAASIST(**params)
     raise ValueError(f"unknown model {name!r}; known: ['rawnet2', 'ssl_aasist']")
+
+
+def run_name(config: dict[str, Any]) -> str | None:
+    """The training run a checkpoint came from: the basename of its ``train.out_dir``.
+
+    A trailing ``-p<N>`` is dropped, since parts 2, 3, ... of a run only resume it after a GPU
+    session ends (``ssl-aasist-codec-aug-v2-p2`` is the run ``ssl-aasist-codec-aug-v2``).
+    Checkpoints without ``train.out_dir`` (hand-built test ones) have no run name.
+    """
+    out_dir = (config.get("train") or {}).get("out_dir")
+    if not out_dir:
+        return None
+    return re.sub(r"-p\d+$", "", PurePosixPath(str(out_dir).replace("\\", "/")).name) or None
 
 
 def load_from_checkpoint(path: Path, device: str = "cpu"):
@@ -39,4 +53,5 @@ def load_from_checkpoint(path: Path, device: str = "cpu"):
         build_params.update(pretrained=None, ssl_config_overrides=overrides)
     model = build_model(name, **build_params)
     model.load_state_dict(ckpt["model"])
-    return model.to(device).eval(), {"name": name, "epoch": ckpt["epoch"], **params}
+    info = {"name": name, "run": run_name(ckpt["config"]), "epoch": ckpt["epoch"], **params}
+    return model.to(device).eval(), info

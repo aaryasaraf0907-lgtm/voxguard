@@ -143,6 +143,18 @@ def resolve_checkpoint(model_repo: str, filename: str = "best.pt") -> Path:
     return Path(hf_hub_download(repo_id=model_repo, filename=filename))
 
 
+def model_version(info: dict, source: str) -> str:
+    """``<name>[/<run>]:<source>:epoch<N>``.
+
+    E.g. ``ssl_aasist/ssl-aasist-codec-aug-v2:best.pt:epoch7``.
+
+    The run name keeps a clean and a codec-augmented checkpoint of the same architecture and
+    epoch apart; ``<source>`` is the load location (file or directory name, or HF repo id).
+    """
+    name = f"{info['name']}/{info['run']}" if info.get("run") else info["name"]
+    return f"{name}:{Path(source).name or source}:epoch{info['epoch']}"
+
+
 class RealDetector:
     """Trained RawNet2 / SSL-AASIST checkpoint behind the Detector contract.
 
@@ -175,7 +187,7 @@ class RealDetector:
         self.batch_size = batch_size
         ckpt_path = resolve_checkpoint(source, filename)
         self.model, info = load_from_checkpoint(ckpt_path, device)
-        self.model_version = f"{info['name']}:{Path(source).name or source}:epoch{info['epoch']}"
+        self.model_version = model_version(info, source)
         self.threshold = threshold_from_env() if threshold is None else threshold
         if not 0.0 <= self.threshold <= 1.0:
             raise ValueError(f"threshold must be in [0, 1], got {self.threshold}")
