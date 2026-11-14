@@ -225,3 +225,39 @@ def test_select_thresholds_needs_phone_clips_beyond_gsm() -> None:
     s, y = _scores(50, 0.3, 6)
     with pytest.raises(ValueError, match="held-out"):
         select_thresholds(clean, (s, y, ["gsm"] * 100), "m:s:epoch0")
+
+
+def test_operating_point_rates() -> None:
+    from voxguard.evaluate import operating_point
+
+    scores = np.array([0.1, 0.6, 0.2, 0.9, 0.4, 0.8])
+    labels = np.array([0, 0, 0, 1, 1, 1])
+    op = operating_point(scores, labels, 0.5)  # one real called fake, one fake missed
+    assert op["fpr"] == pytest.approx(1 / 3) and op["fnr"] == pytest.approx(1 / 3)
+    assert op["hter"] == pytest.approx(1 / 3) and op["accuracy"] == pytest.approx(4 / 6)
+
+
+def test_load_dev_thresholds(tmp_path: Path) -> None:
+    from voxguard.evaluate import load_dev_thresholds
+
+    ckpt = tmp_path / "best.pt"
+    assert load_dev_thresholds(ckpt) is None  # no file: the table is simply left out
+    (tmp_path / "thresholds.json").write_text(json.dumps({"selected_on": "eval", "clean": 0.1}))
+    with pytest.raises(ValueError, match="dev"):
+        load_dev_thresholds(ckpt)  # never report thresholds picked on the test set
+
+
+def test_render_operating_point_table() -> None:
+    fam = _fake_family()
+    assert "Operating points" not in render_markdown({"rawnet2": fam})  # optional section
+
+    def op(hter: float) -> dict:
+        return {"threshold": 0.1, "fpr": hter, "fnr": hter, "hter": hter, "accuracy": 1 - hter}
+
+    fam["models"] = {"clean": {"dev_thresholds": {"clean": 0.5, "phone": 0.0123}}}
+    fam["matrix"]["clean"]["clean"]["at_dev_thresholds"] = {"clean": op(0.02), "phone": op(0.3)}
+    fam["matrix"]["clean"]["degraded"]["at_dev_thresholds"] = {"clean": op(0.4), "phone": op(0.1)}
+    md = render_markdown({"rawnet2": fam})
+    assert "### Operating points chosen on dev: eval HTER (%)" in md
+    assert "| Clean only | 0.5 | 0.0123 | 2.00 | 10.00 | 40.00 | not run |" in md
+    assert "| Codec-augmented | not run | not run | not run | not run | not run | not run |" in md

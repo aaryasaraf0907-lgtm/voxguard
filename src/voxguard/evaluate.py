@@ -27,7 +27,7 @@ from typing import Any
 import numpy as np
 import yaml
 
-from voxguard.metrics import compute_eer, latency_stats, summarize
+from voxguard.metrics import compute_eer, confusion_matrix, latency_stats, summarize
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +84,33 @@ def evaluate_condition(scores: np.ndarray, labels: np.ndarray, codecs: list[str]
         except ValueError as exc:
             logger.warning("codec %s skipped: %s", codec, exc)
     return out
+
+
+def operating_point(scores: np.ndarray, labels: np.ndarray, threshold: float) -> dict[str, float]:
+    """Error rates at a fixed threshold: FPR (real called fake), FNR (fake missed), HTER, acc."""
+    c = confusion_matrix(scores, labels, threshold)
+    fpr = c["fp"] / max(c["fp"] + c["tn"], 1)
+    fnr = c["fn"] / max(c["fn"] + c["tp"], 1)
+    return {
+        "threshold": float(threshold),
+        "fpr": fpr,
+        "fnr": fnr,
+        "hter": (fpr + fnr) / 2,
+        "accuracy": (c["tp"] + c["tn"]) / max(sum(c.values()), 1),
+    }
+
+
+def load_dev_thresholds(checkpoint: Path) -> dict[str, Any] | None:
+    """The checkpoint's thresholds.json (from --select-thresholds), or None if absent."""
+    path = checkpoint.parent / "thresholds.json"
+    if not path.is_file():
+        return None
+    data = json.loads(path.read_text())
+    if data.get("selected_on") != "dev":
+        raise ValueError(
+            f"{path}: thresholds must be selected on dev, got {data.get('selected_on')!r}"
+        )
+    return data
 
 
 def low_far_threshold(scores: np.ndarray, labels: np.ndarray, max_missed: float) -> float:
@@ -221,6 +248,9 @@ def evaluate_family(family: str, ckpts: dict[str, str], cfg: EvalConfig) -> dict
             continue
         model, info = load_model(Path(path), device)
         result["models"][train_cond] = {"checkpoint": path, **info}
+        dev_thr = load_dev_thresholds(Path(path))
+        if dev_thr is not None:
+            result["models"][train_cond]["dev_thresholds"] = dev_thr
         result["matrix"][train_cond] = {}
         for test_cond in TEST_CONDITIONS:
             manifests = cfg.test_sets.get(test_cond)
@@ -230,6 +260,10 @@ def evaluate_family(family: str, ckpts: dict[str, str], cfg: EvalConfig) -> dict
                 model, [Path(m) for m in manifests], cfg, device, test_cond in CODEC_TESTS
             )
             result["matrix"][train_cond][test_cond] = evaluate_condition(s, y, codecs)
+            if dev_thr is not None:  # eval error rates at the operating points chosen on dev
+                result["matrix"][train_cond][test_cond]["at_dev_thresholds"] = {
+                    ch: operating_point(s, y, dev_thr[ch]) for ch in ("clean", "phone")
+                }
             logger.info(
                 "%s train=%s test=%s EER=%.4f (n=%d)", family, train_cond, test_cond,
                 result["matrix"][train_cond][test_cond]["pooled"]["eer"], len(y),
@@ -287,6 +321,43 @@ def _per_codec_table(res: dict[str, Any], test: str, title: str) -> list[str]:
     return lines
 
 
+def _operating_point_table(res: dict[str, Any]) -> list[str]:
+    """Eval HTER at the thresholds chosen on dev: the channel-matched operating point."""
+    models = res.get("models", {})
+    if not any("dev_thresholds" in models.get(t, {}) for t in TRAIN_CONDITIONS):
+        return []
+
+    def op(train: str, test: str, channel: str) -> str:
+        o = ((_get(res, train, test) or {}).get("at_dev_thresholds") or {}).get(channel)
+        return "not run" if o is None else _pct(o["hter"])
+
+    lines = ["", "### Operating points chosen on dev: eval HTER (%)", ""]
+    lines += [
+        "HTER = (FPR + FNR) / 2 at a fixed threshold picked on the dev set (`thresholds.json`), "
+        "unlike the EER above, which picks the best threshold on the eval set itself. The API "
+        "uses the phone threshold. GSM never picks a threshold.",
+        "",
+        "| Train | Clean thr | Phone thr | Clean eval @ clean thr | Phone eval @ phone thr "
+        "| Phone eval @ clean thr | Unseen codec @ phone thr |",
+        "|---|---|---|---|---|---|---|",
+    ]
+    for train in TRAIN_CONDITIONS:
+        thr = models.get(train, {}).get("dev_thresholds")
+        if thr is None:
+            lines.append(f"| {TRAIN_LABELS[train]} |" + " not run |" * 6)
+            continue
+        cells = [
+            f"{thr['clean']:.4g}",
+            f"{thr['phone']:.4g}",
+            op(train, "clean", "clean"),
+            op(train, "degraded", "phone"),
+            op(train, "degraded", "clean"),
+            op(train, "heldout", "phone"),
+        ]
+        lines.append(f"| {TRAIN_LABELS[train]} | " + " | ".join(cells) + " |")
+    return lines
+
+
 def render_family(res: dict[str, Any]) -> str:
     lines = [f"## {res['family']}", "", "### 2x2 matrix: EER (%)", ""]
     lines += ["| Train \\ Test | Clean | Phone-degraded (pooled) |", "|---|---|---|"]
@@ -313,6 +384,8 @@ def render_family(res: dict[str, Any]) -> str:
                 else f"{_pct(pooled['accuracy_at_eer'])} / {_pct(pooled['accuracy_at_0.5'])}"
             )
         lines.append(f"| {TRAIN_LABELS[train]} | {cells[0]} | {cells[1]} |")
+
+    lines += _operating_point_table(res)
 
     if res.get("latency"):
         lines += ["", "### Latency per ~4 s clip (ms, batch 1)", ""]
