@@ -165,3 +165,63 @@ def test_end_to_end_with_tiny_checkpoints(tmp_path: Path) -> None:
     main(["--config", str(cfg_file), "--render-only"])
     md = (tmp_path / "results.md").read_text()
     assert "## rawnet2" in md and "## missing" in md
+
+
+# --- dev-set thresholds (thresholds.json) ---------------------------------------------------
+
+
+def _scores(n: int, shift: float, seed: int) -> tuple[np.ndarray, np.ndarray]:
+    rng = np.random.default_rng(seed)
+    labels = np.r_[np.zeros(n), np.ones(n)].astype(int)
+    scores = np.clip(np.r_[rng.normal(0.3, 0.1, n), rng.normal(0.3 + shift, 0.1, n)], 0, 1)
+    return scores, labels
+
+
+def test_low_far_threshold_misses_at_most_the_target() -> None:
+    from voxguard.evaluate import low_far_threshold
+
+    scores, labels = _scores(1000, 0.4, 0)
+    thr = low_far_threshold(scores, labels, 0.01)
+    fakes = scores[labels == 1]
+    assert np.mean(fakes < thr) <= 0.01
+    assert np.mean(fakes < thr) > 0.005  # and is not needlessly low
+    with pytest.raises(ValueError):
+        low_far_threshold(scores[labels == 0], labels[labels == 0], 0.01)
+
+
+def test_select_thresholds_round_trips_through_the_api_parser() -> None:
+    from voxguard.api.thresholds import parse_thresholds
+    from voxguard.evaluate import select_thresholds
+    from voxguard.metrics import compute_eer
+
+    clean = _scores(500, 0.5, 1)
+    s_g, y_g = _scores(500, 0.2, 2)  # phone audio: classes overlap more, scores sit higher
+    s_o, y_o = _scores(500, 0.3, 3)
+    s_gsm, y_gsm = _scores(500, -0.2, 4)  # held-out codec with inverted scores
+    phone = (
+        np.r_[s_g, s_o, s_gsm],
+        np.r_[y_g, y_o, y_gsm],
+        ["g711_mulaw"] * 1000 + ["opus"] * 1000 + ["gsm"] * 1000,
+    )
+    version = "ssl_aasist/ssl-aasist-codec-aug-v2:best.pt:epoch7"
+    data = select_thresholds(clean, phone, version)
+
+    assert data["selected_on"] == "dev" and data["excluded_codecs"] == ["gsm"]
+    assert set(data["per_codec"]) == {"g711_mulaw", "opus"}  # GSM never picks a threshold
+    assert data["phone"] == pytest.approx(compute_eer(np.r_[s_g, s_o], np.r_[y_g, y_o])[1])
+    assert data["clean"] == pytest.approx(compute_eer(*clean)[1])
+    assert data["low_far"]["phone"] <= data["phone"]  # fewer missed fakes = lower threshold
+    assert data["dev_clips"] == {"clean": 1000, "phone": 2000}
+    ts = parse_thresholds(
+        json.loads(json.dumps(data)), "ssl_aasist/ssl-aasist-codec-aug-v2:hub:epoch7"
+    )
+    assert ts.phone == data["phone"] and ts.per_codec == data["per_codec"]
+
+
+def test_select_thresholds_needs_phone_clips_beyond_gsm() -> None:
+    from voxguard.evaluate import select_thresholds
+
+    clean = _scores(50, 0.5, 5)
+    s, y = _scores(50, 0.3, 6)
+    with pytest.raises(ValueError, match="held-out"):
+        select_thresholds(clean, (s, y, ["gsm"] * 100), "m:s:epoch0")
