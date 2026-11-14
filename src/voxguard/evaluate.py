@@ -2,6 +2,9 @@
 
     python -m voxguard.evaluate --config configs/eval.yaml
     python -m voxguard.evaluate --config configs/eval.yaml --render-only   # rebuild the doc
+    python -m voxguard.evaluate --select-thresholds runs/x/best.pt \\
+        --dev-clean data/processed/manifests/asvspoof2019_la_dev.csv \\
+        --dev-phone data/processed/manifests/dev_per_codec.csv    # -> runs/x/thresholds.json
 
 For each model family, the ``clean`` and ``codec_aug`` checkpoints are scored on the ``clean``
 and ``degraded`` test sets. Degraded rows are grouped by the manifest ``codec`` column for the
@@ -24,7 +27,7 @@ from typing import Any
 import numpy as np
 import yaml
 
-from voxguard.metrics import latency_stats, summarize
+from voxguard.metrics import compute_eer, latency_stats, summarize
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +36,8 @@ MATRIX_TESTS = ("clean", "degraded")  # the 2x2 columns
 TEST_CONDITIONS = (*MATRIX_TESTS, "heldout")  # heldout: codecs unseen in training (optional)
 CODEC_TESTS = ("degraded", "heldout")  # sets whose clean rows are dropped
 TRAIN_LABELS = {"clean": "Clean only", "codec_aug": "Codec-augmented"}
+THRESHOLD_EXCLUDED_CODECS = ("gsm",)  # held out as the unseen codec: never used to pick one
+LOW_FAR_MAX_MISSED = 0.01  # low_far: at most this share of dev fakes scored below the threshold
 
 
 @dataclass
@@ -79,6 +84,66 @@ def evaluate_condition(scores: np.ndarray, labels: np.ndarray, codecs: list[str]
         except ValueError as exc:
             logger.warning("codec %s skipped: %s", codec, exc)
     return out
+
+
+def low_far_threshold(scores: np.ndarray, labels: np.ndarray, max_missed: float) -> float:
+    """The highest threshold that misses at most ``max_missed`` of the fakes (label 1).
+
+    A fake is missed when its score is below the threshold, so this is the ``max_missed``
+    quantile of the fake scores (lower, i.e. conservative). Real clips are not considered: this
+    operating point trades more false alarms for fewer missed fakes.
+    """
+    fake = np.sort(np.asarray(scores, dtype=np.float64)[np.asarray(labels) == 1])
+    if fake.size == 0:
+        raise ValueError("low_far threshold needs at least one fake clip")
+    k = int(np.floor(max_missed * fake.size))  # this many fakes may fall below
+    return float(fake[min(k, fake.size - 1)])
+
+
+def select_thresholds(
+    clean: tuple[np.ndarray, np.ndarray],
+    phone: tuple[np.ndarray, np.ndarray, list[str]],
+    model_version: str,
+    max_missed: float = LOW_FAR_MAX_MISSED,
+) -> dict[str, Any]:
+    """thresholds.json contents (CLAUDE.md section 7) from dev-set scores.
+
+    ``clean`` / ``phone`` are EER thresholds on clean and pooled codec-degraded dev audio;
+    ``per_codec`` and ``low_far`` are for reporting. Excluded codecs (GSM) are dropped first.
+    """
+    p_scores, p_labels, p_codecs = phone
+    keep = ~np.isin(np.asarray(p_codecs), THRESHOLD_EXCLUDED_CODECS)
+    p_scores, p_labels = np.asarray(p_scores)[keep], np.asarray(p_labels)[keep]
+    p_codecs = [c for c, k in zip(p_codecs, keep, strict=True) if k]
+    if p_scores.size == 0:
+        raise ValueError("no phone-degraded dev clips left after excluding held-out codecs")
+    clean_eer, clean_thr = compute_eer(*clean)
+    phone_eer, phone_thr = compute_eer(p_scores, p_labels)
+    per_codec: dict[str, float] = {}
+    per_codec_eer: dict[str, float] = {}
+    codec_arr = np.asarray(p_codecs)
+    for codec in sorted(set(p_codecs)):
+        mask = codec_arr == codec
+        try:
+            per_codec_eer[codec], per_codec[codec] = compute_eer(p_scores[mask], p_labels[mask])
+        except ValueError as exc:
+            logger.warning("codec %s: no threshold (%s)", codec, exc)
+    clip = lambda t: float(min(max(t, 0.0), 1.0))  # noqa: E731 - scores are P(fake) in [0, 1]
+    return {
+        "model_version": model_version,
+        "selected_on": "dev",
+        "clean": clip(clean_thr),
+        "phone": clip(phone_thr),
+        "low_far": {
+            "clean": clip(low_far_threshold(*clean, max_missed)),
+            "phone": clip(low_far_threshold(p_scores, p_labels, max_missed)),
+        },
+        "per_codec": {c: clip(t) for c, t in per_codec.items()},
+        "low_far_max_missed": max_missed,
+        "excluded_codecs": list(THRESHOLD_EXCLUDED_CODECS),
+        "dev_eer": {"clean": clean_eer, "phone": phone_eer, "per_codec": per_codec_eer},
+        "dev_clips": {"clean": int(len(clean[1])), "phone": int(p_labels.size)},
+    }
 
 
 # --- scoring (torch, lazy imports) --------------------------------------------------------
@@ -294,13 +359,58 @@ def load_results(out_dir: Path) -> dict[str, dict[str, Any]]:
     }
 
 
+def write_thresholds(
+    checkpoint: Path, dev_clean: list[Path], dev_phone: list[Path], cfg: EvalConfig
+) -> Path:
+    """Score the dev sets with ``checkpoint`` and write ``thresholds.json`` next to it."""
+    from voxguard.inference import model_version
+    from voxguard.train import pick_device
+
+    device = str(pick_device(cfg.device))
+    model, info = load_model(checkpoint, device)
+    version = model_version(info, str(checkpoint))
+    clean = score_manifests(model, dev_clean, cfg, device, codec_filter_clean=False)[:2]
+    phone = score_manifests(model, dev_phone, cfg, device, codec_filter_clean=True)
+    data = select_thresholds(clean, phone, version)
+    out = checkpoint.parent / "thresholds.json"
+    out.write_text(json.dumps(data, indent=2) + "\n")
+    logger.info(
+        "%s: clean %.4g (dev EER %.2f%%), phone %.4g (dev EER %.2f%%) -> %s", version,
+        data["clean"], 100 * data["dev_eer"]["clean"], data["phone"],
+        100 * data["dev_eer"]["phone"], out,
+    )  # fmt: skip
+    return out
+
+
 def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
-    p.add_argument("--config", type=Path, required=True)
+    p.add_argument("--config", type=Path, default=None)
     p.add_argument("--max-samples", type=int, default=None)
     p.add_argument("--render-only", action="store_true", help="rebuild docs from results/*.json")
+    p.add_argument(
+        "--select-thresholds",
+        type=Path,
+        metavar="CHECKPOINT",
+        help="pick dev-set thresholds for CHECKPOINT and write thresholds.json",
+    )
+    p.add_argument("--dev-clean", type=Path, nargs="+", help="clean dev manifest(s)")
+    p.add_argument("--dev-phone", type=Path, nargs="+", help="codec-degraded dev manifest(s)")
+    p.add_argument("--roots", nargs="+", help="audio roots (default: the eval config's)")
+    p.add_argument("--device", default=None)
     args = p.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+
+    if args.select_thresholds is not None:
+        if not args.dev_clean or not args.dev_phone:
+            p.error("--select-thresholds needs --dev-clean and --dev-phone")
+        cfg = load_eval_config(args.config) if args.config else EvalConfig()
+        cfg.max_samples = args.max_samples if args.max_samples is not None else cfg.max_samples
+        cfg.roots = args.roots or cfg.roots
+        cfg.device = args.device or cfg.device
+        write_thresholds(args.select_thresholds, args.dev_clean, args.dev_phone, cfg)
+        return
+    if args.config is None:
+        p.error("--config is required")
 
     cfg = load_eval_config(args.config)
     if args.max_samples is not None:
