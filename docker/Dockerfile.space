@@ -1,6 +1,7 @@
 # Single-container image for a (private) Hugging Face Docker Space: the API listens on
 # 127.0.0.1:8000 inside the container and the Streamlit UI is served on the Space port 7860.
-# Same build arg as Dockerfile.api: INSTALL_ML=1 adds the ml extra for the real detector.
+# Same build arg as Dockerfile.api: INSTALL_ML=1 adds the ml extra (CPU-only torch) for the
+# real detector.
 FROM python:3.11-slim-bookworm
 
 ARG INSTALL_ML=0
@@ -19,14 +20,21 @@ COPY --from=ghcr.io/astral-sh/uv:0.13.6 /uv /usr/local/bin/uv
 
 WORKDIR /app
 COPY pyproject.toml uv.lock README.md LICENSE ./
+COPY docker/ml_cpu.sh docker/ml-cpu-skip.txt docker/torch-cpu.txt docker/check_ml_cpu.py docker/
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --no-install-project --extra api --extra ui \
-        $(if [ "$INSTALL_ML" = "1" ]; then echo --extra ml; fi)
+    sh docker/ml_cpu.sh sync --no-install-project --extra api --extra ui
+# INSTALL_ML=1 only: CPU-only torch and torchaudio, pinned with per-architecture hashes in
+# docker/torch-cpu.txt instead of taken from uv.lock, whose Linux wheels are CUDA builds.
+# torch is the locked 2.15.0 (+cpu). torchaudio is 2.11.0+cpu while uv.lock has 2.11.1: the
+# locked 2.11.1 Linux wheel needs the CUDA runtime (libcudart, libtorch_cuda) and the CPU index
+# has no 2.11.1; on amd64 the pinned pair gave bit-identical resampling and RawNet2 scores to the
+# locked pair (14 Nov 2026). The step fails the build unless the environment is CPU-only.
+RUN --mount=type=cache,target=/root/.cache/uv sh docker/ml_cpu.sh torch
 COPY src ./src
 COPY docker/space_start.sh /usr/local/bin/space_start.sh
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --no-editable --extra api --extra ui \
-        $(if [ "$INSTALL_ML" = "1" ]; then echo --extra ml; fi)
+    sh docker/ml_cpu.sh sync --no-editable --extra api --extra ui \
+    && sh docker/ml_cpu.sh check
 
 # Spaces run the container as uid 1000. /data is where Spaces mount persistent storage when it
 # is enabled; without it the SQLite database is lost on every restart.
@@ -34,6 +42,7 @@ RUN useradd --create-home --uid 1000 voxguard && mkdir -p /data && chown voxguar
 USER voxguard
 ENV VOXGUARD_DB_URL=sqlite:////data/voxguard.db \
     HF_HOME=/data/hf-cache \
+    UV_NO_SYNC=1 \
     VOXGUARD_API_URL=http://127.0.0.1:8000 \
     STREAMLIT_SERVER_MAX_UPLOAD_SIZE=25 \
     STREAMLIT_BROWSER_GATHER_USAGE_STATS=false \
