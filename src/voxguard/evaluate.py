@@ -37,7 +37,10 @@ TEST_CONDITIONS = (*MATRIX_TESTS, "heldout")  # heldout: codecs unseen in traini
 CODEC_TESTS = ("degraded", "heldout")  # sets whose clean rows are dropped
 TRAIN_LABELS = {"clean": "Clean only", "codec_aug": "Codec-augmented"}
 THRESHOLD_EXCLUDED_CODECS = ("gsm",)  # held out as the unseen codec: never used to pick one
-LOW_FAR_MAX_MISSED = 0.01  # low_far: at most this share of dev fakes scored below the threshold
+# low_far: at most this share of dev fakes may score below the threshold. 0.1%, not 1%: a model
+# that misses under 1% of dev fakes at its EER threshold would otherwise get a low_far threshold
+# *above* the EER one (seen with SSL-AASIST codec-aug, 15 Nov), defeating the point of the mode.
+LOW_FAR_MAX_MISSED = 0.001
 
 
 @dataclass
@@ -261,9 +264,11 @@ def evaluate_family(family: str, ckpts: dict[str, str], cfg: EvalConfig) -> dict
             )
             result["matrix"][train_cond][test_cond] = evaluate_condition(s, y, codecs)
             if dev_thr is not None:  # eval error rates at the operating points chosen on dev
-                result["matrix"][train_cond][test_cond]["at_dev_thresholds"] = {
-                    ch: operating_point(s, y, dev_thr[ch]) for ch in ("clean", "phone")
-                }
+                at = {ch: operating_point(s, y, dev_thr[ch]) for ch in ("clean", "phone")}
+                low_far = (dev_thr.get("low_far") or {}).get("phone")
+                if low_far is not None:  # older thresholds.json files may lack it
+                    at["low_far"] = operating_point(s, y, low_far)
+                result["matrix"][train_cond][test_cond]["at_dev_thresholds"] = at
             logger.info(
                 "%s train=%s test=%s EER=%.4f (n=%d)", family, train_cond, test_cond,
                 result["matrix"][train_cond][test_cond]["pooled"]["eer"], len(y),
@@ -358,6 +363,50 @@ def _operating_point_table(res: dict[str, Any]) -> list[str]:
     return lines
 
 
+def _low_far_table(res: dict[str, Any]) -> list[str]:
+    """Eval false alarms and missed fakes at the low_far phone threshold chosen on dev."""
+    models = res.get("models", {})
+    thrs = {
+        t: models[t]["dev_thresholds"]
+        for t in TRAIN_CONDITIONS
+        if (models.get(t, {}).get("dev_thresholds") or {}).get("low_far", {}).get("phone")
+        is not None
+    }
+    if not thrs:
+        return []
+
+    def op(train: str, test: str) -> str:
+        o = ((_get(res, train, test) or {}).get("at_dev_thresholds") or {}).get("low_far")
+        return "not run" if o is None else f"{_pct(o['fpr'])} / {_pct(o['fnr'])}"
+
+    lines = ["", "### low_far operating point chosen on dev: eval false alarms / missed fakes (%)"]
+    lines += [
+        "",
+        "The phone threshold at which at most the stated share of dev fakes is missed, applied to "
+        "eval: real clips called fake / fakes missed. It trades false alarms for fewer misses; the "
+        "API uses it only when an operator sets it explicitly.",
+        "",
+        "| Train | low_far thr | Dev fakes missed (target) | Clean eval | Phone eval "
+        "| Unseen codec |",
+        "|---|---|---|---|---|---|",
+    ]
+    for train in TRAIN_CONDITIONS:
+        thr = thrs.get(train)
+        if thr is None:
+            lines.append(f"| {TRAIN_LABELS[train]} |" + " not run |" * 5)
+            continue
+        target = thr.get("low_far_max_missed")
+        cells = [
+            f"{thr['low_far']['phone']:.4g}",
+            "unknown" if target is None else f"{100 * target:.2g}",
+            op(train, "clean"),
+            op(train, "degraded"),
+            op(train, "heldout"),
+        ]
+        lines.append(f"| {TRAIN_LABELS[train]} | " + " | ".join(cells) + " |")
+    return lines
+
+
 def render_family(res: dict[str, Any]) -> str:
     lines = [f"## {res['family']}", "", "### 2x2 matrix: EER (%)", ""]
     lines += ["| Train \\ Test | Clean | Phone-degraded (pooled) |", "|---|---|---|"]
@@ -386,6 +435,7 @@ def render_family(res: dict[str, Any]) -> str:
         lines.append(f"| {TRAIN_LABELS[train]} | {cells[0]} | {cells[1]} |")
 
     lines += _operating_point_table(res)
+    lines += _low_far_table(res)
 
     if res.get("latency"):
         lines += ["", "### Latency per ~4 s clip (ms, batch 1)", ""]

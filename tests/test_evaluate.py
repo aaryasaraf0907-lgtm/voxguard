@@ -211,6 +211,7 @@ def test_select_thresholds_round_trips_through_the_api_parser() -> None:
     assert data["phone"] == pytest.approx(compute_eer(np.r_[s_g, s_o], np.r_[y_g, y_o])[1])
     assert data["clean"] == pytest.approx(compute_eer(*clean)[1])
     assert data["low_far"]["phone"] <= data["phone"]  # fewer missed fakes = lower threshold
+    assert data["low_far_max_missed"] == 0.001
     assert data["dev_clips"] == {"clean": 1000, "phone": 2000}
     ts = parse_thresholds(
         json.loads(json.dumps(data)), "ssl_aasist/ssl-aasist-codec-aug-v2:hub:epoch7"
@@ -261,3 +262,70 @@ def test_render_operating_point_table() -> None:
     assert "### Operating points chosen on dev: eval HTER (%)" in md
     assert "| Clean only | 0.5 | 0.0123 | 2.00 | 10.00 | 40.00 | not run |" in md
     assert "| Codec-augmented | not run | not run | not run | not run | not run | not run |" in md
+
+
+def test_low_far_default_stays_below_the_eer_threshold_for_a_sharp_model() -> None:
+    """A model missing well under 1% of dev fakes at EER: a 1% target would put low_far *above*
+    the EER threshold (15 Nov, SSL-AASIST codec-aug); the 0.1% default keeps it below."""
+    from voxguard.evaluate import low_far_threshold, select_thresholds
+
+    rng = np.random.default_rng(7)
+    real = rng.normal(0.0075, 0.001, 5000)
+    fake = np.r_[rng.normal(0.9, 0.05, 4950), rng.normal(0.011, 0.001, 50)]  # 1% hard fakes
+    s, y = np.r_[real, fake], np.r_[np.zeros(5000), np.ones(5000)].astype(int)
+    data = select_thresholds((s, y), (s, y, ["opus"] * len(s)), "m:s:epoch0")
+    assert low_far_threshold(s, y, 0.01) > data["phone"]  # the old target defeats the mode
+    assert data["low_far"]["phone"] < data["phone"]
+
+
+def test_render_low_far_table() -> None:
+    fam = _fake_family()
+    assert "low_far operating point" not in render_markdown({"rawnet2": fam})  # optional
+
+    def op(fpr: float, fnr: float) -> dict:
+        return {"threshold": 0.01, "fpr": fpr, "fnr": fnr, "hter": (fpr + fnr) / 2,
+                "accuracy": 0.9}  # fmt: skip
+
+    fam["models"] = {"codec_aug": {"dev_thresholds": {
+        "clean": 0.0138, "phone": 0.0127, "low_far": {"clean": 0.01, "phone": 0.0093},
+        "low_far_max_missed": 0.001,
+    }}}  # fmt: skip
+    fam["matrix"]["codec_aug"]["clean"]["at_dev_thresholds"] = {
+        "clean": op(0, 0),
+        "phone": op(0, 0),
+        "low_far": op(0.0131, 0.0147),
+    }
+    fam["matrix"]["codec_aug"]["degraded"]["at_dev_thresholds"] = {
+        "clean": op(0, 0),
+        "phone": op(0, 0),
+        "low_far": op(0.0291, 0.0126),
+    }
+    md = render_markdown({"rawnet2": fam})
+    assert "### low_far operating point chosen on dev" in md
+    assert "| Codec-augmented | 0.0093 | 0.1 | 1.31 / 1.47 | 2.91 / 1.26 | not run |" in md
+    assert "| Clean only | not run | not run | not run | not run | not run |" in md
+
+
+def test_evaluate_family_reports_eval_rates_at_the_dev_low_far_threshold(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from voxguard import evaluate
+
+    ckpt = tmp_path / "best.pt"
+    ckpt.write_bytes(b"")
+    thr = {"selected_on": "dev", "clean": 0.5, "phone": 0.6, "low_far": {"phone": 0.25},
+           "low_far_max_missed": 0.001}  # fmt: skip
+    (tmp_path / "thresholds.json").write_text(json.dumps(thr))
+    scores, labels = np.array([0.1, 0.3, 0.2, 0.4, 0.7, 0.9]), np.array([0, 0, 0, 1, 1, 1])
+    monkeypatch.setattr(evaluate, "load_model", lambda p, d: (object(), {"name": "m", "epoch": 0}))
+    monkeypatch.setattr(evaluate, "score_manifests", lambda *a, **k: (scores, labels, ["opus"] * 6))
+    cfg = evaluate.EvalConfig(
+        test_sets={"clean": ["c.csv"], "degraded": ["d.csv"]}, device="cpu", latency_devices=[]
+    )
+    res = evaluate.evaluate_family("m", {"clean": str(ckpt)}, cfg)
+    low_far = res["matrix"]["clean"]["degraded"]["at_dev_thresholds"]["low_far"]
+    assert low_far["threshold"] == 0.25
+    assert (
+        low_far["fpr"] == pytest.approx(1 / 3) and low_far["fnr"] == 0
+    )  # 0.3 flagged, none missed
+    assert "low_far operating point" in evaluate.render_markdown({"m": res})
