@@ -40,12 +40,28 @@ from voxguard.schemas import (
 
 logger = logging.getLogger(__name__)
 
+LOG_FORMAT = "%(levelname)s %(name)s: %(message)s"
 ANALYZE_PATH = "/v1/analyze"
 MULTIPART_OVERHEAD_BYTES = 64 * 1024  # boundaries and form fields around the file
 
 
 def _codec_unavailable(codec: str) -> str:
     return f"Codec simulation for {codec} is unavailable on this server."
+
+
+def configure_logging() -> None:
+    """Show VoxGuard's own INFO lines (model loaded, warm-up, thresholds) when served.
+
+    uvicorn configures only its own loggers, so without this the ``voxguard`` INFO records are
+    dropped and only warnings reach the console. Nothing changes when logging is already
+    configured (a root handler exists, e.g. under pytest or in an embedding application)."""
+    package = logging.getLogger("voxguard")
+    if logging.getLogger().handlers or package.handlers:
+        return
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter(LOG_FORMAT))
+    package.addHandler(handler)
+    package.setLevel(logging.INFO)
 
 
 def create_app(
@@ -61,6 +77,7 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        configure_logging()
         engine = make_engine(settings.db_url)
         create_tables(engine)
         app.state.settings = settings
