@@ -1,11 +1,14 @@
 """Manifest CSVs: ``path,label,split,codec,bitrate,source`` (CLAUDE.md section 8).
 
+    python -m voxguard.data.manifests --in-the-wild data/raw/in_the_wild/release_in_the_wild
+
 ``label`` is 1 for spoof/fake and 0 for bona fide, matching ``fake_score`` (higher = fake).
 ``path`` is relative to the dataset root so manifests stay valid when the data moves.
 """
 
 from __future__ import annotations
 
+import argparse
 import csv
 import logging
 from collections.abc import Iterable, Iterator
@@ -110,3 +113,53 @@ def build_asvspoof2019_la_manifests(
         counts[split] = write_manifest(rows, out_dir / f"asvspoof2019_la_{split}.csv")
         logger.info("wrote %s manifest: %d rows", split, counts[split])
     return counts
+
+
+IN_THE_WILD_LABELS = {"bona-fide": 0, "spoof": 1}
+
+
+def build_in_the_wild_manifest(
+    itw_root: Path, data_root: Path, out: Path, source: str = "in_the_wild"
+) -> int:
+    """Write an eval manifest for the In-the-Wild dataset (Mueller et al., Interspeech 2022).
+
+    ``itw_root`` holds ``meta.csv`` (``file,speaker,label`` with label ``spoof``/``bona-fide``)
+    and the wav files. Out-of-domain test only: every row is split ``eval``, codec ``clean``.
+    """
+    with (itw_root / "meta.csv").open(newline="") as f:
+        reader = csv.DictReader(f)
+        if not {"file", "label"} <= set(reader.fieldnames or ()):
+            raise ValueError(f"{itw_root / 'meta.csv'}: expected file,speaker,label columns")
+        items = list(reader)
+    rows = []
+    for lineno, item in enumerate(items, 2):
+        if item["label"] not in IN_THE_WILD_LABELS:
+            raise ValueError(f"meta.csv line {lineno}: unknown label {item['label']!r}")
+        wav = itw_root / item["file"]
+        if not wav.is_file():
+            raise FileNotFoundError(f"{wav} listed in meta.csv but missing")
+        rows.append(
+            ManifestRow(
+                path=wav.relative_to(data_root).as_posix(),
+                label=IN_THE_WILD_LABELS[item["label"]],
+                split="eval",
+                source=source,
+            )
+        )
+    n = write_manifest(rows, out)
+    logger.info("wrote In-the-Wild manifest %s: %d rows", out, n)
+    return n
+
+
+def main(argv: list[str] | None = None) -> None:
+    p = argparse.ArgumentParser(description="Build extra eval-set manifests.")
+    p.add_argument("--in-the-wild", type=Path, required=True, help="release_in_the_wild dir")
+    p.add_argument("--data-root", type=Path, default=Path("data/raw"))
+    p.add_argument("--out", type=Path, default=Path("data/processed/manifests/in_the_wild.csv"))
+    args = p.parse_args(argv)
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    build_in_the_wild_manifest(args.in_the_wild, args.data_root, args.out)
+
+
+if __name__ == "__main__":
+    main()

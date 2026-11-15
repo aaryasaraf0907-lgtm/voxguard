@@ -170,3 +170,38 @@ def test_no_progress_gives_up_after_retries(
     with pytest.raises(OSError, match="3 attempts in a row made no progress"):
         download.download_resumable("http://x", tmp_path / "a.zip", 10, retries=3)
     assert len(calls) == 3
+
+
+def _itw_tree(root: Path, meta: str, files: list[str]) -> Path:
+    itw = root / "in_the_wild" / "release_in_the_wild"
+    itw.mkdir(parents=True)
+    (itw / "meta.csv").write_text(meta)
+    for name in files:
+        (itw / name).write_bytes(b"")
+    return itw
+
+
+def test_build_in_the_wild_manifest(tmp_path: Path) -> None:
+    from voxguard.data.manifests import build_in_the_wild_manifest
+
+    itw = _itw_tree(
+        tmp_path, "file,speaker,label\n0.wav,A,spoof\n1.wav,B,bona-fide\n", ["0.wav", "1.wav"]
+    )
+    out = tmp_path / "m.csv"
+    assert build_in_the_wild_manifest(itw, tmp_path, out) == 2
+    rows = read_manifest(out)
+    assert [(r.path, r.label, r.split, r.codec, r.source) for r in rows] == [
+        ("in_the_wild/release_in_the_wild/0.wav", 1, "eval", "clean", "in_the_wild"),
+        ("in_the_wild/release_in_the_wild/1.wav", 0, "eval", "clean", "in_the_wild"),
+    ]
+
+
+def test_in_the_wild_manifest_rejects_unknown_label_and_missing_audio(tmp_path: Path) -> None:
+    from voxguard.data.manifests import build_in_the_wild_manifest
+
+    bad = _itw_tree(tmp_path / "a", "file,speaker,label\n0.wav,A,fake\n", ["0.wav"])
+    with pytest.raises(ValueError, match="unknown label"):
+        build_in_the_wild_manifest(bad, tmp_path / "a", tmp_path / "a.csv")
+    gone = _itw_tree(tmp_path / "b", "file,speaker,label\n0.wav,A,spoof\n", [])
+    with pytest.raises(FileNotFoundError):
+        build_in_the_wild_manifest(gone, tmp_path / "b", tmp_path / "b.csv")

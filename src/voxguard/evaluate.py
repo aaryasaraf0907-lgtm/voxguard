@@ -9,7 +9,9 @@
 For each model family, the ``clean`` and ``codec_aug`` checkpoints are scored on the ``clean``
 and ``degraded`` test sets. Degraded rows are grouped by the manifest ``codec`` column for the
 per-codec breakdown. An optional ``heldout`` test set holds codecs that no model saw in training
-(the unseen-codec test); it is reported separately and never enters the 2x2 matrix. Missing
+(the unseen-codec test); it is reported separately and never enters the 2x2 matrix. An optional
+``in_the_wild`` set (out-of-domain real-world speech, Mueller et al. 2022) is reported the same
+way: EER plus eval false alarms / missed fakes at the dev phone threshold the API uses. Missing
 checkpoints are skipped and shown as "not run", so partial results still render.
 Numbers in docs/results.md come only from results/*.json (never hand-typed).
 """
@@ -33,7 +35,8 @@ logger = logging.getLogger(__name__)
 
 TRAIN_CONDITIONS = ("clean", "codec_aug")
 MATRIX_TESTS = ("clean", "degraded")  # the 2x2 columns
-TEST_CONDITIONS = (*MATRIX_TESTS, "heldout")  # heldout: codecs unseen in training (optional)
+# heldout: codecs unseen in training; in_the_wild: out-of-domain real-world speech (both optional)
+TEST_CONDITIONS = (*MATRIX_TESTS, "heldout", "in_the_wild")
 CODEC_TESTS = ("degraded", "heldout")  # sets whose clean rows are dropped
 TRAIN_LABELS = {"clean": "Clean only", "codec_aug": "Codec-augmented"}
 THRESHOLD_EXCLUDED_CODECS = ("gsm",)  # held out as the unseen codec: never used to pick one
@@ -407,6 +410,35 @@ def _low_far_table(res: dict[str, Any]) -> list[str]:
     return lines
 
 
+def _out_of_domain_table(res: dict[str, Any]) -> list[str]:
+    """In-the-Wild: EER and eval false alarms / missed fakes at the dev phone threshold."""
+    if not any(_get(res, t, "in_the_wild") for t in TRAIN_CONDITIONS):
+        return []
+    lines = ["", "### Out-of-domain (In-the-Wild): EER and errors at the dev phone threshold", ""]
+    lines += [
+        "Real-world speech of public figures (Mueller et al., Interspeech 2022), not telephone "
+        "audio and never used for training or thresholds. False alarms = real clips called "
+        "fake, at the phone threshold the API uses.",
+        "",
+        "| Train | EER | False alarms @ phone thr | Missed fakes @ phone thr | Clips |",
+        "|---|---|---|---|---|",
+    ]
+    for train in TRAIN_CONDITIONS:
+        cond = _get(res, train, "in_the_wild")
+        if cond is None:
+            lines.append(f"| {TRAIN_LABELS[train]} |" + " not run |" * 4)
+            continue
+        o = (cond.get("at_dev_thresholds") or {}).get("phone")
+        fa, miss = (
+            ("no thresholds", "no thresholds") if o is None else (_pct(o["fpr"]), _pct(o["fnr"]))
+        )
+        lines.append(
+            f"| {TRAIN_LABELS[train]} | {_pct(cond['pooled']['eer'])} | {fa} | {miss} "
+            f"| {cond['pooled']['n']} |"
+        )
+    return lines
+
+
 def render_family(res: dict[str, Any]) -> str:
     lines = [f"## {res['family']}", "", "### 2x2 matrix: EER (%)", ""]
     lines += ["| Train \\ Test | Clean | Phone-degraded (pooled) |", "|---|---|---|"]
@@ -436,6 +468,7 @@ def render_family(res: dict[str, Any]) -> str:
 
     lines += _operating_point_table(res)
     lines += _low_far_table(res)
+    lines += _out_of_domain_table(res)
 
     if res.get("latency"):
         lines += ["", "### Latency per ~4 s clip (ms, batch 1)", ""]
