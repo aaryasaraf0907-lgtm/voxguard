@@ -2,7 +2,7 @@
 # as configs/eval_rawnet2.yaml, so the numbers are comparable with the first RawNet2 results.
 # Checkpoints: the Kaggle runs with the fixed class weights, downloaded with
 #   kaggle kernels output <user>/voxguard-<run> -p runs/kaggle/<run>
-# SSL-AASIST codec-aug: part 2 resumes part 1 and carries best.pt across, so its best.pt is the
+# SSL-AASIST codec-aug: part 3 resumes parts 1-2 and carries best.pt across, so its best.pt is the
 # run's best epoch. Missing checkpoints are reported as "not run".
 # Thresholds are not chosen here: run `evaluate --select-thresholds` on the dev sets per
 # checkpoint (thresholds.json); GSM (heldout) is never used to choose one.
@@ -12,11 +12,13 @@ models:
     codec_aug: runs/kaggle/rawnet2-codec-aug-v2/runs/rawnet2-codec-aug-v2/best.pt
   ssl_aasist:
     clean: runs/kaggle/ssl-aasist-clean-p2/runs/ssl-aasist-clean-p2/best.pt
-    codec_aug: runs/kaggle/ssl-aasist-codec-aug-v2-p2/runs/ssl-aasist-codec-aug-v2-p2/best.pt
+    codec_aug: runs/kaggle/ssl-aasist-codec-aug-v2-p3/runs/ssl-aasist-codec-aug-v2-p3/best.pt
 test_sets:
   clean: [data/processed/manifests/eval_subset10k.csv]
   degraded: [data/processed/manifests/eval_subset10k_per_codec.csv]
   heldout: [data/processed/manifests/eval_subset10k_heldout.csv]
+  # out-of-domain; build with: python -m voxguard.data.manifests --in-the-wild <dir>
+  in_the_wild: [data/processed/manifests/in_the_wild.csv]
 roots: [data/raw, data/processed/codec_eval]
 max_samples: null
 batch_size: 32

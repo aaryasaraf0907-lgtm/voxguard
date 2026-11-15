@@ -334,3 +334,21 @@ def test_evaluate_family_reports_eval_rates_at_the_dev_low_far_threshold(
         low_far["fpr"] == pytest.approx(1 / 3) and low_far["fnr"] == 0
     )  # 0.3 flagged, none missed
     assert "low_far operating point" in evaluate.render_markdown({"m": res})
+
+
+def test_render_out_of_domain_table() -> None:
+    fam = _fake_family()
+    assert "Out-of-domain" not in render_markdown({"rawnet2": fam})  # optional
+
+    pooled = {"eer": 0.1384, "n": 31779, "accuracy_at_eer": 0.86, "accuracy_at_0.5": 0.4}
+    fam["matrix"]["codec_aug"]["in_the_wild"] = {
+        "pooled": pooled,
+        "at_dev_thresholds": {"phone": {"threshold": 0.0127, "fpr": 0.1917, "fnr": 0.0964,
+                                        "hter": 0.144, "accuracy": 0.83}},
+    }  # fmt: skip
+    fam["matrix"]["clean"]["in_the_wild"] = {"pooled": {**pooled, "eer": 0.0952}}
+    md = render_markdown({"rawnet2": fam})
+    assert "### Out-of-domain (In-the-Wild)" in md
+    assert "| Codec-augmented | 13.84 | 19.17 | 9.64 | 31779 |" in md
+    assert "| Clean only | 9.52 | no thresholds | no thresholds | 31779 |" in md
+    assert "Codec-augmented on in_the_wild: n=31779" in md
