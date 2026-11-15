@@ -72,8 +72,11 @@ uv run python -m voxguard.benchmark --render results/benchmarks   # -> docs/benc
   13 Nov) use a checkpoint trained **before the class-weight fix**. Their timings are valid,
   since weights do not change compute, but their scores mean nothing for detection; their
   `note` says so. They are the first runs with the API's own `codec_ms` and post-#45
-  (evaluation-bitrate) codec timings. The untrained runs are kept as history. Runs on the
-  retrained RawNet2 and on SSL-AASIST, CPU and GPU, should follow.
+  (evaluation-bitrate) codec timings. The untrained runs are kept as history.
+- The SSL-AASIST runs (`ssl_aasist/ssl-aasist-codec-aug-v2:...:epoch11`, CPU and CUDA, 15 Nov)
+  use the codec-augmented checkpoint that the demo serves. They measure latency only; its
+  detection results come from `python -m voxguard.evaluate` (`docs/results.md`). Runs on the
+  retrained RawNet2 should follow.
 - The CLAUDE.md targets (CPU < 2 s, GPU < 300 ms per 4 s clip) apply to
   `detector_inference` only. The phone-line demo path costs `codec_ms` (in-process:
   `codec_preprocessing`) on top, and `api_request.simulated` is the end-to-end time a client
