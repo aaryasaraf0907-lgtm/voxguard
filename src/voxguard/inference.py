@@ -46,7 +46,7 @@ def threshold_from_env(default: float = DEFAULT_THRESHOLD) -> float:
     return value
 
 
-MIN_TAIL = NUM_SAMPLES // 4  # a trailing partial window shorter than ~1 s is dropped
+MIN_TAIL = NUM_SAMPLES // 4  # a trailing leftover shorter than ~1 s is dropped
 
 Resampler = Callable[[np.ndarray, int, int], np.ndarray]
 
@@ -72,24 +72,25 @@ def to_windows(
 ) -> list[np.ndarray]:
     """Resample to 16 kHz mono float32 and split into 64,600-sample windows.
 
-    Windows are non-overlapping. A short window is repeat-padded (as in training, see
-    ``voxguard.data.datasets.fix_length``); a trailing partial window shorter than
-    ``MIN_TAIL`` is dropped when there is at least one full window.
+    A clip shorter than one window is repeat-padded, as in training (see
+    ``voxguard.data.datasets.fix_length``). Longer clips are split into non-overlapping full
+    windows; a trailing leftover of at least ``MIN_TAIL`` samples is scored as the clip's last
+    64,600 samples (overlapping the previous window) instead of being repeat-padded, since a
+    padded 1-3 s tail repeats itself (or its silence) and scored well above the clip's other
+    windows on real speech (15 Nov). A shorter leftover is dropped.
     """
     x = to_mono(waveform)
     if sample_rate != TARGET_SR and len(x):
         x = resampler(x, sample_rate, TARGET_SR)
     if len(x) == 0:
         return [np.zeros(NUM_SAMPLES, dtype=np.float32)]
-    windows = []
-    for start in range(0, len(x), NUM_SAMPLES):
-        w = x[start : start + NUM_SAMPLES]
-        if len(w) < NUM_SAMPLES:
-            if windows and len(w) < MIN_TAIL:
-                break
-            w = np.tile(w, int(np.ceil(NUM_SAMPLES / len(w))))[:NUM_SAMPLES]
-        windows.append(np.ascontiguousarray(w, dtype=np.float32))
-    return windows
+    if len(x) < NUM_SAMPLES:
+        x = np.tile(x, int(np.ceil(NUM_SAMPLES / len(x))))[:NUM_SAMPLES]
+    n_full, tail = divmod(len(x), NUM_SAMPLES)
+    starts = [i * NUM_SAMPLES for i in range(n_full)]
+    if tail >= MIN_TAIL:
+        starts.append(len(x) - NUM_SAMPLES)
+    return [np.ascontiguousarray(x[s : s + NUM_SAMPLES], dtype=np.float32) for s in starts]
 
 
 class StubDetector:

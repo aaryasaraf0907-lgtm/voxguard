@@ -118,7 +118,7 @@ Git ignores (never commit): `data/raw/`, `data/processed/`, `*.pt/*.pth/*.ckpt`,
 
 ## 7. Interface contract (do not change without telling the other person + PR)
 
-Audio conventions: 16 kHz mono float32. Detector does its own preprocessing: resample -> mono -> crop/pad to 64,600 samples (~4 s); clips longer than 4 s are scored with non-overlapping windows and averaged.
+Audio conventions: 16 kHz mono float32. Detector does its own preprocessing: resample -> mono -> crop/pad to 64,600 samples (~4 s); clips longer than 4 s are scored with non-overlapping windows and averaged; a leftover of at least ~1 s (16,150 samples) is scored as the clip's last 64,600 samples (overlapping the previous window), never repeat-padded, and a shorter leftover is dropped (changed 15 Nov: padded tails scored well above the other windows on real speech). Only clips shorter than 4 s are repeat-padded, as in training.
 
     # src/voxguard/inference.py
     @dataclass(frozen=True)
