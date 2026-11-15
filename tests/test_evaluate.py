@@ -309,8 +309,13 @@ def test_render_low_far_table() -> None:
 def test_evaluate_family_reports_eval_rates_at_the_dev_low_far_threshold(
     tmp_path: Path, monkeypatch
 ) -> None:
+    import sys
+    from types import SimpleNamespace
+
     from voxguard import evaluate
 
+    # voxguard.train imports torch, which CI's lint-test job does not install
+    monkeypatch.setitem(sys.modules, "voxguard.train", SimpleNamespace(pick_device=lambda d: d))
     ckpt = tmp_path / "best.pt"
     ckpt.write_bytes(b"")
     thr = {"selected_on": "dev", "clean": 0.5, "phone": 0.6, "low_far": {"phone": 0.25},
