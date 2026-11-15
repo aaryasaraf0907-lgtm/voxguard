@@ -19,6 +19,8 @@ test_sets:
   heldout: [data/processed/manifests/eval_subset10k_heldout.csv]
   # out-of-domain; build with: python -m voxguard.data.manifests --in-the-wild <dir>
   in_the_wild: [data/processed/manifests/in_the_wild.csv]
+  # Hindi generalisation check; build with: python -m voxguard.data.hindi --help
+  hindi: [data/processed/manifests/hindi.csv]
 roots: [data/raw, data/processed/codec_eval]
 max_samples: null
 batch_size: 32

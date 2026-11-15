@@ -352,3 +352,14 @@ def test_render_out_of_domain_table() -> None:
     assert "| Codec-augmented | 13.84 | 19.17 | 9.64 | 31779 |" in md
     assert "| Clean only | 9.52 | no thresholds | no thresholds | 31779 |" in md
     assert "Codec-augmented on in_the_wild: n=31779" in md
+
+
+def test_render_hindi_table_alongside_in_the_wild() -> None:
+    fam = _fake_family()
+    pooled = {"eer": 0.05, "n": 836, "accuracy_at_eer": 0.95, "accuracy_at_0.5": 0.5}
+    fam["matrix"]["codec_aug"]["hindi"] = {"pooled": pooled}
+    md = render_markdown({"rawnet2": fam})
+    assert "### Hindi generalisation (small set)" in md and "Out-of-domain (In-the-Wild)" not in md
+    assert "| Codec-augmented | 5.00 | no thresholds | no thresholds | 836 |" in md
+    assert "| Clean only | not run | not run | not run | not run |" in md
+    assert "not a language claim" in md
