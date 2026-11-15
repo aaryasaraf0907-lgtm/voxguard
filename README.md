@@ -171,7 +171,7 @@ With the real detector, set these values in `.env`, then run `docker compose up 
 ```bash
 INSTALL_ML=1
 VOXGUARD_DETECTOR=real
-VOXGUARD_MODEL_REPO=voxguard-team/voxguard-rawnet2-codec-aug
+VOXGUARD_MODEL_REPO=voxguard-team/voxguard-ssl-aasist-codec-aug
 HF_TOKEN=<your read token for voxguard-team>
 VOXGUARD_API_START_PERIOD=600s
 VOXGUARD_SIMULATE_CODEC=g711_mulaw
@@ -179,14 +179,15 @@ VOXGUARD_SIMULATE_CODEC=g711_mulaw
 
 `INSTALL_ML=1` builds the API image with a CPU-only torch (about 0.4 GB of Python wheels on
 amd64); keep it in `.env` so a later `--build` does not rebuild the image without torch. The
-first start downloads the checkpoint (RawNet2: 212 MB), hence the longer health-check grace
+first start downloads the checkpoint (SSL-AASIST: 1.26 GB), hence the longer health-check grace
 period. `.env` is git-ignored: never commit it or share the token.
 
 `curl localhost:8000/health` should then show `"detector": "real"`, and the UI sidebar
-"Detector: real". The checkpoints published today are for checking integration and latency only
-(see Status). This path has been run end to end on amd64 (Windows with WSL2 and Docker Desktop):
-from a fresh clone with nothing cached, the first analysis in the UI came 10 min 51 s after
-`git clone`, machine time only (installing Docker, getting Hugging Face access and editing `.env`
+"Detector: real". `voxguard-ssl-aasist-codec-aug` is the demo model (its `thresholds.json` sets the
+operating threshold); the RawNet2 repos are for integration and latency checks only (see Status).
+This path has been run end to end on amd64 (Windows with WSL2 and Docker Desktop): with the
+RawNet2 checkpoint, from a fresh clone with nothing cached, the first analysis in the UI came
+10 min 51 s after `git clone`, machine time only (installing Docker, getting Hugging Face access and editing `.env`
 not included). arm64 (Apple Silicon) has not been run yet. Prerequisites, what was verified, timings and
 troubleshooting are in [docs/deployment.md](docs/deployment.md#real-detector).
 
@@ -204,11 +205,11 @@ export HF_TOKEN=<token>              # only for the private Hugging Face org
 uv run uvicorn voxguard.api.main:create_app --factory --port 8000
 ```
 
-- Trained RawNet2 checkpoints are in the private Hugging Face org
-  (`voxguard-team/voxguard-rawnet2-clean`, `voxguard-team/voxguard-rawnet2-codec-aug`); access
-  needs a token with permission for that org. They come from the runs with the class-weight bug
-  above and will be replaced by the retrained ones; SSL-AASIST checkpoints follow when training
-  finishes. The codec-aug RawNet2 checkpoint (epoch 17) has been loaded through the API and
+- Trained checkpoints are in the private Hugging Face org; access needs a token with permission
+  for that org. SSL-AASIST: `voxguard-team/voxguard-ssl-aasist-codec-aug` (the demo model) and
+  `voxguard-team/voxguard-ssl-aasist-clean`, each with its `thresholds.json`. RawNet2:
+  `voxguard-team/voxguard-rawnet2-clean` and `voxguard-team/voxguard-rawnet2-codec-aug`, from the
+  runs with the class-weight bug above, to be replaced by the retrained ones. The codec-aug RawNet2 checkpoint (epoch 17) has been loaded through the API and
   the demo on CUDA (13 Nov). Because of the class-weight bug its scores are for checking
   integration and latency only, not detection results.
 - The model is loaded once at startup; `/health` then reports `"detector": "real"` and the

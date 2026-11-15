@@ -105,7 +105,8 @@ The response's `codec_applied` names the codec. Behaviour and errors are in
 - Network and disk for the downloads: the `INSTALL_ML=1` API image installs about **0.4 GB**
   of Python wheels on amd64 (CPU-only torch 210 MB, torchaudio, and the other `ml` and `api`
   packages, compressed), on top of the Python base image and Debian's ffmpeg. The first start
-  downloads the checkpoint (RawNet2: 212 MB; SSL-AASIST: GBs). The built image takes about
+  downloads the checkpoint (SSL-AASIST: 1.26 GB; RawNet2: 212 MB) and, for SSL-AASIST, the small
+  XLS-R `config.json`. The built image takes about
   2.6 GB (sum of its layers; Docker Desktop reports 3.2 GB), so leave several GB free, Docker
   Desktop's disk limit included.
 
@@ -116,7 +117,7 @@ The response's `codec_applied` names the codec. Behaviour and errors are in
    ```bash
    INSTALL_ML=1
    VOXGUARD_DETECTOR=real
-   VOXGUARD_MODEL_REPO=voxguard-team/voxguard-rawnet2-codec-aug
+   VOXGUARD_MODEL_REPO=voxguard-team/voxguard-ssl-aasist-codec-aug
    HF_TOKEN=<your read token>
    VOXGUARD_API_START_PERIOD=600s
    VOXGUARD_SIMULATE_CODEC=g711_mulaw
@@ -133,9 +134,36 @@ The response's `codec_applied` names the codec. Behaviour and errors are in
 3. Check: `curl http://localhost:8000/health` shows `"detector": "real"` and the checkpoint's
    `model_version`; the UI sidebar shows "Connected" and "Detector: real".
 
-The RawNet2 checkpoints published today were trained with the class-weight bug (README,
-Status): use them to check that the pipeline runs and how long it takes, not to judge
-detection. They have no `thresholds.json` yet, so the API logs that it uses the 0.5 default.
+`voxguard-team/voxguard-ssl-aasist-codec-aug` (SSL-AASIST trained with codec augmentation) is
+the model for the demo; `voxguard-team/voxguard-ssl-aasist-clean` is the clean-trained
+comparison. Both have a `thresholds.json` chosen on the dev set. The two RawNet2 repos hold
+checkpoints trained with the class-weight bug (README, Status): use them only to check that the
+pipeline runs and how long it takes; they have no `thresholds.json`, so the API warns that it
+uses the 0.5 default.
+
+**Verified with SSL-AASIST on amd64 (15 Nov 2026; same machine as below, Docker Desktop
+29.8.2):** `voxguard-team/voxguard-ssl-aasist-codec-aug` (HF revision `f376f4f`) in compose:
+- the API logged `loaded ssl_aasist/ssl-aasist-codec-aug-v2:voxguard-ssl-aasist-codec-aug:epoch11
+  on cpu`, the warm-up, and the `thresholds.json` it read (clean and phone values); `/health`
+  reported that `model_version`. The API container's memory peaked at about 1.9 GiB (sampled
+  every second during startup);
+- `thresholds.json` (model `ssl_aasist/ssl-aasist-codec-aug-v2`, epoch 11, selected on dev) and
+  the XLS-R `config.json` (`facebook/wav2vec2-xls-r-300m`, only that file) were downloaded into
+  `/data/hf-cache` on the volume; every `/v1/analyze` response and stored session carried the
+  file's **phone** threshold, clean audio and phone lines alike;
+- codecs: G.711 µ-law and A-law, GSM and Opus simulated; AMR-NB and AMR-WB answered 503 (this
+  image's ffmpeg has no AMR encoders);
+- the UI showed "Detector: real", the model version and the threshold used, and clean and
+  phone-line results side by side (headless Chromium);
+- sessions, alerts and the blocklist survived `docker compose down` / `up`; with the cache filled,
+  the API restarted without network (checkpoint, `thresholds.json` and XLS-R config all from the
+  cache);
+- startup stopped (exit code 3, no stub fallback) for a `thresholds.json` naming another epoch,
+  a malformed `thresholds.json`, a missing checkpoint, and an invalid token on an empty cache.
+
+On CPU in this container, one 17.7 s recording (five 4 s windows) took about 2.2 s of detector
+time per request. These are timings only; detection results are in `docs/results.md`.
+
 
 **Verified on amd64 (14 Nov 2026; Windows with WSL2, Docker Desktop 29.8.2, i5-13450HX):**
 with the `.env` above, `docker compose up --build` built the CPU-only ML image, downloaded
@@ -158,7 +186,8 @@ with the `.env` above, `docker compose up --build` built the CPU-only ML image, 
   checkpoint from the Hugging Face Hub`), no network with an empty cache (`checkpoint not
   found`), and `VOXGUARD_DETECTOR=real` on an image built without `INSTALL_ML=1`.
 
-**15-minute check (CLAUDE.md section 17), measured 14 Nov 2026 on the same machine:** a fresh
+**15-minute check (CLAUDE.md section 17), measured 14 Nov 2026 with RawNet2 (212 MB; not yet
+repeated with the 1.26 GB SSL-AASIST checkpoint):** a fresh
 `git clone` of this branch, `.env` from `.env.example` with the six values above (written by a
 script), then `docker compose up --build`, with an empty build cache (a separate buildx builder)
 and an empty volume. Time from `git clone` to the first successful analysis in the UI:
@@ -196,9 +225,11 @@ is not set up (see below).
   the 20 s default is too short) and the Space image's `VOXGUARD_API_START_TIMEOUT` (600 s by
   default for the real detector) cover this.
 - `/health` then reports `"detector": "real"` and the checkpoint's `model_version`
-  (`<model>:<source>:epoch<N>`).
+  (`<model>[/<run>]:<source>:epoch<N>`, e.g.
+  `ssl_aasist/ssl-aasist-codec-aug-v2:voxguard-ssl-aasist-codec-aug:epoch11`).
 - **Threshold:** at startup the API reads `thresholds.json` next to the checkpoint (the same
-  directory, or the same HF model repo) and logs its `clean` and `phone` values. It uses the
+  directory, or the same HF model repo) and logs its `clean` and `phone` values
+  (`INFO voxguard.api.detector_loader: thresholds for ...`). It uses the
   phone threshold for every request today (uploads of unknown origin and simulated phone lines).
   An explicit `VOXGUARD_THRESHOLD` overrides the file, so keep it empty in `.env`. A missing file
   keeps the 0.5 default and logs `VOXGUARD_THRESHOLD is the default 0.50 ...`; a malformed file,
@@ -292,7 +323,7 @@ has been deployed):
    environment variables, and it is never written to the image or the repo.
 5. For the real detector, set the build arg by changing `ARG INSTALL_ML=0` to `ARG INSTALL_ML=1`
    in the Space's `Dockerfile` (Spaces do not take build args), and set `VOXGUARD_DETECTOR=real`
-   and `VOXGUARD_MODEL_REPO` (e.g. `voxguard-team/voxguard-rawnet2-codec-aug`). Leave
+   and `VOXGUARD_MODEL_REPO` (e.g. `voxguard-team/voxguard-ssl-aasist-codec-aug`). Leave
    `VOXGUARD_DEVICE` unset (CPU). The locked torch is the CUDA build from PyPI, so this image is
    several GB and builds slowly even on CPU hardware (see Real detector above).
 6. `git add . && git commit -m "Deploy VoxGuard" && git push`. The Space builds and starts; open
