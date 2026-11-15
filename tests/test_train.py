@@ -232,3 +232,18 @@ def test_train_step_nan_loss_restores_batchnorm_stats() -> None:
     assert train_step(model, model, torch.randn(8, 4), y, loss_fn, opt, scaler, False) is None
     for k, v in model.named_buffers():
         assert torch.equal(v, stats[k]), k  # still finite: eval-mode scoring is not poisoned
+
+
+def test_init_from_starts_a_fresh_run_from_given_weights(tmp_path: Path) -> None:
+    train(_cfg(tmp_path, 1, out="base"))
+    base = torch.load(tmp_path / "base" / "best.pt", weights_only=False)["model"]
+    cfg = _cfg(tmp_path, 1, out="ft")
+    cfg.train.init_from = str(tmp_path / "base" / "best.pt")
+    cfg.train.lr = 0.0  # weights unchanged by training: the result must equal the start
+    cfg.data.realistic = {"probability": 1.0}
+    res = train(cfg)
+    ft = torch.load(tmp_path / "ft" / "last.pt", weights_only=False)
+    assert ft["epoch"] == 0 and len(res["history"]) == 1
+    for k, v in base.items():
+        if v.dtype.is_floating_point and "running" not in k and "num_batches" not in k:
+            assert torch.equal(v, ft["model"][k]), k

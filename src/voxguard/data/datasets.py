@@ -8,6 +8,7 @@ from pathlib import Path
 import numpy as np
 
 from voxguard.data.manifests import ManifestRow, read_manifest
+from voxguard.data.realistic import RealisticPolicy, apply_realistic
 
 NUM_SAMPLES = 64_600  # ~4 s at 16 kHz
 SAMPLE_RATE = 16_000
@@ -54,6 +55,7 @@ class ManifestDataset(_Base):  # type: ignore[misc,valid-type]
     Paths in a manifest are resolved against ``roots`` in order (clean audio lives under the
     raw data root, degraded audio under the processed root). Train mode takes a random crop
     seeded by ``(seed, epoch, index)``, so runs are reproducible; eval mode takes the start.
+    ``realistic`` (train mode only) adds seeded reverb / mic EQ / noise / gain per clip.
     """
 
     def __init__(
@@ -65,6 +67,7 @@ class ManifestDataset(_Base):  # type: ignore[misc,valid-type]
         codecs: Sequence[str] | None = None,
         max_samples: int | None = None,
         seed: int = 0,
+        realistic: RealisticPolicy | None = None,
     ) -> None:
         if _Base is object:
             raise ImportError("ManifestDataset needs torch: install with `uv sync --extra ml`")
@@ -74,6 +77,7 @@ class ManifestDataset(_Base):  # type: ignore[misc,valid-type]
         self.train = train
         self.seed = seed
         self.epoch = 0
+        self.realistic = realistic if train else None
 
     def set_epoch(self, epoch: int) -> None:
         self.epoch = epoch
@@ -97,4 +101,8 @@ class ManifestDataset(_Base):  # type: ignore[misc,valid-type]
             raise ValueError(f"{row.path}: expected {SAMPLE_RATE} Hz, got {sr}")
         rng = np.random.default_rng([self.seed, self.epoch, idx]) if self.train else None
         x = fix_length(data.mean(axis=1), self.num_samples, rng)
+        if self.realistic is not None:  # own stream: the crop stays as without augmentation
+            x = apply_realistic(
+                x, self.realistic, np.random.default_rng([self.seed, self.epoch, idx, 1])
+            )
         return torch.from_numpy(x), torch.tensor(row.label, dtype=torch.int64)

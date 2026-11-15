@@ -27,6 +27,7 @@ from torch import nn
 from torch.utils.data import DataLoader, RandomSampler
 
 from voxguard.data.datasets import NUM_SAMPLES, ManifestDataset
+from voxguard.data.realistic import RealisticPolicy
 from voxguard.metrics import summarize
 from voxguard.models import build_model
 
@@ -45,6 +46,9 @@ class DataConfig:
     # Clips drawn (without replacement, reshuffled each epoch) per training epoch. Lets a larger
     # codec-augmented manifest train for the same number of steps as the clean one.
     train_samples_per_epoch: int | None = None
+    # On-the-fly reverb / mic EQ / noise / gain for training clips (data.realistic.RealisticPolicy
+    # fields); None = off.
+    realistic: dict[str, Any] | None = None
 
 
 @dataclass
@@ -62,6 +66,9 @@ class TrainConfig:
     out_dir: str = "runs/rawnet2"
     device: str = "auto"  # auto | cuda | mps | cpu
     multi_gpu: bool = True  # nn.DataParallel over all visible CUDA GPUs when there are several
+    # Fine-tune: start from this checkpoint's model weights (fresh optimizer, epoch 0). Ignored
+    # when --resume finds a last.pt, which carries the run's own state.
+    init_from: str | None = None
 
 
 @dataclass
@@ -147,6 +154,7 @@ def _make_loaders(cfg: Config, pin_memory: bool = False) -> tuple[DataLoader, Da
         train=True,
         codecs=d.codecs,
         max_samples=d.max_samples,
+        realistic=RealisticPolicy.from_dict(d.realistic) if d.realistic is not None else None,
         **kwargs,
     )
     dev_max = d.dev_max_samples
@@ -274,6 +282,10 @@ def train(cfg: Config, resume: bool = False, use_wandb: bool = False) -> dict[st
         logger.info("resumed from %s at epoch %d", last, start_epoch)
     elif resume:
         logger.info("--resume given but %s not found; starting fresh", last)
+    if t.init_from and start_epoch == 0:
+        init = torch.load(Path(t.init_from), map_location=device, weights_only=False)
+        core.load_state_dict(init["model"])
+        logger.info("initialised weights from %s (its epoch %s)", t.init_from, init.get("epoch"))
 
     run = None
     if use_wandb:
@@ -341,6 +353,7 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--device", default=None, help="auto | cuda | mps | cpu")
     p.add_argument("--out-dir", default=None)
     p.add_argument("--resume", action="store_true")
+    p.add_argument("--init-from", default=None, help="fine-tune from this checkpoint's weights")
     p.add_argument("--no-wandb", action="store_true")
     args = p.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -354,6 +367,8 @@ def main(argv: list[str] | None = None) -> None:
         cfg.train.device = args.device
     if args.out_dir is not None:
         cfg.train.out_dir = args.out_dir
+    if args.init_from is not None:
+        cfg.train.init_from = args.init_from
     result = train(cfg, resume=args.resume, use_wandb=cfg.wandb.enabled and not args.no_wandb)
     logger.info("done: best dev EER %.4f, checkpoints in %s", result["best_eer"], result["out_dir"])
 

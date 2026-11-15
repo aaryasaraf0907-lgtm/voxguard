@@ -79,3 +79,13 @@ def test_internet_only_for_pretrained_configs(
     folder = kr.push("me", ssl, "NvidiaTeslaT4", None, dry_run=True)
     assert json.loads((folder / "kernel-metadata.json").read_text())["enable_internet"] is True
     assert kr.kernel_metadata("me", spec())["enable_internet"] is False
+
+
+def test_fine_tune_kernel_attaches_init_source_and_passes_init_from() -> None:
+    code = kr.render_kernel(spec(init_run="ssl-aasist-codec-aug-v2-p3"))
+    compile(code, "run.py", "exec")
+    assert '"init_run": "ssl-aasist-codec-aug-v2-p3"' in code and '"--init-from"' in code
+    meta = kr.kernel_metadata("me", spec(), init_from="me/voxguard-ssl-aasist-codec-aug-v2-p3")
+    assert meta["kernel_sources"] == ["me/voxguard-ssl-aasist-codec-aug-v2-p3"]
+    both = kr.kernel_metadata("me", spec(), resume_from="me/a", init_from="me/b")
+    assert both["kernel_sources"] == ["me/a", "me/b"]
