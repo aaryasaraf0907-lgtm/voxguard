@@ -56,9 +56,17 @@ def test_windowing_pad_crop_and_split() -> None:
     short = _wave(1000)
     (w,) = to_windows(short, 16_000)
     assert len(w) == NUM_SAMPLES and np.array_equal(w[1000:2000], short)  # repeat-padded
-    # a tiny tail (< 1/4 window) is dropped, a long tail becomes its own padded window
+    # a tiny tail (< 1/4 window) is dropped
     assert len(to_windows(_wave(NUM_SAMPLES * 2 + 5), 16_000)) == 2
-    assert len(to_windows(_wave(NUM_SAMPLES * 2 + NUM_SAMPLES // 2), 16_000)) == 3
+    # a longer tail is scored as the clip's last 4 s (overlapping), never repeat-padded
+    long = _wave(NUM_SAMPLES * 2 + NUM_SAMPLES // 2)
+    wins = to_windows(long, 16_000)
+    assert len(wins) == 3
+    assert np.array_equal(wins[0], long[:NUM_SAMPLES])
+    assert np.array_equal(wins[1], long[NUM_SAMPLES : 2 * NUM_SAMPLES])
+    assert np.array_equal(wins[2], long[-NUM_SAMPLES:])
+    # exactly one window: no tail window at all
+    assert len(to_windows(_wave(NUM_SAMPLES), 16_000)) == 1
     assert len(to_windows(np.zeros(0, dtype=np.float32), 16_000)) == 1
 
 
