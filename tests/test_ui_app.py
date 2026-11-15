@@ -286,8 +286,8 @@ def test_flagged_result_is_shown_with_banner() -> None:
     assert t("flagged_banner", "en") in [e.value for e in at.error]
     values = {m.label: m.value for m in at.metric}
     assert values[t("m_label", "en")] == t("label_fake", "en")
-    assert values[t("m_score", "en")] == "0.9998"
-    assert values[t("m_threshold", "en")] == "0.5000"
+    assert values[t("m_score", "en")] == "0.999800"
+    assert values[t("m_threshold", "en")] == "0.500000"
     assert values[t("m_latency", "en")] == t("unit_ms", "en", value="12.3")
     assert values[t("m_model", "en")] == "m-1"
     assert values[t("m_flagged", "en")] == t("yes", "en")
@@ -407,7 +407,7 @@ def test_same_clip_clean_and_phone_line_side_by_side() -> None:
     text = _text(at)
     assert t("result_header_clean", "en") in text and t("result_header_phone", "en") in text
     scores = [m.value for m in at.metric if m.label == t("m_score", "en")]
-    assert scores == ["0.9500", "0.2000"]  # clean on the left, phone line on the right
+    assert scores == ["0.950000", "0.200000"]  # clean on the left, phone line on the right
     assert [c[4] for c in _analyze_calls(client)] == [False, True]
 
 
@@ -452,7 +452,7 @@ def test_reanalysis_shows_the_latest_response() -> None:
     client.analyze_response = _result(False, 0.1)
     _click_analyze(at)
     scores = [m.value for m in at.metric if m.label == t("m_score", "en")]
-    assert scores == ["0.1000"]
+    assert scores == ["0.100000"]
 
 
 # --- refetching -------------------------------------------------------------------------
@@ -585,7 +585,7 @@ def test_changing_codec_drops_the_phone_result_and_keeps_the_clean_one() -> None
     text = _text(at)
     assert t("result_header_phone", "en") not in text and "opus" not in text
     assert t("result_header", "en") in [h.value for h in at.subheader]  # the clean result stays
-    assert {m.label: m.value for m in at.metric}[t("m_score", "en")] == "0.9500"
+    assert {m.label: m.value for m in at.metric}[t("m_score", "en")] == "0.950000"
     at = _codec_box(at).set_value("opus").run()  # switching back does not bring it back
     assert "opus" not in _text(at) and len(_analyze_calls(client)) == 2
 

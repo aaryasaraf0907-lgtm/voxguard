@@ -106,8 +106,10 @@ def render_result(result: AnalyzeResponse, lang: str, header_key: str = "result_
         st.success(t("not_flagged_banner", lang))
     cols = st.columns(4)
     cols[0].metric(t("m_label", lang), t(f"label_{result.label}", lang))
-    cols[1].metric(t("m_score", lang), f"{result.fake_score:.4f}")
-    cols[2].metric(t("m_threshold", lang), f"{result.threshold:.4f}")
+    # 6 decimals: SSL-AASIST's thresholds are around 0.01, where 4 would hide the difference
+    # between a score and the threshold it is compared with.
+    cols[1].metric(t("m_score", lang), f"{result.fake_score:.6f}")
+    cols[2].metric(t("m_threshold", lang), f"{result.threshold:.6f}")
     cols[3].metric(t("m_latency", lang), t("unit_ms", lang, value=f"{result.latency_ms:.1f}"))
     cols = st.columns(4)
     cols[0].metric(t("m_model", lang), result.model_version)
