@@ -346,7 +346,9 @@ def test_analysis_errors_show_distinct_messages(kind: str) -> None:
     at = _analyze(client)
     assert not at.exception and not at.metric
     errors = [e.value for e in at.error]
-    assert any(t(f"err_{kind}", "en") in e and "why" in e for e in errors)
+    # without phone-line simulation a 503 can only come from the decoder
+    key = "err_decoder_unavailable" if kind == "unavailable" else f"err_{kind}"
+    assert any(t(key, "en") in e and "why" in e for e in errors)
 
 
 def test_failed_analysis_clears_previous_result() -> None:
@@ -385,6 +387,30 @@ def test_503_from_simulation_is_an_error_not_a_result() -> None:
     assert not at.exception and not at.metric  # nothing presented as a result
     assert any(t("err_unavailable", "en") in e.value for e in at.error)
     assert t("err_server", "en") not in _text(at)  # its own message, not the generic 5xx one
+
+
+@pytest.mark.parametrize("lang", ["en", "hi"])
+def test_503_without_simulation_is_the_decoder_message(lang: str) -> None:
+    client = FakeClient()
+    client.analyze_response = ApiError("unavailable", 503, "decoder missing")
+    at = _analyze(client, lang=lang)
+    assert not at.exception and not at.metric
+    errors = [e.value for e in at.error]
+    assert any(t("err_decoder_unavailable", lang) in e for e in errors)
+    assert not any(t("err_unavailable", lang) in e for e in errors)  # not the codec text
+
+
+def test_uploader_accepts_m4a() -> None:
+    from voxguard.ui.app import AUDIO_TYPES
+
+    assert "m4a" in AUDIO_TYPES
+    client = FakeClient()
+    client.analyze_response = _result(False, 0.1)
+    at = _run(client)
+    at.file_uploader[0].set_value(("rec.m4a", b"\x00\x00\x00\x18ftypM4A ", "audio/mp4")).run()
+    next(b for b in at.button if b.label == t("analyze_button", "en")).click().run()
+    assert not at.exception
+    assert _analyze_calls(client)[0][2] == "rec.m4a"
 
 
 def test_501_from_simulation_explains_the_server_setting() -> None:

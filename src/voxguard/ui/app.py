@@ -21,7 +21,7 @@ CLIENT_KEY = "api_client"  # tests put a fake client here before running the scr
 RESULTS_KEY = "analysis_results"  # {"audio": digest, "clean": response, "phone": response}
 CACHE_KEY = "api_cache"  # {name: (fetched_at, value)}, per browser session
 CACHE_TTL_S = 5.0
-AUDIO_TYPES = ["wav", "flac", "ogg", "mp3"]  # formats the API's decoder (libsndfile) reads
+AUDIO_TYPES = ["wav", "flac", "ogg", "mp3", "m4a"]  # libsndfile reads all but m4a (ffmpeg)
 SESSIONS_LIMIT = 50
 ALERTS_LIMIT = 100
 CODEC_NAMES = {  # proper names, the same in every language
@@ -57,8 +57,14 @@ def invalidate(*names: str) -> None:
         cache.pop(name, None)
 
 
-def error_text(err: ApiError, lang: str) -> str:
-    text = t(f"err_{err.kind}" if err.kind != "other" else "err_other", lang)
+def error_text(err: ApiError, lang: str, simulated: bool = True) -> str:
+    """Translated message for a failed call. A 503 from an analysis without phone-line
+    simulation can only come from the audio decoder, so it gets the decoder message."""
+    if err.kind == "unavailable" and not simulated:
+        key = "err_decoder_unavailable"
+    else:
+        key = f"err_{err.kind}" if err.kind != "other" else "err_other"
+    text = t(key, lang)
     if err.detail:
         text += "\n\n" + t("server_detail", lang, detail=err.detail)
     return text
@@ -209,7 +215,7 @@ def render_analyze(client: Any, lang: str) -> None:
                     )
                 invalidate("sessions", "blocklist", "alerts")
             except ApiError as err:
-                st.error(error_text(err, lang))
+                st.error(error_text(err, lang, simulated=simulate))
             st.session_state[RESULTS_KEY] = {"audio": digest, **results}
 
     if "clean" in results and "phone" in results:  # same clip, clean vs phone line

@@ -145,7 +145,7 @@ def create_app(
         if len(data) > cfg.max_upload_bytes:
             raise HTTPException(413, "Upload too large")
 
-        waveform, sample_rate = decode_audio(data, cfg.max_audio_seconds)
+        waveform, sample_rate = decode_audio(data, cfg.max_audio_seconds, cfg.max_upload_bytes)
 
         codec_applied: str | None = None
         codec_ms: float | None = None
