@@ -144,7 +144,7 @@ Using the demo:
 
 1. **Language:** the selector at the top of the sidebar switches between English and Hindi.
    The sidebar also shows whether the API is reachable and which detector it runs.
-2. **Analyze:** upload a WAV/FLAC/OGG/MP3 file (up to 25 MB, 60 s) or record with the
+2. **Analyze:** upload a WAV/FLAC/OGG/MP3/M4A file (up to 25 MB, 60 s) or record with the
    microphone, optionally enter a caller ID, and press **Analyze**. The result shows the label,
    score, threshold, detector latency, model version and whether the call was flagged. A
    flagged score less than 1.5 times the threshold also shows a caution that the result is
