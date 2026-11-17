@@ -24,6 +24,9 @@ CACHE_TTL_S = 5.0
 AUDIO_TYPES = ["wav", "flac", "ogg", "mp3", "m4a"]  # libsndfile reads all but m4a (ffmpeg)
 SESSIONS_LIMIT = 50
 ALERTS_LIMIT = 100
+# Near-threshold caution (agreed with Aarya, 16 Nov): one-sided, only for flagged results that
+# scored less than CAUTION_FACTOR x the threshold. Results under the threshold get no caution.
+CAUTION_FACTOR = 1.5
 CODEC_NAMES = {  # proper names, the same in every language
     "g711_mulaw": "G.711 µ-law",
     "g711_alaw": "G.711 A-law",
@@ -100,6 +103,12 @@ def render_sidebar(client: Any, lang_default: str) -> tuple[str, str | None]:
     return lang, detector
 
 
+def near_threshold(score: float, threshold: float) -> bool:
+    """True for a score at or just above the threshold: threshold <= score < factor x threshold.
+    Computed in the UI from the response, so the API and its contract are unchanged."""
+    return threshold <= score < threshold * CAUTION_FACTOR
+
+
 def render_result(result: AnalyzeResponse, lang: str, header_key: str = "result_header") -> None:
     st.subheader(t(header_key, lang))
     if result.codec_applied:
@@ -108,6 +117,8 @@ def render_result(result: AnalyzeResponse, lang: str, header_key: str = "result_
         st.caption(t("result_clean", lang))
     if result.flagged:
         st.error(t("flagged_banner", lang))
+        if near_threshold(result.fake_score, result.threshold):
+            st.warning(t("caution_near_threshold", lang))
     else:
         st.success(t("not_flagged_banner", lang))
     cols = st.columns(4)

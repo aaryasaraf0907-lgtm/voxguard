@@ -31,6 +31,12 @@ What is implemented on `dev`. The overall pipeline diagram is in `CLAUDE.md` sec
 
 ### UI state
 
+- **Near-threshold caution** (agreed with Aarya, 16 Nov): a flagged result whose score is below
+  `CAUTION_FACTOR` (1.5) times the threshold also shows "Close to the decision threshold: this
+  result is uncertain". The band is one-sided (`threshold <= fake_score < 1.5 x threshold`;
+  about 0.0127-0.019 at the demo threshold): results under the threshold get no caution, and a
+  clearly high score reads as a clear fake. It is computed in the UI from the response's
+  `fake_score` and `threshold`; the label, the flag and the API response are unchanged.
 - Results are kept per audio clip (SHA-256 of the bytes) and per mode (original, phone line).
   Selecting a different file or recording discards them, so a result is never shown next to
   audio it was not computed from. When a clip has both results they are shown side by side.
