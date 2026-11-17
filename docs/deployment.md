@@ -322,12 +322,19 @@ docker compose logs api | grep -E "loaded|warm-up|thresholds"
 - `curl -s http://localhost:8000/v1/codecs` lists G.711, GSM and Opus as available. AMR is
   unavailable in this image's ffmpeg.
 - The UI sidebar (http://localhost:8501) shows "Connected" and the detector and model.
+- **Run one analysis just before presenting.** The first request after the stack has been idle
+  can be much slower; see the verification record below.
 
 ### 3. During the demo
 
 - **Use clear cases.** A flagged score below 1.5× the threshold also shows the yellow caution
   "Close to the decision threshold: this result is uncertain". Say so; such results are hints,
   not verdicts.
+- **Choose the genuine demo clips beforehand** with the
+  [sanity tool](real-audio-testing.md), on the same model, and check how each one scores. The
+  codec-aug model flags a noticeable share of off-domain real speech as fake at the phone
+  threshold (Aarya's In-the-Wild evaluation; numbers to follow in `docs/results.md`). An
+  unchecked live voice could be flagged during the demo.
 - **Phone line:** turn on **Simulate phone line** to score the same clip after a codec. The two
   results are shown side by side.
 - **Formats:** WAV, FLAC, OGG, MP3 and M4A uploads; at most 25 MB and 60 s.
@@ -407,6 +414,17 @@ covered:
   - an automatic restart after an in-process exit;
   - no restart after `docker kill`, as described above;
   - the reset in step 4: lists empty afterwards, model cache unchanged.
+- **Manual check in Chrome on Windows** (Aditya, same stack):
+  - the English and Hindi interfaces render correctly, Devanagari included;
+  - the flagged-calls, blocklist and alerts tabs load;
+  - a consented M4A recording was analysed by the real model: fake score 0.012911 against the
+    threshold 0.012676, flagged, with the red flagged banner and the yellow near-threshold
+    caution.
+
+  The UI showed a detector latency of 6681.1 ms for that request. It came about 12 minutes after
+  the last restart, with the API idle in between. Three requests right afterwards took 671,
+  522 and 551 ms, so it did not happen again, and its cause was not determined. It is one
+  observation, not a benchmark; hence the warm-up step in the pre-flight checks.
 
 ## Private Hugging Face Space (optional future route; needs a paid plan)
 
