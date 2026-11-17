@@ -8,7 +8,7 @@ What is implemented on `dev`. The overall pipeline diagram is in `CLAUDE.md` sec
 |---|---|---|
 | Streamlit UI | `src/voxguard/ui/app.py`, `api_client.py`, `i18n.py` | Upload or record audio, phone-line toggle, results, flagged sessions, blocklist, alerts. Talks to the API over HTTP only; no inference or prevention logic. All strings through `i18n.t(key, lang)` (English, Hindi). |
 | FastAPI backend | `src/voxguard/api/main.py` (`create_app`) | `/health`, `/v1/analyze`, `/v1/sessions`, `/v1/blocklist`, `/v1/alerts`; schemas in `schemas.py` (CLAUDE.md section 7). |
-| Audio decoding | `api/audio.py`, `api/limits.py` | Upload limit (25 MB, enforced before multipart parsing), soundfile decoding to mono float32 at the native rate, duration/channel/rate checks. |
+| Audio decoding | `api/audio.py`, `api/audio_ffmpeg.py`, `api/limits.py` | Upload limit (25 MB, enforced before multipart parsing), soundfile decoding to mono float32 at the native rate, duration/channel/rate checks; an ffmpeg fallback for M4A (AAC) and FLAC files libsndfile cannot read (below). |
 | Codec simulation | `api/codec_sim.py` -> `data/codecs.py` | Optional ffmpeg encode/decode before inference (below). |
 | Detector | `inference.py` (Aarya), `api/detector_loader.py` | `Detector` protocol; `StubDetector` (hash, default) or `RealDetector` (RawNet2 / SSL-AASIST checkpoint from a path or Hugging Face Hub). Built once at API startup; `VOXGUARD_DEVICE` picks cpu/cuda/auto. The detector does its own resampling and windowing. |
 | Prevention | `api/prevention.py` | One rule, `fake_score >= threshold` (threshold from the detector, or `VOXGUARD_LOW_FAR_THRESHOLD` in `low_far` mode). A flagged analysis writes the session, an alert and an atomic blocklist upsert in one transaction. |
@@ -18,7 +18,8 @@ What is implemented on `dev`. The overall pipeline diagram is in `CLAUDE.md` sec
 
 ### Request flow (`POST /v1/analyze`)
 
-1. Body size check (413), bounded read, decode (400/415/422).
+1. Body size check (413), bounded read, decode (400/415/422; the ffmpeg fallback can also give
+   500/503).
 2. If `codec` is given or `simulate_codec=true`: check the codec is known (422), configured
    (501, server default only) and available (503), then
    resample to 16 kHz and encode/decode with ffmpeg (500 on failure; never falls back to the
@@ -37,7 +38,52 @@ What is implemented on `dev`. The overall pipeline diagram is in `CLAUDE.md` sec
   switching language does not refetch them; **Refresh** and a new analysis refetch at once.
   Errors are never cached.
 - HTTP errors map to messages by kind: 413, 415, 422, 501 (simulation not configured), 503
-  (simulation unavailable), other 5xx, timeouts, unreachable API.
+  (simulation unavailable; for an analysis without simulation, the decoder's ffmpeg is
+  missing), other 5xx, timeouts, unreachable API.
+
+## Audio decoding and the ffmpeg fallback
+
+`decode_audio` tries libsndfile first, in memory (WAV, FLAC, OGG, MP3), exactly as before. Only
+when libsndfile cannot open or read the upload does `api/audio_ffmpeg.py` try ffmpeg, and only
+for two formats, recognised from the file's first bytes: FLAC (`fLaC`) and MP4/M4A (an `ftyp`
+box with brand `M4A `, `mp42`, `isom`, `iso2` or `mp41`). Everything else gets 415
+(`Unsupported or undecodable audio`; libsndfile's own message is not returned). File names and
+client content types are never used.
+
+1. The upload limit is checked again before anything is written to disk.
+2. The bytes go to a `mkstemp` file (0600) in a private `TemporaryDirectory` (0700). This is the
+   only ffmpeg input path: an M4A with its index (`moov`) at the end, as laptop and phone
+   recorders write it, cannot be read from a pipe because ffmpeg has to seek back to the samples.
+3. `ffprobe` checks the container, exactly one audio stream with the expected codec (FLAC or
+   AAC), at most 2 channels, at most 192 kHz and the duration limit, before any decoding.
+4. `ffmpeg` decodes to 16 kHz mono float32 PCM on stdout.
+5. The directory is removed on every path, after each process has been killed (if still running)
+   and reaped.
+
+Security measures:
+
+- Argument lists only, never a shell. `-nostdin`, `-protocol_whitelist file`, the demuxer forced
+  with `-f` (so a file can never be read as an HLS or concat playlist that pulls in other files)
+  and `-enable_drefs 0` for MP4. The only input is the temp file.
+- Output is read in 64 KiB chunks under a hard cap (duration limit plus 0.5 s for AAC priming
+  and padding); past it the process is killed (422). The decoded audio is then trimmed to the
+  duration limit (the same frame count as the libsndfile path), so the allowance only absorbs
+  encoder padding and the Detector never receives more than the limit. A file whose probe
+  reports no duration is still decoded, within the same cap and trim. Each process has a 30 s
+  timeout. stderr is discarded.
+- Clients get fixed messages. Logs get a category, the exit code and the elapsed time, never
+  ffmpeg's output, audio bytes or paths.
+
+| Case | Status |
+|---|---|
+| Not FLAC or MP4 by signature (including playlists), or the probe disagrees with the signature or the codec is not allowed | 415 |
+| ffmpeg cannot decode the file | 415 |
+| Over the duration, channel or rate limits (from the probe, or the output cap), or non-finite samples | 422 |
+| `ffmpeg` or `ffprobe` missing | 503 |
+| Timeout, or malformed output | 500 |
+
+Files decoded this way are downmixed and resampled to 16 kHz by ffmpeg, not by the Detector, so
+their scores can differ slightly from the same audio converted to WAV and uploaded.
 
 ## Codec simulation in `/v1/analyze`
 

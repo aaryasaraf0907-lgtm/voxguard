@@ -5,7 +5,7 @@ from the committed `uv.lock`, and run as the non-root user `voxguard` (uid 1000)
 
 | Image | Dockerfile | Contents | Port |
 |---|---|---|---|
-| API | `docker/Dockerfile.api` | FastAPI + SQLite + ffmpeg, `api` extra | 8000 |
+| API | `docker/Dockerfile.api` | FastAPI + SQLite + ffmpeg (codec simulation and M4A decoding), `api` extra | 8000 |
 | UI | `docker/Dockerfile.ui` | Streamlit, `ui` extra (no ffmpeg, no ML stack) | 8501 |
 | Space | `docker/Dockerfile.space` | API (internal, 127.0.0.1:8000) + UI, one container | 7860 |
 
@@ -75,7 +75,9 @@ Troubleshooting).
 
 ### Codec simulation
 
-The API image installs Debian's ffmpeg. Check which encoders it has with:
+The API image installs Debian's ffmpeg, which also provides `ffprobe`. Both are needed to
+accept M4A uploads (and FLAC files libsndfile rejects); without them those uploads get a 503
+and WAV, FLAC, OGG and MP3 still work. Check which encoders it has with:
 
 ```bash
 docker compose exec api python -m voxguard.data.codecs

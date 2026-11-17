@@ -77,8 +77,8 @@ Prerequisites:
 - [`uv`](https://docs.astral.sh/uv/getting-started/installation/), e.g.
   `curl -LsSf https://astral.sh/uv/install.sh | sh`. You do not need to install Python
   yourself: uv uses Python 3.11 (from `.python-version`) and downloads it if needed.
-- Optional: `ffmpeg` for the phone-line simulation (e.g. `sudo apt install ffmpeg`). Not needed
-  for the basic demo.
+- Optional: `ffmpeg` (with `ffprobe`) for the phone-line simulation and for M4A uploads (e.g.
+  `sudo apt install ffmpeg`). Not needed for the basic demo with WAV, FLAC, OGG or MP3.
 - For the deployment: Docker with compose v2 (on Windows, Docker Desktop with WSL integration).
   For the real detector also a Hugging Face account in the private `voxguard-team` organisation
   with a **read** token (see [Run with Docker Compose](#run-with-docker-compose-the-deployment)).

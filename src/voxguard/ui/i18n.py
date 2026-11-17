@@ -42,7 +42,7 @@ EN: dict[str, str] = {
     "source_label": "Audio source",
     "source_upload": "Upload a file",
     "source_record": "Record with microphone",
-    "upload_label": "Audio file (WAV, FLAC, OGG or MP3)",
+    "upload_label": "Audio file (WAV, FLAC, OGG, MP3 or M4A)",
     "record_label": "Record a voice sample",
     "no_audio": "Upload or record audio to analyze it.",
     "analyze_button": "Analyze",
@@ -120,6 +120,10 @@ EN: dict[str, str] = {
         " selected codec). Nothing was analyzed; turn the toggle off to analyze the original"
         " audio."
     ),
+    "err_decoder_unavailable": (
+        "This server can't decode this file format right now (its ffmpeg is missing)."
+        " Nothing was analyzed; try a WAV or FLAC file."
+    ),
     "err_server": "The API reported an internal error. Please try again.",
     "err_bad_response": "The API returned an unexpected response.",
     "err_other": "The request failed.",
@@ -147,7 +151,7 @@ HI: dict[str, str] = {
     "source_label": "ऑडियो स्रोत",
     "source_upload": "फ़ाइल अपलोड करें",
     "source_record": "माइक्रोफ़ोन से रिकॉर्ड करें",
-    "upload_label": "ऑडियो फ़ाइल (WAV, FLAC, OGG या MP3)",
+    "upload_label": "ऑडियो फ़ाइल (WAV, FLAC, OGG, MP3 या M4A)",
     "record_label": "आवाज़ का नमूना रिकॉर्ड करें",
     "no_audio": "जाँचने के लिए ऑडियो अपलोड या रिकॉर्ड करें।",
     "analyze_button": "जाँचें",
@@ -218,6 +222,10 @@ HI: dict[str, str] = {
     "err_unavailable": (
         "इस सर्वर पर अभी फ़ोन लाइन अनुकरण उपलब्ध नहीं है (उसके ffmpeg में चुना गया कोडेक नहीं है)।"
         " कुछ भी जाँचा नहीं गया; मूल ऑडियो जाँचने के लिए टॉगल बंद करें।"
+    ),
+    "err_decoder_unavailable": (
+        "यह सर्वर अभी इस फ़ाइल प्रारूप को डिकोड नहीं कर सकता (उसमें ffmpeg नहीं है)।"
+        " कुछ भी जाँचा नहीं गया; WAV या FLAC फ़ाइल आज़माएँ।"
     ),
     "err_server": "API ने आंतरिक त्रुटि बताई। कृपया फिर कोशिश करें।",
     "err_bad_response": "API से अप्रत्याशित उत्तर मिला।",
