@@ -184,7 +184,7 @@ Thresholds (agreed 13 Nov): `thresholds.json` next to each checkpoint (`{model_v
 
 ## 11. Languages
 
-- **UI: English + Hindi (MVP).** All user-visible strings go through `i18n.t(key, lang)` with `en` and `hi` dictionaries; language toggle in the sidebar. Aarya reviews the Hindi strings.
+- **UI: English + Hindi (MVP).** All user-visible strings go through `i18n.t(key, lang)` with `en` and `hi` dictionaries; language toggle in the sidebar. Aarya checks new Hindi strings when she reviews the PR; corrections go in a follow-up PR, so this never blocks a merge.
 - **Detection: English is the trained/evaluated language** (ASVspoof is English).
 - **Hindi detection is a STRETCH generalization test**, not a feature claim: real Hindi speech from open corpora (e.g. Google FLEURS `hi_in`; verify access), fake Hindi generated with open TTS (e.g. XTTS-v2 Hindi, `facebook/mms-tts-hin`; verify availability and non-commercial licences, which are fine for academic use but must be noted). XLS-R is multilingual so it is a reasonable bet; WavLM is English-centric.
 - In every doc, claim only what was measured ("evaluated on a small Hindi set"), never "supports Hindi".
@@ -203,7 +203,7 @@ Each Claude Code session updates ONLY its own section of `docs/STATUS.md` at the
 ## 13. Git workflow
 
 - Everything reaches `main` and `dev` through a PR: never push to `main`/`dev` directly, never force-push or rewrite history. Work on `feat/<task>`, `fix/<task>`, `docs/<task>` branches from `dev`; open PRs with `gh pr create --base dev`. Never bypass the branch ruleset or use admin overrides.
-- **Merging into `dev` (team decision, 8 Nov 2026):** the author may merge their own PR once (1) CI is green on the PR's **latest** commit, (2) ruff and the test suite pass locally, and (3) if `dev` has moved since the PR's CI run, the PR has been re-tested merged onto current `dev`. Review by the other person is welcome but not required. Changes to the section 7 contract, shared preprocessing, or this file must still be called out to the other person in the PR description. The other person's PRs may be merged after a review and the same three checks.
+- **Merging into `dev` (team decision, 8 Nov 2026):** the author may merge their own PR once (1) CI is green on the PR's **latest** commit, (2) ruff and the test suite pass locally, and (3) if `dev` has moved since the PR's CI run, the PR has been re-tested merged onto current `dev`. Review by the other person is welcome but not required. Changes to the section 7 contract, shared preprocessing, or this file must still be called out to the other person in the PR description. The other person's PRs may be merged after a review and the same three checks. Work inside your own area (section 12) needs no one else's go-ahead: routine rebuilds, image pulls, dev tooling, smoke tests and merging your own PRs. Only section 7 contract changes, shared preprocessing and this file need the other person first.
 - Small PRs (aim < 400 changed lines), imperative commit messages, CI green before merging or asking for review, fill in the PR template.
 - `dev` -> `main` only at milestones, by PR: **M1 15 Nov** (pipeline + stub end-to-end), **M2 29 Nov** (real model in the demo), **M3 8 Dec** (feature freeze).
 - Never commit secrets, `.env`, data, checkpoints. Never print tokens. Use `.env.example` for variable names only.
@@ -241,7 +241,7 @@ If behind schedule, cut stretch items first, then the second SSL model, then Hin
 
 ## 18. Working agreements for Claude Code
 
-- Plan first for any task touching more than ~3 files; wait for the user's go-ahead.
-- Ask before: downloading > 1 GB, installing system packages, spending quota, deleting anything, changing the contract.
+- Plan first for any task touching more than ~3 files and state the plan; wait for a go-ahead only if it changes the section 7 contract, shared preprocessing or this file.
+- Ask before: deleting data or work you did not create, spending limited GPU quota (Kaggle/Colab), downloading datasets > 1 GB, changing the contract. Routine downloads (Docker base images, Python packages, the team's own checkpoints) and installing dev tools need no approval; mention them in the PR.
 - Prefer the smallest change that works; no scope creep beyond sections 3 and 12.
 - After each PR: give a short summary, how to run/test it, and what is next.
