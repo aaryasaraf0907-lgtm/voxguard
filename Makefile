@@ -27,7 +27,7 @@ smoke-eval: smoke
 		--data-root $(SYN) --out-root $(SYN) --out-manifest $(SYN)/manifests/synthetic_dev_per_codec.csv \
 		--codecs g711_mulaw opus --mode per-codec --no-clean
 	uv run --extra ml python -m voxguard.train --config configs/rawnet2_smoke_aug.yaml --no-wandb
-	uv run --extra ml python -m voxguard.evaluate --config configs/eval_smoke.yaml
+	uv run --extra ml --extra plots python -m voxguard.evaluate --config configs/eval_smoke.yaml
 
 docker-up:
 	docker compose up --build --detach --wait

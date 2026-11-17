@@ -34,6 +34,10 @@ ui = [
     "streamlit>=1.49",
     "requests>=2.31",
 ]
+# Figures in docs/results.md (evaluate.py). Optional: without it only the figures are skipped.
+plots = [
+    "matplotlib>=3.8",
+]
 
 [dependency-groups]
 dev = [
