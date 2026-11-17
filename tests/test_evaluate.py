@@ -325,7 +325,10 @@ def test_evaluate_family_reports_eval_rates_at_the_dev_low_far_threshold(
     monkeypatch.setattr(evaluate, "load_model", lambda p, d: (object(), {"name": "m", "epoch": 0}))
     monkeypatch.setattr(evaluate, "score_manifests", lambda *a, **k: (scores, labels, ["opus"] * 6))
     cfg = evaluate.EvalConfig(
-        test_sets={"clean": ["c.csv"], "degraded": ["d.csv"]}, device="cpu", latency_devices=[]
+        test_sets={"clean": ["c.csv"], "degraded": ["d.csv"]},
+        device="cpu",
+        latency_devices=[],
+        out_dir=str(tmp_path / "results"),
     )
     res = evaluate.evaluate_family("m", {"clean": str(ckpt)}, cfg)
     low_far = res["matrix"]["clean"]["degraded"]["at_dev_thresholds"]["low_far"]
@@ -349,8 +352,9 @@ def test_render_out_of_domain_table() -> None:
     fam["matrix"]["clean"]["in_the_wild"] = {"pooled": {**pooled, "eer": 0.0952}}
     md = render_markdown({"rawnet2": fam})
     assert "### Out-of-domain (In-the-Wild)" in md
-    assert "| Codec-augmented | 13.84 | 19.17 | 9.64 | 31779 |" in md
-    assert "| Clean only | 9.52 | no thresholds | no thresholds | 31779 |" in md
+    row = "| Codec-augmented | not run | 13.84 | 19.17 (first 4 s) | 9.64 (first 4 s) | 31779 |"
+    assert row in md
+    assert "| Clean only | not run | 9.52 | no thresholds | no thresholds | 31779 |" in md
     assert "Codec-augmented on in_the_wild: n=31779" in md
 
 
@@ -360,6 +364,80 @@ def test_render_hindi_table_alongside_in_the_wild() -> None:
     fam["matrix"]["codec_aug"]["hindi"] = {"pooled": pooled}
     md = render_markdown({"rawnet2": fam})
     assert "### Hindi generalisation (small set)" in md and "Out-of-domain (In-the-Wild)" not in md
-    assert "| Codec-augmented | 5.00 | no thresholds | no thresholds | 836 |" in md
-    assert "| Clean only | not run | not run | not run | not run |" in md
+    assert "| Codec-augmented | not run | 5.00 | no thresholds | no thresholds | 836 |" in md
+    assert "| Clean only | not run | not run | not run | not run | not run |" in md
     assert "not a language claim" in md
+
+
+def test_render_out_of_domain_prefers_whole_clip_scores() -> None:
+    fam = _fake_family()
+    pooled = {"eer": 0.4426, "n": 836, "accuracy_at_eer": 0.56, "accuracy_at_0.5": 0.5}
+    first = {"threshold": 0.0127, "fpr": 0.3684, "fnr": 0.5215, "hter": 0.4, "accuracy": 0.6}
+    whole = {"threshold": 0.0127, "fpr": 0.30, "fnr": 0.20, "hter": 0.25, "accuracy": 0.75}
+    fam["matrix"]["codec_aug"]["hindi"] = {
+        "pooled": pooled,
+        "at_dev_thresholds": {"phone": first},
+        "whole_clip": {"pooled": {**pooled, "eer": 0.2536}, "at_phone": whole},
+    }
+    md = render_markdown({"rawnet2": fam})
+    assert "| Codec-augmented | 25.36 | 44.26 | 30.00 | 20.00 | 836 |" in md
+    assert "as the API does" in md
+
+
+def test_evaluate_family_scores_out_of_domain_sets_as_whole_clips(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import sys
+    from types import SimpleNamespace
+
+    from voxguard import evaluate
+
+    monkeypatch.setitem(sys.modules, "voxguard.train", SimpleNamespace(pick_device=lambda d: d))
+    ckpt = tmp_path / "best.pt"
+    ckpt.write_bytes(b"")
+    thr = {"selected_on": "dev", "clean": 0.5, "phone": 0.5}
+    (tmp_path / "thresholds.json").write_text(json.dumps(thr))
+    first, labels = np.array([0.6, 0.4, 0.3, 0.7]), np.array([0, 0, 1, 1])
+    whole = np.array([0.1, 0.2, 0.8, 0.9])
+    monkeypatch.setattr(evaluate, "load_model", lambda p, d: (object(), {"name": "m", "epoch": 0}))
+    monkeypatch.setattr(evaluate, "score_manifests", lambda *a, **k: (first, labels, ["clean"] * 4))
+    monkeypatch.setattr(evaluate, "score_whole_clips", lambda *a, **k: (whole, labels))
+    cfg = evaluate.EvalConfig(
+        test_sets={"clean": ["c.csv"], "hindi": ["h.csv"]}, device="cpu", latency_devices=[],
+        out_dir=str(tmp_path / "results"),
+    )  # fmt: skip
+    res = evaluate.evaluate_family("m", {"codec_aug": str(ckpt)}, cfg)
+    assert "whole_clip" not in res["matrix"]["codec_aug"]["clean"]  # in-domain: first 4 s only
+    hindi = res["matrix"]["codec_aug"]["hindi"]
+    assert hindi["pooled"]["eer"] >= 0.5 and hindi["whole_clip"]["pooled"]["eer"] == 0.0
+    assert (
+        hindi["whole_clip"]["at_phone"]["fpr"] == 0 and hindi["whole_clip"]["at_phone"]["fnr"] == 0
+    )
+    cache = tmp_path / "results" / "cache" / "scores" / "m"
+    assert sorted(p.name for p in cache.iterdir()) == [
+        "codec_aug__clean.npz", "codec_aug__hindi.npz", "codec_aug__hindi_whole.npz",
+    ]  # fmt: skip
+    saved = np.load(cache / "codec_aug__hindi_whole.npz")
+    assert np.array_equal(saved["scores"], whole) and np.array_equal(saved["labels"], labels)
+
+
+def test_score_whole_clips_averages_every_window(tmp_path: Path) -> None:
+    torch = pytest.importorskip("torch")
+    sf = pytest.importorskip("soundfile")
+    from voxguard import evaluate
+
+    sr, n = 16_000, 64_600
+    clip = np.concatenate([np.full(n, 0.1), np.full(n, 0.5)]).astype(np.float32)  # 2 windows
+    sf.write(tmp_path / "a.wav", clip, sr, subtype="FLOAT")
+    (tmp_path / "m.csv").write_text(
+        "path,label,split,codec,bitrate,source\na.wav,1,eval,clean,,x\n"
+    )
+
+    class Mean(torch.nn.Module):  # logits (0, 10 * mean): P(fake) = sigmoid(10 * mean)
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            return torch.stack([torch.zeros(len(x)), 10 * x.mean(dim=1)], dim=1)
+
+    cfg = evaluate.EvalConfig(roots=[str(tmp_path)], batch_size=1)
+    scores, labels = evaluate.score_whole_clips(Mean(), [tmp_path / "m.csv"], cfg, "cpu")
+    expected = np.mean([1 / (1 + np.exp(-1.0)), 1 / (1 + np.exp(-5.0))])
+    assert labels.tolist() == [1] and scores[0] == pytest.approx(expected, rel=1e-5)

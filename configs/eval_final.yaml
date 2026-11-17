@@ -6,6 +6,7 @@
 # run's best epoch. Missing checkpoints are reported as "not run".
 # Thresholds are not chosen here: run `evaluate --select-thresholds` on the dev sets per
 # checkpoint (thresholds.json); GSM (heldout) is never used to choose one.
+# Figures need the plots extra: uv run --extra ml --extra plots python -m voxguard.evaluate ...
 models:
   rawnet2:
     clean: runs/kaggle/rawnet2-clean-v2/runs/rawnet2-clean-v2/best.pt

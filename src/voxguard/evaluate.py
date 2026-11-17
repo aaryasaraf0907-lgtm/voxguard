@@ -12,7 +12,9 @@ per-codec breakdown. An optional ``heldout`` test set holds codecs that no model
 (the unseen-codec test); it is reported separately and never enters the 2x2 matrix. An optional
 ``in_the_wild`` set (out-of-domain real-world speech, Mueller et al. 2022) is reported the same
 way: EER plus eval false alarms / missed fakes at the dev phone threshold the API uses; so is an
-optional ``hindi`` set (FLEURS vs MMS-TTS, data/hindi.py). Missing
+optional ``hindi`` set (FLEURS vs MMS-TTS, data/hindi.py). The out-of-domain sets are also
+scored the way the API scores an upload (every ~4 s window, averaged), since their clips are
+longer than one window. Per-clip scores are cached (``scores_dir``) for the DET figures. Missing
 checkpoints are skipped and shown as "not run", so partial results still render.
 Numbers in docs/results.md come only from results/*.json (never hand-typed).
 """
@@ -39,6 +41,7 @@ MATRIX_TESTS = ("clean", "degraded")  # the 2x2 columns
 # heldout: codecs unseen in training; in_the_wild / hindi: out-of-domain sets (all optional)
 TEST_CONDITIONS = (*MATRIX_TESTS, "heldout", "in_the_wild", "hindi")
 CODEC_TESTS = ("degraded", "heldout")  # sets whose clean rows are dropped
+WHOLE_CLIP_TESTS = ("in_the_wild", "hindi")  # also scored over all windows, as the API does
 TRAIN_LABELS = {"clean": "Clean only", "codec_aug": "Codec-augmented"}
 THRESHOLD_EXCLUDED_CODECS = ("gsm",)  # held out as the unseen codec: never used to pick one
 # low_far: at most this share of dev fakes may score below the threshold. 0.1%, not 1%: a model
@@ -59,6 +62,7 @@ class EvalConfig:
     latency_devices: list[str] = field(default_factory=lambda: ["cpu", "auto"])
     seed: int = 0
     out_dir: str = "results"
+    scores_dir: str | None = None  # per-clip scores for the figures; default <out_dir>/cache/scores
     docs_path: str = "docs/results.md"
 
 
@@ -215,6 +219,51 @@ def score_manifests(
     return np.concatenate(scores), np.concatenate(labels), [r.codec for r in ds.rows]
 
 
+def score_whole_clips(
+    model, manifests: list[Path], cfg: EvalConfig, device: str
+) -> tuple[np.ndarray, np.ndarray]:
+    """Score each clip as RealDetector does: all ~4 s windows (CLAUDE.md section 7), averaged.
+
+    Same rows (and ``max_samples`` subset) as ``score_manifests``.
+    """
+    import soundfile as sf
+    import torch
+
+    from voxguard.data.datasets import ManifestDataset
+    from voxguard.inference import to_windows, torch_resample
+
+    ds = ManifestDataset(
+        manifests, [Path(r) for r in cfg.roots], train=False,
+        max_samples=cfg.max_samples, seed=cfg.seed,
+    )  # fmt: skip
+    scores = np.empty(len(ds.rows), dtype=np.float64)
+    with torch.no_grad():
+        for i, row in enumerate(ds.rows):
+            x, sr = sf.read(ds.resolve(row.path), dtype="float32", always_2d=True)
+            windows = np.stack(to_windows(x, sr, resampler=torch_resample))
+            probs = []
+            for j in range(0, len(windows), cfg.batch_size):
+                batch = torch.from_numpy(windows[j : j + cfg.batch_size]).to(device)
+                probs.append(torch.softmax(model(batch).float(), dim=-1)[:, 1].cpu().numpy())
+            scores[i] = float(np.mean(np.concatenate(probs)))
+    return scores, np.array([r.label for r in ds.rows], dtype=np.int64)
+
+
+def scores_root(cfg: EvalConfig) -> Path:
+    return Path(cfg.scores_dir) if cfg.scores_dir else Path(cfg.out_dir) / "cache" / "scores"
+
+
+def save_scores(
+    cfg: EvalConfig, family: str, train: str, test: str, scores: np.ndarray, labels: np.ndarray,
+    **extra: np.ndarray,
+) -> None:  # fmt: skip
+    from voxguard.plots import scores_path
+
+    path = scores_path(scores_root(cfg), family, train, test)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    np.savez_compressed(path, scores=scores, labels=labels, **extra)
+
+
 def measure_model_latency(model, device: str, clips: int, num_samples: int = 64_600):
     """Per-clip (batch 1, ~4 s) forward latency with device synchronisation."""
     import time
@@ -266,13 +315,22 @@ def evaluate_family(family: str, ckpts: dict[str, str], cfg: EvalConfig) -> dict
             s, y, codecs = score_manifests(
                 model, [Path(m) for m in manifests], cfg, device, test_cond in CODEC_TESTS
             )
-            result["matrix"][train_cond][test_cond] = evaluate_condition(s, y, codecs)
+            cond = result["matrix"][train_cond][test_cond] = evaluate_condition(s, y, codecs)
+            save_scores(cfg, family, train_cond, test_cond, s, y, codecs=np.array(codecs))
             if dev_thr is not None:  # eval error rates at the operating points chosen on dev
                 at = {ch: operating_point(s, y, dev_thr[ch]) for ch in ("clean", "phone")}
                 low_far = (dev_thr.get("low_far") or {}).get("phone")
                 if low_far is not None:  # older thresholds.json files may lack it
                     at["low_far"] = operating_point(s, y, low_far)
-                result["matrix"][train_cond][test_cond]["at_dev_thresholds"] = at
+                cond["at_dev_thresholds"] = at
+            if test_cond in WHOLE_CLIP_TESTS:
+                ws, wy = score_whole_clips(model, [Path(m) for m in manifests], cfg, device)
+                save_scores(cfg, family, train_cond, f"{test_cond}_whole", ws, wy)
+                cond["whole_clip"] = {"pooled": summarize(ws, wy)}
+                if dev_thr is not None:
+                    cond["whole_clip"]["at_phone"] = operating_point(ws, wy, dev_thr["phone"])
+                logger.info("%s train=%s test=%s whole-clip EER=%.4f", family, train_cond,
+                            test_cond, cond["whole_clip"]["pooled"]["eer"])  # fmt: skip
             logger.info(
                 "%s train=%s test=%s EER=%.4f (n=%d)", family, train_cond, test_cond,
                 result["matrix"][train_cond][test_cond]["pooled"]["eer"], len(y),
@@ -434,28 +492,39 @@ def _out_of_domain_table(res: dict[str, Any], cond_name: str) -> list[str]:
     title, blurb = OUT_OF_DOMAIN[cond_name]
     lines = ["", f"### {title}", ""]
     lines += [
-        f"{blurb} False alarms = real clips called fake, at the phone threshold the API uses.",
+        f'{blurb} "Whole clip" scores every ~4 s window and averages them, as the API does with'
+        ' an upload; "first 4 s" is the crop used for every other table. False alarms = real'
+        " clips called fake, at the phone threshold the API uses (whole-clip scores where"
+        " available).",
         "",
-        "| Train | EER | False alarms @ phone thr | Missed fakes @ phone thr | Clips |",
-        "|---|---|---|---|---|",
+        "| Train | EER, whole clip | EER, first 4 s | False alarms @ phone thr "
+        "| Missed fakes @ phone thr | Clips |",
+        "|---|---|---|---|---|---|",
     ]
     for train in TRAIN_CONDITIONS:
         cond = _get(res, train, cond_name)
         if cond is None:
-            lines.append(f"| {TRAIN_LABELS[train]} |" + " not run |" * 4)
+            lines.append(f"| {TRAIN_LABELS[train]} |" + " not run |" * 5)
             continue
-        o = (cond.get("at_dev_thresholds") or {}).get("phone")
+        whole = cond.get("whole_clip")
+        if whole is not None:
+            o, note = whole.get("at_phone"), ""
+        else:
+            o, note = (cond.get("at_dev_thresholds") or {}).get("phone"), " (first 4 s)"
         fa, miss = (
-            ("no thresholds", "no thresholds") if o is None else (_pct(o["fpr"]), _pct(o["fnr"]))
+            ("no thresholds", "no thresholds")
+            if o is None
+            else (_pct(o["fpr"]) + note, _pct(o["fnr"]) + note)
         )
+        whole_eer = "not run" if whole is None else _pct(whole["pooled"]["eer"])
         lines.append(
-            f"| {TRAIN_LABELS[train]} | {_pct(cond['pooled']['eer'])} | {fa} | {miss} "
-            f"| {cond['pooled']['n']} |"
+            f"| {TRAIN_LABELS[train]} | {whole_eer} | {_pct(cond['pooled']['eer'])} | {fa} "
+            f"| {miss} | {cond['pooled']['n']} |"
         )
     return lines
 
 
-def render_family(res: dict[str, Any]) -> str:
+def render_family(res: dict[str, Any], figures: list[tuple[str, str]] | None = None) -> str:
     lines = [f"## {res['family']}", "", "### 2x2 matrix: EER (%)", ""]
     lines += ["| Train \\ Test | Clean | Phone-degraded (pooled) |", "|---|---|---|"]
     for train in TRAIN_CONDITIONS:
@@ -468,6 +537,8 @@ def render_family(res: dict[str, Any]) -> str:
     lines += _per_codec_table(
         res, "heldout", "Unseen-codec EER (%): codecs not used in any training run"
     )
+    for alt, path in figures or []:
+        lines += ["", f"![{alt}]({path})"]
 
     lines += ["", "### Accuracy (%) at the EER threshold / at 0.5", ""]
     lines += ["| Train \\ Test | Clean | Phone-degraded |", "|---|---|---|"]
@@ -506,7 +577,9 @@ def render_family(res: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def render_markdown(families: dict[str, dict[str, Any]]) -> str:
+def render_markdown(
+    families: dict[str, dict[str, Any]], figures: dict[str, list[tuple[str, str]]] | None = None
+) -> str:
     meta = next(iter(families.values()), {}).get("meta", {})
     head = [
         "# Results",
@@ -520,7 +593,7 @@ def render_markdown(families: dict[str, dict[str, Any]]) -> str:
     ]
     if meta.get("max_samples"):
         head += ["", f"**Smoke/partial run: max_samples={meta['max_samples']} per test set.**"]
-    body = [render_family(families[f]) for f in sorted(families)]
+    body = [render_family(families[f], (figures or {}).get(f)) for f in sorted(families)]
     return "\n".join(head) + "\n\n" + "\n\n".join(body) + "\n"
 
 
@@ -593,7 +666,10 @@ def main(argv: list[str] | None = None) -> None:
         raise SystemExit(f"no results in {cfg.out_dir}")
     docs = Path(cfg.docs_path)
     docs.parent.mkdir(parents=True, exist_ok=True)
-    docs.write_text(render_markdown(families))
+    from voxguard.plots import make_figures
+
+    figures = make_figures(families, scores_root(cfg), docs.parent / "figures", "figures/")
+    docs.write_text(render_markdown(families, figures))
     logger.info("wrote %s and %d result file(s) in %s", docs, len(families), cfg.out_dir)
 
 
