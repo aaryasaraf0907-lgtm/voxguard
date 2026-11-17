@@ -318,6 +318,33 @@ def test_sniff_signatures() -> None:
         assert sniff(data) is None
 
 
+def _only_brand(data: bytes, brand: bytes) -> bytes:
+    """``data`` with every brand in its ftyp box (major and compatible) replaced by ``brand``,
+    as a recorder that lists nothing else would write it. The box size is unchanged."""
+    size = int.from_bytes(data[:4], "big")
+    assert data[4:8] == b"ftyp" and size % 4 == 0
+    brands = brand + data[12:16] + brand * ((size - 16) // 4)  # major, minor version, compatible
+    return data[:8] + brands + data[size:]
+
+
+def test_sniff_accepts_m4a_as_the_only_brand() -> None:
+    """Review follow-up (#73): pins `M4A ` itself, not just the brands ffmpeg also writes."""
+    only_m4a = (24).to_bytes(4, "big") + b"ftypM4A " + bytes(4) + b"M4A M4A "
+    assert sniff(only_m4a + bytes(16)) == "mov"
+    compat_only = (20).to_bytes(4, "big") + b"ftypXXXX" + bytes(4) + b"M4A "
+    assert sniff(compat_only + bytes(16)) == "mov"
+
+
+@needs_ffmpeg
+def test_m4a_with_only_the_m4a_brand_decodes(tmp_path: Path) -> None:
+    """Review follow-up (#73): a real file whose ftyp lists only `M4A `."""
+    data = _only_brand(_ffmpeg_audio(tmp_path, 1.0), b"M4A ")
+    size = int.from_bytes(data[:4], "big")
+    assert {data[i : i + 4] for i in range(16, size, 4)} == {b"M4A "} and data[8:12] == b"M4A "
+    x, sr = decode_audio(data, 60)
+    assert sr == 16_000 and abs(len(x) / sr - 1.0) <= 0.05
+
+
 @needs_ffmpeg
 def test_routing_ignores_names_and_content_types(tmp_path: Path, client: TestClient) -> None:
     m4a = _ffmpeg_audio(tmp_path, 1.0)
