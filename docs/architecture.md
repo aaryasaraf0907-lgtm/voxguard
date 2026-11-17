@@ -31,6 +31,12 @@ What is implemented on `dev`. The overall pipeline diagram is in `CLAUDE.md` sec
 
 ### UI state
 
+- **Near-threshold caution** (agreed with Aarya, 16 Nov): a flagged result whose score is below
+  `CAUTION_FACTOR` (1.5) times the threshold also shows "Close to the decision threshold: this
+  result is uncertain". The band is one-sided (`threshold <= fake_score < 1.5 x threshold`;
+  about 0.0127-0.019 at the demo threshold): results under the threshold get no caution, and a
+  clearly high score reads as a clear fake. It is computed in the UI from the response's
+  `fake_score` and `threshold`; the label, the flag and the API response are unchanged.
 - Results are kept per audio clip (SHA-256 of the bytes) and per mode (original, phone line).
   Selecting a different file or recording discards them, so a result is never shown next to
   audio it was not computed from. When a clip has both results they are shown side by side.
@@ -81,6 +87,12 @@ Security measures:
 | Over the duration, channel or rate limits (from the probe, or the output cap), or non-finite samples | 422 |
 | `ffmpeg` or `ffprobe` missing | 503 |
 | Timeout, or malformed output | 500 |
+
+Verified against the API image's own ffmpeg (Debian 12, 5.1.9) by the Docker smoke tests: an
+M4A with its index at the end decodes as the image's user (uid 1000), the temp directory and file
+are 0700/0600 while ffmpeg runs, nothing is left in `/tmp`, and the M4A analyzes end to end
+through `/v1/analyze`, with and without phone-line simulation. Locally and in CI the decoder
+tests have also passed with ffmpeg 7.0, 8.0 and 9.0.
 
 Files decoded this way are downmixed and resampled to 16 kHz by ffmpeg, not by the Detector, so
 their scores can differ slightly from the same audio converted to WAV and uploaded.

@@ -620,3 +620,70 @@ def test_rerun_with_the_same_codec_keeps_the_phone_result() -> None:
     _, at = _clean_then_opus()
     at = at.run()
     assert t("result_header_phone", "en") in _text(at) and "opus" in _text(at)
+
+
+# --- near-threshold caution (one-sided band agreed with Aarya, 16 Nov) ------------------------
+
+DEMO_THRESHOLD = 0.012676023156691243  # the deployed phone threshold, as a realistic scale
+
+
+def test_caution_factor_is_the_agreed_value() -> None:
+    from voxguard.ui.app import CAUTION_FACTOR
+
+    assert CAUTION_FACTOR == 1.5
+
+
+@pytest.mark.parametrize(
+    ("score", "threshold", "expected"),
+    [
+        (0.5, 0.5, True),  # exactly at the threshold: flagged, and uncertain
+        (0.6, 0.5, True),
+        (0.7499, 0.5, True),
+        (0.75, 0.5, False),  # 1.5 x the threshold: a clear result
+        (0.99, 0.5, False),
+        (0.4999, 0.5, False),  # under the threshold: one-sided, no caution
+        (0.0, 0.5, False),
+        (DEMO_THRESHOLD, DEMO_THRESHOLD, True),
+        (0.019, DEMO_THRESHOLD, True),  # ~0.0127-0.019 at the demo threshold
+        (DEMO_THRESHOLD * 1.5, DEMO_THRESHOLD, False),
+        (0.0126, DEMO_THRESHOLD, False),
+        (0.853, DEMO_THRESHOLD, False),
+    ],
+)
+def test_near_threshold_band(score: float, threshold: float, expected: bool) -> None:
+    from voxguard.ui.app import near_threshold
+
+    assert near_threshold(score, threshold) is expected
+
+
+@pytest.mark.parametrize("lang", ["en", "hi"])
+@pytest.mark.parametrize(
+    ("flagged", "score", "shown"),
+    [(True, 0.6, True), (True, 0.5, True), (True, 0.9, False), (False, 0.4, False)],
+)
+def test_caution_shown_only_inside_the_band(
+    lang: str, flagged: bool, score: float, shown: bool
+) -> None:
+    client = FakeClient()
+    client.analyze_response = _result(flagged, score)  # threshold 0.5
+    at = _analyze(client, lang=lang)
+    assert not at.exception
+    warnings = [w.value for w in at.warning]
+    assert (t("caution_near_threshold", lang) in warnings) is shown
+    # the decision itself is unchanged: banner and label follow the API's response
+    banner = t("flagged_banner" if flagged else "not_flagged_banner", lang)
+    assert banner in _text(at)
+    assert at.metric[0].value == t(f"label_{'fake' if flagged else 'real'}", lang)
+
+
+def test_caution_follows_each_result_side_by_side() -> None:
+    client = FakeClient()
+    client.analyze_response = lambda simulate: (
+        _result(True, 0.6, codec="g711_mulaw") if simulate else _result(True, 0.9)
+    )
+    at = _analyze(client)  # clean: 0.9, a clear result
+    at.toggle[0].set_value(True).run()
+    _click_analyze(at)  # same clip, phone line: 0.6, near the threshold
+    assert not at.exception
+    warnings = [w.value for w in at.warning]
+    assert warnings.count(t("caution_near_threshold", "en")) == 1  # only the phone-line result

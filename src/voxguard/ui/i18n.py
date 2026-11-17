@@ -63,6 +63,10 @@ EN: dict[str, str] = {
     "result_header_clean": "Result: original audio",
     "result_header_phone": "Result: simulated phone line",
     "result_header": "Result",
+    "caution_near_threshold": (
+        "Close to the decision threshold: this result is uncertain. Treat it as a hint, not a"
+        " verdict."
+    ),
     "flagged_banner": "Flagged: this recording scored at or above the threshold.",
     "not_flagged_banner": "Not flagged: this recording scored below the threshold.",
     "m_label": "Label",
@@ -172,6 +176,9 @@ HI: dict[str, str] = {
     "result_header_clean": "परिणाम: मूल ऑडियो",
     "result_header_phone": "परिणाम: फ़ोन लाइन अनुकरण के बाद",
     "result_header": "परिणाम",
+    "caution_near_threshold": (
+        "यह परिणाम निर्णय-सीमा के क़रीब है, इसलिए अनिश्चित है। इसे संकेत समझें, अंतिम निर्णय नहीं।"
+    ),
     "flagged_banner": "चिह्नित: इस रिकॉर्डिंग का स्कोर सीमा के बराबर या उससे अधिक है।",
     "not_flagged_banner": "चिह्नित नहीं: इस रिकॉर्डिंग का स्कोर सीमा से कम है।",
     "m_label": "लेबल",
