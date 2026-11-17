@@ -13,6 +13,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 from pathlib import Path
 
 import numpy as np
@@ -31,6 +33,9 @@ needs_ffmpeg = pytest.mark.skipif(not HAVE_FFMPEG, reason="needs ffmpeg and ffpr
 LIMITS = Limits(max_seconds=60, max_channels=2, max_sample_rate=192_000, max_bytes=25 << 20)
 REAL_POPEN = subprocess.Popen
 REAL_SOUNDFILE = sf.SoundFile
+KILL_DEADLINE_S = 5.0  # a 0.5 s timeout plus kill and reap, with room for a slow CI runner
+LONG_HANG_S = 600  # the dedicated kill test's stand-in: far past the deadline
+HANG = "import time; time.sleep(10)"  # other timeout stand-ins: well past their 0.5 s timeout
 NAN_BYTES = np.full(8, np.nan, dtype="<f4").tobytes()
 FLAC_SIGNATURE_ONLY = b"fLaC" + bytes(64)  # libsndfile rejects it; the signature picks FLAC
 
@@ -164,7 +169,7 @@ def test_faststart_m4a_decodes(tmp_path: Path) -> None:
     ("tool", "code", "status"),
     [
         ("ffmpeg", "import sys; sys.exit(1)", 415),  # decode failure
-        ("ffmpeg", "import time; time.sleep(60)", 500),  # timeout
+        ("ffmpeg", HANG, 500),  # timeout
         ("ffmpeg", "import sys\nwhile True: sys.stdout.buffer.write(bytes(65536))", 422),  # cap
         ("ffmpeg", "import sys; sys.stdout.buffer.write(b'abc')", 500),  # malformed
         ("ffmpeg", "import sys; sys.stdout.buffer.write(b'')", 500),  # no samples
@@ -461,7 +466,33 @@ def test_output_cap_is_enforced_while_reading(monkeypatch: pytest.MonkeyPatch) -
     assert totals[0] <= 200_000 + audio_ffmpeg.CHUNK_BYTES
 
 
+def _run_within_deadline(code: str, procs: list[subprocess.Popen]) -> FallbackError:
+    """Call _run on a hanging stand-in in a worker thread. Fails the test, instead of waiting for
+    the stand-in to exit on its own, if _run has not returned by KILL_DEADLINE_S."""
+    outcome: list[FallbackError] = []
+
+    def call() -> None:
+        try:
+            audio_ffmpeg._run([sys.executable, "-c", code], cap=10, timeout=0.5)
+        except FallbackError as exc:
+            outcome.append(exc)
+
+    worker = threading.Thread(target=call, daemon=True)
+    t0 = time.monotonic()
+    worker.start()
+    worker.join(KILL_DEADLINE_S)
+    if worker.is_alive():  # _run is waiting on a process it did not kill
+        for p in procs:
+            p.kill()
+        worker.join(5)
+        pytest.fail(f"_run did not kill the process within {KILL_DEADLINE_S} s of its timeout")
+    assert time.monotonic() - t0 < KILL_DEADLINE_S and len(outcome) == 1
+    return outcome[0]
+
+
 def test_timeout_kills_and_reaps(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Review follow-up (#73): without the kill this fails within seconds. Before, it waited for
+    the stand-in to exit on its own, then passed."""
     procs: list[subprocess.Popen] = []
 
     def popen(cmd, **kw):
@@ -469,10 +500,13 @@ def test_timeout_kills_and_reaps(monkeypatch: pytest.MonkeyPatch) -> None:
         return procs[-1]
 
     monkeypatch.setattr(audio_ffmpeg.subprocess, "Popen", popen)
-    for code in ["import time; time.sleep(60)", "import os, time; os.close(1); time.sleep(60)"]:
-        with pytest.raises(FallbackError) as exc:  # hangs while writing, or after closing stdout
-            audio_ffmpeg._run([sys.executable, "-c", code], cap=10, timeout=0.5)
-        assert exc.value.status == 500 and exc.value.category == "timeout"
+    # hangs while writing, or after closing stdout; both sleep far past the deadline
+    for code in [
+        f"import time; time.sleep({LONG_HANG_S})",
+        f"import os, time; os.close(1); time.sleep({LONG_HANG_S})",
+    ]:
+        exc = _run_within_deadline(code, procs)
+        assert exc.status == 500 and exc.category == "timeout"
     assert all(p.returncode is not None for p in procs)
 
 
@@ -480,7 +514,7 @@ def test_timeout_kills_and_reaps(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_exception_mid_decode_still_reaps_before_cleanup(
     tmp_path: Path, rec: Recorder, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    rec.swap("ffmpeg", "import time; time.sleep(60)")
+    rec.swap("ffmpeg", HANG)
 
     class Interrupted(audio_ffmpeg.threading.Thread):
         def join(self, timeout=None):
@@ -539,7 +573,7 @@ def test_api_errors_store_nothing(
 ) -> None:
     data = _ffmpeg_audio(tmp_path, 3.0)
     monkeypatch.setattr(audio_ffmpeg, "TIMEOUT_S", 0.5)
-    cases: list[tuple[str | None, int]] = [(None, 503), ("import time; time.sleep(60)", 500)]
+    cases: list[tuple[str | None, int]] = [(None, 503), (HANG, 500)]
     for code, status in cases:
         with monkeypatch.context() as m:
             if code is None:
