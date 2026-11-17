@@ -330,6 +330,11 @@ docker compose logs api | grep -E "loaded|warm-up|thresholds"
 - **Use clear cases.** A flagged score below 1.5× the threshold also shows the yellow caution
   "Close to the decision threshold: this result is uncertain". Say so; such results are hints,
   not verdicts.
+- **Choose the genuine demo clips beforehand** with the
+  [sanity tool](real-audio-testing.md), on the same model, and check how each one scores. The
+  codec-aug model flags a noticeable share of off-domain real speech as fake at the phone
+  threshold (Aarya's In-the-Wild evaluation; numbers to follow in `docs/results.md`). An
+  unchecked live voice could be flagged during the demo.
 - **Phone line:** turn on **Simulate phone line** to score the same clip after a codec. The two
   results are shown side by side.
 - **Formats:** WAV, FLAC, OGG, MP3 and M4A uploads; at most 25 MB and 60 s.
