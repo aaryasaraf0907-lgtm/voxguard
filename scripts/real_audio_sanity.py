@@ -513,12 +513,19 @@ def render_markdown(report: dict[str, Any]) -> str:
 def write_reports(out_dir: Path, report: dict[str, Any]) -> tuple[Path, Path]:
     stamp = report["run"]["started_utc"].replace(":", "").replace("-", "")
     paths = (out_dir / f"sanity-{stamp}.json", out_dir / f"sanity-{stamp}.md")
-    with paths[0].open("x", encoding="utf-8") as f:  # "x": never overwrite a report
+    with _private_new_file(paths[0]) as f:
         json.dump(report, f, indent=2)
         f.write("\n")
-    with paths[1].open("x", encoding="utf-8") as f:
+    with _private_new_file(paths[1]) as f:
         f.write(render_markdown(report))
     return paths
+
+
+def _private_new_file(path: Path) -> Any:
+    """Open a new file for writing, owner-only (0600) whatever the umask; never overwrite one."""
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    os.fchmod(fd, 0o600)  # exactly 0600, even under an unusual umask
+    return os.fdopen(fd, "w", encoding="utf-8")
 
 
 def cmd_run(args: argparse.Namespace) -> int:

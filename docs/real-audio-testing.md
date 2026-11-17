@@ -123,7 +123,7 @@ Extra options go in `SANITY_ARGS`:
 ## Reports
 
 Each run writes `sanity-<UTC time>.json` and `sanity-<UTC time>.md` to `--out`. Existing reports
-are never overwritten.
+are never overwritten, and are owner-only (0600).
 - **Run details:** API URL, `/health`, the tool's git commit, the labels file's name and SHA-256.
 - **Per file:** the file name relative to the audio folder, SHA-256, size, outcome and the
   response as returned.

@@ -10,6 +10,7 @@ import csv
 import importlib.util
 import io
 import json
+import os
 import socket
 import sys
 import threading
@@ -489,6 +490,19 @@ def test_reports_are_never_overwritten(tree) -> None:
     sanity.write_reports(tree["out"], report)
     with pytest.raises(FileExistsError):
         sanity.write_reports(tree["out"], report)
+
+
+def test_reports_are_owner_only_whatever_the_umask(tree) -> None:
+    report = {"run": {"started_utc": "2026-11-17T11:00:00"}, "results": [], "summary": [],
+              "model_version_mismatches": [], "unlabelled_files": []}  # fmt: skip
+    report["run"] |= {"finished_utc": "x", "api_url": "u", "health": HEALTH, "tool_commit": "c",
+                      "labels_sha256": "h", "conditions": [], "stopped_early": None}  # fmt: skip
+    old = os.umask(0o022)  # the usual default, which gave 0644 in the first private run
+    try:
+        paths = sanity.write_reports(tree["out"], report)
+    finally:
+        os.umask(old)
+    assert [p.stat().st_mode & 0o777 for p in paths] == [0o600, 0o600]
 
 
 def test_caution_factor_matches_the_ui() -> None:

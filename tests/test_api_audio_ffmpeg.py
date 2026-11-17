@@ -190,9 +190,9 @@ def test_temp_file_gone_after_failure(
     monkeypatch.setattr(audio_ffmpeg, "TIMEOUT_S", 0.5)
     rec.swap(tool, code)
     data = _ffmpeg_audio(tmp_path, 1.0)
-    with pytest.raises(HTTPException) as exc:
-        decode_audio(data, 2.0)
-    assert exc.value.status_code == status
+    # under a deadline: without the kill, the endless-output stand-ins would block forever
+    error = _call_within_deadline(lambda: decode_audio(data, 2.0), rec.procs)
+    assert isinstance(error, HTTPException) and error.status_code == status
     rec.assert_clean()
 
 
@@ -458,36 +458,57 @@ def test_output_cap_is_enforced_while_reading(monkeypatch: pytest.MonkeyPatch) -
         drain(stream, cap, chunks, state)
         totals.append(state["total"])
 
+    procs: list[subprocess.Popen] = []
+
+    def popen(cmd, **kw):
+        procs.append(REAL_POPEN(cmd, **kw))
+        return procs[-1]
+
     monkeypatch.setattr(audio_ffmpeg, "_drain", tracked)
+    monkeypatch.setattr(audio_ffmpeg.subprocess, "Popen", popen)
     endless = "import sys\nwhile True: sys.stdout.buffer.write(bytes(65536))"
-    with pytest.raises(FallbackError) as exc:
-        audio_ffmpeg._run([sys.executable, "-c", endless], cap=200_000, timeout=10)
-    assert exc.value.category == "output_cap"
+    # under a deadline: without the kill, the endless writer would block this test forever
+    error = _call_within_deadline(
+        lambda: audio_ffmpeg._run([sys.executable, "-c", endless], cap=200_000, timeout=10), procs
+    )
+    assert isinstance(error, FallbackError) and error.category == "output_cap"
     assert totals[0] <= 200_000 + audio_ffmpeg.CHUNK_BYTES
 
 
-def _run_within_deadline(code: str, procs: list[subprocess.Popen]) -> FallbackError:
-    """Call _run on a hanging stand-in in a worker thread. Fails the test, instead of waiting for
-    the stand-in to exit on its own, if _run has not returned by KILL_DEADLINE_S."""
-    outcome: list[FallbackError] = []
+def _call_within_deadline(fn, procs: list[subprocess.Popen]) -> BaseException | None:
+    """Run ``fn`` in a worker thread and return the exception it raised (None if it returned).
+
+    Fails the test within KILL_DEADLINE_S, instead of blocking, if the call has not finished:
+    that means a stand-in process was never killed. The stand-ins are then killed here."""
+    outcome: list[BaseException | None] = []
 
     def call() -> None:
         try:
-            audio_ffmpeg._run([sys.executable, "-c", code], cap=10, timeout=0.5)
-        except FallbackError as exc:
+            fn()
+            outcome.append(None)
+        except BaseException as exc:  # handed back to the test thread
             outcome.append(exc)
 
     worker = threading.Thread(target=call, daemon=True)
     t0 = time.monotonic()
     worker.start()
     worker.join(KILL_DEADLINE_S)
-    if worker.is_alive():  # _run is waiting on a process it did not kill
+    if worker.is_alive():  # waiting on a process that was not killed
         for p in procs:
             p.kill()
         worker.join(5)
-        pytest.fail(f"_run did not kill the process within {KILL_DEADLINE_S} s of its timeout")
+        pytest.fail(f"the process was not killed within {KILL_DEADLINE_S} s of its timeout")
     assert time.monotonic() - t0 < KILL_DEADLINE_S and len(outcome) == 1
     return outcome[0]
+
+
+def _run_within_deadline(code: str, procs: list[subprocess.Popen]) -> FallbackError:
+    """_run on a hanging stand-in, under the deadline; returns the FallbackError it raised."""
+    error = _call_within_deadline(
+        lambda: audio_ffmpeg._run([sys.executable, "-c", code], cap=10, timeout=0.5), procs
+    )
+    assert isinstance(error, FallbackError)
+    return error
 
 
 def test_timeout_kills_and_reaps(monkeypatch: pytest.MonkeyPatch) -> None:
