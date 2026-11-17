@@ -275,6 +275,139 @@ images therefore install the CPU builds instead, in the Dockerfiles only, so `py
 - The `ml` extra also brings training-only packages (wandb, scikit-learn, numba/llvmlite for
   librosa; about 320 MB installed). Leaving them out would need a `pyproject.toml` change.
 
+## M2 demo runbook (real model in compose)
+
+For a live demo with `voxguard-team/voxguard-ssl-aasist-codec-aug`. Set up the
+[real detector](#real-detector) first (`INSTALL_ML=1` and the other values in `.env`).
+
+### 1. Get the model into the volume
+
+Pick one:
+- **Read token (the documented path).** Put `HF_TOKEN=<read token>` in `.env`. The first start
+  downloads the 1.26 GB checkpoint into the `voxguard-data` volume.
+- **From a local Hugging Face cache, offline, no token.** Use this on a machine that already
+  downloaded the checkpoint (for example with `huggingface-cli download` or an earlier local run).
+  1. Create the volume without starting anything:
+     `docker compose create`.
+  2. Copy the snapshot files into the volume. `cp -L` turns the cache's symlinks into real
+     files, and the container has no network:
+
+     ```bash
+     docker run --rm --network none -v voxguard_voxguard-data:/data \
+       -v ~/.cache/huggingface/hub:/src:ro --entrypoint sh voxguard-api:local -c '
+       for repo in models--voxguard-team--voxguard-ssl-aasist-codec-aug models--facebook--wav2vec2-xls-r-300m; do
+         rev=$(cat /src/$repo/refs/main); dst=/data/hf-cache/hub/$repo
+         mkdir -p $dst/refs $dst/snapshots && cp /src/$repo/refs/main $dst/refs/main
+         cp -rL /src/$repo/snapshots/$rev $dst/snapshots/$rev
+       done'
+     ```
+
+  3. Add `HF_HUB_OFFLINE=1` and `TRANSFORMERS_OFFLINE=1` to `.env`, and leave `HF_TOKEN` out.
+
+  The copy needs only `best.pt`, `thresholds.json` and the model card from the checkpoint repo,
+  and XLS-R's `config.json`.
+
+### 2. Start and pre-flight check
+
+```bash
+docker compose up -d --wait
+curl -s http://localhost:8000/health
+docker compose logs api | grep -E "loaded|warm-up|thresholds"
+```
+
+- `/health` shows `"detector": "real"` and
+  `ssl_aasist/ssl-aasist-codec-aug-v2:voxguard-ssl-aasist-codec-aug:epoch11`.
+- The log shows `thresholds for ... (selected on dev): clean 0.01378, phone 0.01268`. Every
+  response then carries the phone threshold, 0.012676. Keep `VOXGUARD_THRESHOLD` empty.
+- `curl -s http://localhost:8000/v1/codecs` lists G.711, GSM and Opus as available. AMR is
+  unavailable in this image's ffmpeg.
+- The UI sidebar (http://localhost:8501) shows "Connected" and the detector and model.
+
+### 3. During the demo
+
+- **Use clear cases.** A flagged score below 1.5× the threshold also shows the yellow caution
+  "Close to the decision threshold: this result is uncertain". Say so; such results are hints,
+  not verdicts.
+- **Phone line:** turn on **Simulate phone line** to score the same clip after a codec. The two
+  results are shown side by side.
+- **Formats:** WAV, FLAC, OGG, MP3 and M4A uploads; at most 25 MB and 60 s.
+- **Privacy:** uploaded audio is not stored. The database keeps only each session's score,
+  threshold, label, flag, codec, model version, latency and optional caller ID. Decoding temp
+  files are removed after each request.
+
+### 4. Reset the demo data (keeps the model)
+
+Before presenting, clear old sessions, alerts and the blocklist without deleting the model
+cache:
+
+```bash
+docker compose stop
+docker compose run --rm --no-deps --entrypoint sh api -c \
+  'rm -f /data/voxguard.db /data/voxguard.db-journal /data/voxguard.db-wal /data/voxguard.db-shm'
+docker compose up -d --wait
+```
+
+The API creates an empty database on start. **Do not use `docker compose down -v` for this:** it
+deletes the whole volume, model cache included.
+
+### 5. If something stops
+
+- **The API exits on its own:** compose restarts it (`restart: unless-stopped`). Measured: healthy
+  again 13 s after an in-process exit, data intact.
+- **A container stopped with `docker stop` or `docker kill`:** Docker treats this as a manual
+  stop and does not restart it. Run `docker compose up -d --wait`.
+- **After `docker compose down` / `up`:** sessions, alerts and the blocklist persist. Measured:
+  healthy again in 22 s.
+
+### 6. Rehearse without touching the demo data
+
+Run a second stack under another project name. Give it its own image tags in a small override
+file (so `voxguard-*:local` are not retagged) and its own ports:
+
+```bash
+VOXGUARD_API_PORT=18100 VOXGUARD_UI_PORT=18601 \
+  docker compose -p voxguard-rehearsal -f docker-compose.yml -f rehearsal.override.yml up -d --wait
+```
+
+with `rehearsal.override.yml` (kept outside the repo, or git-ignored):
+
+```yaml
+services:
+  api:
+    image: voxguard-api:rehearsal
+  ui:
+    image: voxguard-ui:rehearsal
+```
+
+It gets its own `voxguard-rehearsal_voxguard-data` volume and database. Copy the model in as in
+step 1, using that volume name and `voxguard-api:rehearsal`.
+
+**Verified (17 Nov 2026, `dev` @ `51c1acf`; i5-13450HX, WSL2, Docker Desktop 29.8.2).** Run in
+an isolated project as in step 6, with the model copied from a local cache and offline. The run
+covered:
+- **The model:** the copied files were byte-identical to the cache. The image built in 79 s with
+  a warm build cache.
+- **Start-up:** healthy in 17 s; load 7.4 s, warm-up 566 ms. `/health`, the log and every
+  response showed the model and the phone threshold above.
+- **22 API checks**, all passing:
+  - WAV, FLAC, M4A with its index at the end, and a FLAC that libsndfile rejects;
+  - every codec, with AMR answering 503;
+  - unknown codec 422, unsupported bytes 415, over 60 s 422, empty upload 400, over 25 MB 413;
+  - the lists, and a blocklist entry.
+
+  Detector `latency_ms` was 467–535 ms per request for 3–5 s clips on CPU, and `codec_ms`
+  86–139 ms. These are single requests, not a benchmark.
+- **15 UI checks in headless Chromium**, English and Hindi, all passing:
+  - the live caution on a consented recording that scored 1.013× the threshold, and 1.077×
+    through G.711;
+  - side by side; an M4A upload; the monitoring tabs.
+- **Operations:**
+  - no uploaded audio found in the database, the volume or the container;
+  - persistence across `down` / `up`;
+  - an automatic restart after an in-process exit;
+  - no restart after `docker kill`, as described above;
+  - the reset in step 4: lists empty afterwards, model cache unchanged.
+
 ## Private Hugging Face Space (optional future route; needs a paid plan)
 
 **Not part of the MVP and not deployed.** Hugging Face requires a paid plan to create Docker
@@ -359,6 +492,8 @@ Limitations on a Space:
 | `simulate_codec=true` returns 503 | This ffmpeg has no encoder for the chosen codec; pick one the codec report lists as OK. |
 | Uploads above 25 MB fail | The API limit (`VOXGUARD_MAX_UPLOAD_MB`); raise both it and `VOXGUARD_UI_MAX_UPLOAD_MB`. |
 | `port is already allocated` | Change `VOXGUARD_API_PORT` / `VOXGUARD_UI_PORT`. |
+| The API stays stopped after `docker kill` / `docker stop` | A manual stop: the restart policy does not apply. Run `docker compose up -d --wait`. |
+| A script uploading more than 25 MB gets a connection reset instead of a 413 | The API rejects an oversized body before reading it. Clients that send `Expect: 100-continue` (curl) receive the 413, and the UI caps uploads at 25 MB. Keep script uploads under the limit. |
 | `docker: command not found` in WSL | Enable Docker Desktop > Settings > Resources > WSL integration for your distro. |
 
 ## Verifying a deployment
