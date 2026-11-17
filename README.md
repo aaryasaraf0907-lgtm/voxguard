@@ -241,4 +241,6 @@ CI runs ruff and pytest (with ffmpeg, without torch) and the Docker smoke tests 
 - [docs/benchmarking.md](docs/benchmarking.md) and [docs/benchmarks.md](docs/benchmarks.md):
   latency method and measured results
 - [docs/results.md](docs/results.md): evaluation results (generated)
+- [docs/real-audio-testing.md](docs/real-audio-testing.md): private sanity check on consented
+  real recordings (diagnostic only)
 - [docs/STATUS.md](docs/STATUS.md): progress, limitations, next steps

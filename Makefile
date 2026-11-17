@@ -1,4 +1,5 @@
-.PHONY: setup lint format test smoke smoke-eval docker-up docker-down docker-smoke docker-ml-smoke
+.PHONY: setup lint format test smoke smoke-eval docker-up docker-down docker-smoke docker-ml-smoke \
+	sanity-api sanity
 
 setup:
 	uv sync
@@ -41,3 +42,15 @@ docker-smoke:
 # INSTALL_ML=1 image: CPU-only torch audit + real detector on an untrained checkpoint
 docker-ml-smoke:
 	VOXGUARD_DOCKER_ML_TESTS=1 uv run pytest tests/test_docker_ml.py -v
+
+# Real-audio sanity check (docs/real-audio-testing.md). Diagnostic only; reports stay private.
+# 1) a scratch API on a NEW database outside the repo (never the demo database), e.g.
+#    VOXGUARD_MODEL_REPO=voxguard-team/... make sanity-api SANITY_DB=$$HOME/private/sanity-1.db
+sanity-api:
+	uv run --extra api --extra ml python scripts/real_audio_sanity.py serve --db "$(SANITY_DB)" $(SANITY_API_ARGS)
+
+# 2) in another terminal, score the labelled, consented files through its public API
+#    make sanity SANITY_URL=http://127.0.0.1:8100 LABELS=… AUDIO=… OUT=…
+sanity:
+	uv run python scripts/real_audio_sanity.py run --api-url "$(SANITY_URL)" --labels "$(LABELS)" \
+		--audio-dir "$(AUDIO)" --out "$(OUT)" $(SANITY_ARGS)
