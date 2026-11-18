@@ -2,12 +2,15 @@ import numpy as np
 import pytest
 
 from voxguard.inference import (
+    MAX_RESAMPLE_ELEMENTS,
     NUM_SAMPLES,
     Prediction,
     RealDetector,
     StubDetector,
     get_detector,
+    resample_elements,
     to_windows,
+    torch_resample,
 )
 
 
@@ -92,6 +95,35 @@ def test_get_detector_selection(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("VOXGUARD_DETECTOR", "bogus")
     with pytest.raises(ValueError):
         get_detector()
+
+
+@pytest.mark.parametrize("value", ["stub ", " STUB", "\tstub\n", ""])
+def test_get_detector_ignores_surrounding_whitespace(
+    monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    monkeypatch.setenv("VOXGUARD_DETECTOR", value)
+    assert isinstance(get_detector(), StubDetector)
+
+
+@pytest.mark.parametrize("sr", [44_101, 16_001, 191_999, 2003])
+def test_torch_resample_refuses_rates_needing_a_huge_filter(sr: int) -> None:
+    """Checked before torch is imported, so nothing is allocated (and no torch is needed)."""
+    assert resample_elements(sr) > MAX_RESAMPLE_ELEMENTS
+    with pytest.raises(ValueError, match="standard sample rate"):
+        torch_resample(np.zeros(sr // 100, dtype=np.float32), sr, 16_000)
+
+
+@pytest.mark.parametrize(
+    "sr", [7350, 8000, 11_025, 12_000, 22_050, 24_000, 32_000, 44_100, 48_000, 96_000, 192_000]
+)
+def test_standard_rates_are_within_the_resample_cap(sr: int) -> None:
+    assert resample_elements(sr) <= MAX_RESAMPLE_ELEMENTS
+
+
+def test_torch_resample_still_resamples_a_standard_rate() -> None:
+    pytest.importorskip("torchaudio")
+    y = torch_resample(_wave(44_100), 44_100, 16_000)
+    assert y.dtype == np.float32 and len(y) == 16_000
 
 
 def test_real_detector_needs_a_model(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -63,14 +63,28 @@ def ffmpeg_path() -> str | None:
     return shutil.which("ffmpeg")
 
 
+ENCODER_LIST_TIMEOUT_S = 10
+
+
 @functools.lru_cache(maxsize=1)
 def _encoder_names() -> frozenset[str]:
     exe = ffmpeg_path()
     if exe is None:
         return frozenset()
-    out = subprocess.run(
-        [exe, "-hide_banner", "-encoders"], capture_output=True, text=True, check=False
-    ).stdout
+    try:
+        out = subprocess.run(
+            [exe, "-hide_banner", "-encoders"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=ENCODER_LIST_TIMEOUT_S,
+        ).stdout
+    except subprocess.TimeoutExpired:
+        # Raised, not returned as "no encoders": lru_cache does not cache exceptions, so the
+        # next call tries again instead of reporting every codec missing for the process's life.
+        raise RuntimeError(
+            f"'ffmpeg -encoders' did not finish within {ENCODER_LIST_TIMEOUT_S} s"
+        ) from None
     names = set()
     for line in out.splitlines():
         parts = line.split()

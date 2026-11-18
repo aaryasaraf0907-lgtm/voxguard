@@ -96,3 +96,29 @@ def test_decoder_is_told_the_container_format(codec: str, monkeypatch: pytest.Mo
     dec = calls[1]
     i = dec.index("-i")
     assert dec[i - 2 : i] == ["-f", CODECS[codec].container]
+
+
+def test_encoder_listing_timeout_is_an_error_and_not_cached(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A hung `ffmpeg -encoders` must not hang the caller, nor be cached as "no encoders"."""
+    import subprocess
+
+    from voxguard.data import codecs as codecs_mod
+
+    calls = []
+
+    def hang(*args, **kwargs):
+        calls.append(kwargs.get("timeout"))
+        raise subprocess.TimeoutExpired(args[0], kwargs.get("timeout"))
+
+    monkeypatch.setattr(codecs_mod, "ffmpeg_path", lambda: "/usr/bin/ffmpeg")
+    monkeypatch.setattr(codecs_mod.subprocess, "run", hang)
+    codecs_mod._encoder_names.cache_clear()
+    try:
+        for _ in range(2):
+            with pytest.raises(RuntimeError, match="did not finish"):
+                codecs_mod._encoder_names()
+        assert calls == [codecs_mod.ENCODER_LIST_TIMEOUT_S] * 2  # retried, with a timeout
+    finally:
+        codecs_mod._encoder_names.cache_clear()
