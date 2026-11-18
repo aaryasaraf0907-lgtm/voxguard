@@ -188,18 +188,25 @@ with the `.env` above, `docker compose up --build` built the CPU-only ML image, 
   checkpoint from the Hugging Face Hub`), no network with an empty cache (`checkpoint not
   found`), and `VOXGUARD_DETECTOR=real` on an image built without `INSTALL_ML=1`.
 
-**15-minute check (CLAUDE.md section 17), measured 14 Nov 2026 with RawNet2 (212 MB; not yet
-repeated with the 1.26 GB SSL-AASIST checkpoint):** a fresh
-`git clone` of this branch, `.env` from `.env.example` with the six values above (written by a
-script), then `docker compose up --build`, with an empty build cache (a separate buildx builder)
-and an empty volume. Time from `git clone` to the first successful analysis in the UI:
-**10 min 51 s** (the stack was healthy after 10 min 33 s). The slow steps were Debian's ffmpeg
-(`apt-get`, 4 min 12 s) and the Python packages other than torch (4 min 42 s); CPU torch took
-19 s (200 MB in about 10 s). The separate builder adds about 1 min of image export that a normal
-build mostly skips. **Not included:** installing Docker, getting access to `voxguard-team` and a
-read token, and the time a person needs to read the README and edit `.env`. This is machine time
-on one connection; a run by a person following the README has not been timed yet, and a slower
-network or Debian mirror can take longer.
+**15-minute check (CLAUDE.md section 17).** Both runs: a fresh `git clone` of `dev`, `.env` from
+`.env.example` with the six values above (written by a script), then `docker compose up --build`,
+with an empty build cache (a separate buildx builder) and an empty volume, on an i5-13450HX
+laptop (WSL2, Docker Desktop). Time from `git clone` to the first successful analysis in the UI:
+
+| Run | Checkpoint | Clone to first analysis | Build | API start to healthy | Slow steps |
+|---|---|---|---|---|---|
+| 18 Nov 2026, `dev` @ `056f4fc` | SSL-AASIST codec-aug (the demo model, 1.26 GB) | **3 min 28 s** | 2 min 7 s | 1 min 14 s (download and load 67.6 s, warm-up 0.9 s) | Debian ffmpeg 40 s; image export 41 s; CPU torch 23 s; other Python packages 13 s |
+| 14 Nov 2026 | RawNet2 (212 MB) | 10 min 51 s | about 10 min | | Debian ffmpeg 4 min 12 s; Python packages other than torch 4 min 42 s; CPU torch 19 s |
+
+The same steps took very different times on the two days: the 14 Nov run spent most of its time
+fetching Debian and Python packages, so the total depends mainly on the network and the package
+mirrors, not on the checkpoint size. On 18 Nov the API container used at most 3.4 GiB of memory,
+the host kept at least 3.2 GB available and swap stayed under 20 MB; the first analysis (a 4 s
+clip) reported 617 ms of detector latency. The separate builder adds image export time (41 s here)
+that a normal build mostly skips. **Not included:** installing Docker, getting access to
+`voxguard-team` and a read token, and the time a person needs to read the README and edit
+`.env`. These are machine runs, one per day on one connection; a slower network or mirror takes
+longer. A run by a person following the README has not been timed yet.
 
 **Not verified:** arm64 (Apple Silicon) has not been built or run. Its CPU wheels are pinned with
 their own hashes and resolve without CUDA packages, but no arm64 image exists yet. GPU in Docker
