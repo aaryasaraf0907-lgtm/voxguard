@@ -101,10 +101,15 @@ def _local_file(model_repo: str) -> Path | None:
 
 def _hub_file(model_repo: str) -> Path | None:
     from huggingface_hub import hf_hub_download
-    from huggingface_hub.errors import EntryNotFoundError
+    from huggingface_hub.errors import EntryNotFoundError, LocalEntryNotFoundError
 
     try:
         return Path(hf_hub_download(repo_id=model_repo, filename=FILENAME))
+    except LocalEntryNotFoundError:
+        # The Hub could not be reached and the file is not cached. It is a subclass of
+        # EntryNotFoundError, but it does not mean the repo has no thresholds.json: starting
+        # anyway would decide at the untuned 0.5 default. Startup must fail instead.
+        raise
     except EntryNotFoundError:  # the repo exists but has no thresholds.json (yet)
         return None
 

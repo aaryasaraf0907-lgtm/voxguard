@@ -9,11 +9,19 @@ Memory bound: decoding is limited by duration (VOXGUARD_MAX_AUDIO_SECONDS, defau
 MAX_SAMPLE_RATE and MAX_CHANNELS. Worst case at 60 s, 192 kHz, 2 channels is
 60 * 192_000 * 2 * 4 B = ~92 MB for the decoded float32 array plus ~46 MB for the mono
 downmix. Header checks run before any sample is read. Raising the limits raises this bound.
+
+The sample rate is also checked against the cost of resampling it to 16 kHz in the Detector:
+torchaudio's resampler (``inference.torch_resample``) builds a filter of
+(rate / gcd) x (16000 / gcd) elements, gcd = gcd(rate, 16000), at about 16 bytes each (measured,
+18 Nov 2026: 2003 Hz -> 32 M elements, +520 MB). Standard rates share a large factor with 16000
+(44100 Hz -> 441 x 160), but e.g. 44101 Hz shares none and would need about 11 GB, so a tiny file
+could exhaust the server's memory. Rates above ``MAX_RESAMPLE_ELEMENTS`` are refused (422).
 """
 
 from __future__ import annotations
 
 import io
+import math
 
 import numpy as np
 import soundfile as sf
@@ -21,10 +29,20 @@ from fastapi import HTTPException
 
 from voxguard.api import audio_ffmpeg
 from voxguard.api.deps import DEFAULT_MAX_UPLOAD_MB
+from voxguard.inference import TARGET_SR
 
 MAX_CHANNELS = 2
 MAX_SAMPLE_RATE = 192_000
 DEFAULT_MAX_BYTES = int(DEFAULT_MAX_UPLOAD_MB * 1024 * 1024)
+# Largest resampling filter accepted (elements; about 16 MB). The largest among common rates is
+# 11025 Hz: 441 x 640 = 282,240.
+MAX_RESAMPLE_ELEMENTS = 1_000_000
+
+
+def resample_elements(sample_rate: int) -> int:
+    """Size of the filter torchaudio builds to resample ``sample_rate`` to 16 kHz."""
+    g = math.gcd(sample_rate, TARGET_SR)
+    return (sample_rate // g) * (TARGET_SR // g)
 
 
 class AudioError(HTTPException):
@@ -60,6 +78,12 @@ def decode_audio(
             raise AudioError(422, f"At most {MAX_CHANNELS} channels are supported")
         if sample_rate > MAX_SAMPLE_RATE:
             raise AudioError(422, f"Sample rate above {MAX_SAMPLE_RATE} Hz is not supported")
+        if resample_elements(sample_rate) > MAX_RESAMPLE_ELEMENTS:
+            raise AudioError(
+                422,
+                f"Sample rate {sample_rate} Hz is not supported; use a standard rate "
+                "(for example 8000, 16000, 44100 or 48000 Hz)",
+            )
         max_frames = int(max_seconds * sample_rate)
         if f.frames == 0:
             raise AudioError(422, "Audio contains no samples")

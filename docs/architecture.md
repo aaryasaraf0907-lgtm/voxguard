@@ -54,7 +54,9 @@ The response's `threshold` is the one applied, and the session stores it.
 ### Request flow (`POST /v1/analyze`)
 
 1. Body size check (413), bounded read, decode (400/415/422; the ffmpeg fallback can also give
-   500/503).
+   500/503). A sample rate whose resampling to 16 kHz would need a filter of over a million
+   elements (e.g. 44101 Hz) is refused with 422: torchaudio's filter size depends on the
+   rate's common factor with 16000, and such a rate would need gigabytes. Standard rates pass.
 2. If `codec` is given or `simulate_codec=true`: check the codec is known (422), configured
    (501, server default only) and available (503), then
    resample to 16 kHz and encode/decode with ffmpeg (500 on failure; never falls back to the
@@ -166,6 +168,7 @@ a fallback):**
 | `codec` is not a known codec name | 422 |
 | `simulate_codec=true`, no `codec`, `VOXGUARD_SIMULATE_CODEC` unset | 501 |
 | ffmpeg or the encoder is missing | 503 |
+| The clip is shorter than 20 ms at 16 kHz (codecs return silence for a few samples) | 422 |
 | ffmpeg fails or times out (30 s per process), or returns wrong-length, non-finite or silent output for non-silent input | 500 |
 
 Example:

@@ -4,7 +4,12 @@ import soundfile as sf
 from fastapi import HTTPException
 
 from conftest import make_wav
-from voxguard.api.audio import MAX_SAMPLE_RATE, decode_audio
+from voxguard.api.audio import (
+    MAX_RESAMPLE_ELEMENTS,
+    MAX_SAMPLE_RATE,
+    decode_audio,
+    resample_elements,
+)
 
 
 def test_mono_16k() -> None:
@@ -68,6 +73,25 @@ def test_sample_rate_above_limit_is_422() -> None:
     with pytest.raises(HTTPException) as exc:
         decode_audio(make_wav(0.01, sr=MAX_SAMPLE_RATE + 1000), 60)
     assert exc.value.status_code == 422
+
+
+@pytest.mark.parametrize("sr", [44_101, 16_001, 191_999])
+def test_sample_rate_that_is_costly_to_resample_is_422(sr: int) -> None:
+    """A rate sharing no large factor with 16 kHz makes torchaudio build a filter of gigabytes
+    (44101 Hz: 706 M elements), so a few-hundred-byte file could exhaust the server's memory."""
+    assert resample_elements(sr) > 100 * MAX_RESAMPLE_ELEMENTS
+    with pytest.raises(HTTPException) as exc:
+        decode_audio(make_wav(0.01, sr=sr), 60)
+    assert exc.value.status_code == 422 and str(sr) in exc.value.detail
+
+
+@pytest.mark.parametrize(
+    "sr", [7350, 8000, 11_025, 12_000, 16_000, 22_050, 24_000, 32_000, 44_100, 48_000,
+           88_200, 96_000, 176_400, 192_000],
+)  # fmt: skip
+def test_standard_sample_rates_are_accepted(sr: int) -> None:
+    assert resample_elements(sr) <= MAX_RESAMPLE_ELEMENTS
+    assert decode_audio(make_wav(0.05, sr=sr), 60)[1] == sr
 
 
 @pytest.mark.skipif("FLAC" not in sf.available_formats(), reason="no FLAC support")

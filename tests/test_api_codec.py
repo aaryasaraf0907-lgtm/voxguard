@@ -185,6 +185,20 @@ def test_codec_failure_is_500_and_nothing_is_scored_or_stored(sim_client, monkey
         _assert_nothing_scored_or_stored(c, det)
 
 
+def test_clip_too_short_for_the_codec_is_422_and_nothing_is_stored(sim_client, fake_codec) -> None:
+    """A few samples come back silent from G.711 / Opus (measured), which used to surface as a
+    500 "Codec simulation failed" for what is a client input problem."""
+    det = SpyDetector()
+    n = codec_sim.MIN_CODEC_SAMPLES - 1
+    with sim_client(det) as c:
+        r = _post(c, make_wav(n / 16_000), simulate_codec="true", caller_id="a")
+        assert r.status_code == 422 and "too short for phone-line simulation" in r.json()["detail"]
+        assert fake_codec == []  # rejected before ffmpeg runs
+        _assert_nothing_scored_or_stored(c, det)
+        ok = _post(c, make_wav(codec_sim.MIN_CODEC_SAMPLES / 16_000), simulate_codec="true")
+        assert ok.status_code == 200 and ok.json()["codec_applied"] == CODEC
+
+
 @pytest.mark.parametrize(
     "bad",
     [

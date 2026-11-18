@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal
 
+from sqlalchemy import func
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
@@ -79,7 +80,10 @@ def normalize_caller_id(raw: str | None) -> str | None:
 
 
 def upsert_blocklist(db: Session, caller_id: str, seen_at: datetime) -> None:
-    """Atomic insert-or-increment, safe under concurrent requests for the same caller."""
+    """Atomic insert-or-increment, safe under concurrent requests for the same caller.
+
+    ``last_seen`` only moves forward: timestamps are taken before the commit, so two concurrent
+    requests can commit in the opposite order to their timestamps."""
     stmt = sqlite_insert(BlocklistRow).values(
         caller_id=caller_id, hit_count=1, first_seen=seen_at, last_seen=seen_at
     )
@@ -88,7 +92,8 @@ def upsert_blocklist(db: Session, caller_id: str, seen_at: datetime) -> None:
             index_elements=[BlocklistRow.caller_id],
             set_={
                 "hit_count": BlocklistRow.hit_count + 1,
-                "last_seen": stmt.excluded.last_seen,
+                # two-argument max() is SQLite's scalar maximum
+                "last_seen": func.max(BlocklistRow.last_seen, stmt.excluded.last_seen),
             },
         )
     )

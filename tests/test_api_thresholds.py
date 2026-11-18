@@ -170,6 +170,47 @@ def test_load_from_a_local_checkpoint_directory_or_file(tmp_path) -> None:
         load_thresholds(str(tmp_path), VERSION)
 
 
+def _fake_hub(monkeypatch, error: str) -> None:
+    """huggingface_hub (not installed in CI) whose download raises the named error."""
+    errors = types.ModuleType("huggingface_hub.errors")
+    errors.EntryNotFoundError = type("EntryNotFoundError", (Exception,), {})
+    errors.LocalEntryNotFoundError = type(  # a subclass, as in the real library
+        "LocalEntryNotFoundError", (errors.EntryNotFoundError,), {}
+    )
+    hub = types.ModuleType("huggingface_hub")
+
+    def hf_hub_download(repo_id: str, filename: str) -> str:
+        raise getattr(errors, error)(f"{filename} from {repo_id}")
+
+    hub.hf_hub_download = hf_hub_download
+    hub.errors = errors
+    monkeypatch.setitem(sys.modules, "huggingface_hub", hub)
+    monkeypatch.setitem(sys.modules, "huggingface_hub.errors", errors)
+
+
+def test_hub_repo_without_the_file_keeps_legacy_behaviour(monkeypatch) -> None:
+    _fake_hub(monkeypatch, "EntryNotFoundError")
+    assert load_thresholds("team/model", VERSION) is None
+
+
+def test_hub_unreachable_is_not_treated_as_no_file(monkeypatch) -> None:
+    """Regression: a network failure with nothing cached raises LocalEntryNotFoundError, a
+    subclass of EntryNotFoundError. Read as "no thresholds.json", the API would start and decide
+    at 0.5 instead of the checkpoint's thresholds."""
+    _fake_hub(monkeypatch, "LocalEntryNotFoundError")
+    with pytest.raises(Exception, match="thresholds.json from team/model"):
+        load_thresholds("team/model", VERSION)
+
+
+def test_startup_fails_when_the_hub_is_unreachable_for_thresholds(monkeypatch) -> None:
+    _fake_hub(monkeypatch, "LocalEntryNotFoundError")
+    with (
+        pytest.raises(RuntimeError, match="could not fetch thresholds.json"),
+        _start_real(monkeypatch, "team/model"),
+    ):
+        pass
+
+
 # --- startup with the configured (real) detector ------------------------------------------
 
 

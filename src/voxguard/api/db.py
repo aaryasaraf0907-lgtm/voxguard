@@ -92,7 +92,10 @@ def make_engine(url: str) -> Engine:
     # FastAPI runs sync handlers on a threadpool, so SQLite connections cross threads.
     kwargs: dict = {"connect_args": {"check_same_thread": False}}
     if parsed.database in (None, "", ":memory:"):
-        kwargs["poolclass"] = StaticPool  # one shared connection, else each thread sees a new DB
+        # One shared connection, else each thread sees a new empty DB. Request threads then share
+        # one transaction, so a rollback in one request can undo another's uncommitted rows:
+        # acceptable for tests and quick local runs only. Deployments use a file database.
+        kwargs["poolclass"] = StaticPool
     engine = create_engine(url, **kwargs)
 
     @event.listens_for(engine, "connect")
