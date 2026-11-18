@@ -31,12 +31,12 @@ if [[ -f "$mirrors_file" ]]; then
   done < "$mirrors_file"
 fi
 
-declare -A seen=()
+seen=" "  # portable (bash 3.2 has no associative arrays)
 ranked=()
 for url in "${candidates[@]}"; do
   [[ "$url" == */ ]] || url="$url/"
-  [[ -n "${seen[$url]:-}" ]] && continue
-  seen[$url]=1
+  [[ "$seen" == *" $url "* ]] && continue
+  seen+="$url "
   speed="$("$curl_cmd" -fsS -o /dev/null --max-time 10 -w '%{speed_download}' \
     "${url}dists/${codename}/InRelease" 2>/dev/null || true)"
   speed="${speed%%.*}"
