@@ -34,6 +34,15 @@ class CodecSimulationError(Exception):
     """ffmpeg ran but the transformation failed or produced unusable audio."""
 
 
+class CodecInputTooShortError(Exception):
+    """The clip is too short for a codec round trip (a client error, not a server failure)."""
+
+
+# Shortest 16 kHz input simulated (20 ms, one telephony frame). Measured 18 Nov 2026: 1-10 samples
+# come back silent from G.711 and Opus (1 sample from AMR-NB), 100 samples pass.
+MIN_CODEC_SAMPLES = SAMPLE_RATE // 50
+
+
 def eval_bitrate(codec: str) -> int | None:
     """Bitrate (bit/s) the evaluation sets use for ``codec``; None for fixed-rate codecs (G.711)."""
     return default_spec(codec).bitrate
@@ -99,6 +108,8 @@ def simulate_phone_line(
     ensure_available(codec)
     x = np.asarray(waveform, dtype=np.float32)
     x = resample_to_16k(x, sample_rate)
+    if len(x) < MIN_CODEC_SAMPLES:
+        raise CodecInputTooShortError(f"{len(x)} samples at 16 kHz, need {MIN_CODEC_SAMPLES}")
     try:
         spec = default_spec(codec)
         y = apply_codec(x, spec.codec, spec.bitrate)  # no noise in the demo

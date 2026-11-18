@@ -92,8 +92,10 @@ def create_app(
         app.state.detector = det
         app.state.thresholds = found
         app.state.session_factory = sessionmaker(engine, expire_on_commit=False)
-        yield
-        engine.dispose()
+        try:
+            yield
+        finally:  # also when shutdown is interrupted
+            engine.dispose()
 
     app = FastAPI(title="VoxGuard", lifespan=lifespan)
     app.add_middleware(
@@ -155,6 +157,11 @@ def create_app(
                 waveform, sample_rate = codec_sim.simulate_phone_line(waveform, sample_rate, chosen)
             except codec_sim.CodecUnavailableError:
                 raise HTTPException(503, _codec_unavailable(chosen)) from None
+            except codec_sim.CodecInputTooShortError:
+                ms = codec_sim.MIN_CODEC_SAMPLES * 1000 // codec_sim.SAMPLE_RATE
+                raise HTTPException(
+                    422, f"Audio is too short for phone-line simulation (at least {ms} ms)"
+                ) from None
             except codec_sim.CodecSimulationError:
                 raise HTTPException(500, "Codec simulation failed") from None
             codec_ms = (time.perf_counter() - t0) * 1000.0
