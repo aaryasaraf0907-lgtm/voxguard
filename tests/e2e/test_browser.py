@@ -79,7 +79,7 @@ def test_connects_and_says_the_detector_is_a_stub(page: Page, stack: Any) -> Non
     open_app(page, stack.ui_url)
     sidebar = page.locator('[data-testid="stSidebar"]')
     expect(sidebar.get_by_text("stub", exact=False).first).to_be_visible()
-    expect(page.get_by_text(squash(EN["stub_notice"]))).to_be_visible()
+    expect(page.get_by_text(squash(EN["stub_notice"]), exact=True)).to_be_visible()
 
 
 def test_near_threshold_flag_shows_the_caution(page: Page, stack: Any) -> None:
@@ -87,8 +87,8 @@ def test_near_threshold_flag_shows_the_caution(page: Page, stack: Any) -> None:
     upload(page, stack.clips.near)
     analyze(page)
     wait_scores(page, 1)
-    expect(page.get_by_text(EN["flagged_banner"])).to_be_visible()
-    expect(page.get_by_text(squash(EN["caution_near_threshold"]))).to_be_visible()
+    expect(page.get_by_text(EN["flagged_banner"], exact=True)).to_be_visible()
+    expect(page.get_by_text(squash(EN["caution_near_threshold"]), exact=True)).to_be_visible()
     assert metric(page, EN["m_threshold"]) == [f"{stack.clips.threshold:.6f}"]
 
 
@@ -97,15 +97,15 @@ def test_clear_flag_has_no_caution_and_low_score_is_not_flagged(page: Page, stac
     upload(page, stack.clips.clear)
     analyze(page)
     wait_scores(page, 1)
-    expect(page.get_by_text(EN["flagged_banner"])).to_be_visible()
-    expect(page.get_by_text(squash(EN["caution_near_threshold"]))).to_have_count(0)
+    expect(page.get_by_text(EN["flagged_banner"], exact=True)).to_be_visible()
+    expect(page.get_by_text(squash(EN["caution_near_threshold"]), exact=True)).to_have_count(0)
 
     upload(page, stack.clips.below)  # a new clip discards the previous result
-    expect(page.get_by_text(EN["flagged_banner"])).to_have_count(0)
+    expect(page.get_by_text(EN["flagged_banner"], exact=True)).to_have_count(0)
     analyze(page)
     wait_scores(page, 1)
-    expect(page.get_by_text(EN["not_flagged_banner"])).to_be_visible()
-    expect(page.get_by_text(squash(EN["caution_near_threshold"]))).to_have_count(0)
+    expect(page.get_by_text(EN["not_flagged_banner"], exact=True)).to_be_visible()
+    expect(page.get_by_text(squash(EN["caution_near_threshold"]), exact=True)).to_have_count(0)
 
 
 def test_phone_line_side_by_side_and_codec_change_drops_it(page: Page, stack: Any) -> None:
@@ -131,7 +131,7 @@ def test_m4a_upload_is_analyzed(page: Page, stack: Any) -> None:
     upload(page, stack.clips.m4a)
     analyze(page)
     assert len(wait_scores(page, 1)) == 1
-    expect(page.get_by_text(EN["err_unsupported"])).to_have_count(0)
+    expect(page.get_by_text(EN["err_unsupported"], exact=True)).to_have_count(0)
 
 
 def test_flagged_caller_reaches_sessions_blocklist_and_alerts(page: Page, stack: Any) -> None:
@@ -146,7 +146,7 @@ def test_flagged_caller_reaches_sessions_blocklist_and_alerts(page: Page, stack:
         # wait for a new session ID: the previous result stays on screen until the new one arrives
         expect(session).not_to_have_text(seen[-1] if seen else "", timeout=RESULT_TIMEOUT_MS)
         seen.append(session.inner_text())
-        expect(page.get_by_text(EN["flagged_banner"])).to_be_visible()
+        expect(page.get_by_text(EN["flagged_banner"], exact=True)).to_be_visible()
     assert len(set(seen)) == 2
 
     hits = {e["caller_id"]: e["hit_count"] for e in api_get(f"{stack.api_url}/v1/blocklist")}
@@ -171,8 +171,8 @@ def test_hindi_switch_keeps_the_result(page: Page, stack: Any) -> None:
     page.get_by_role("option", name="हिन्दी").click()
     expect(page.get_by_text(HI["status_connected"], exact=True)).to_be_visible()
     assert wait_scores(page, 1, HI) == [score]
-    expect(page.get_by_text(HI["flagged_banner"])).to_be_visible()
-    expect(page.get_by_text(squash(HI["caution_near_threshold"]))).to_be_visible()
+    expect(page.get_by_text(HI["flagged_banner"], exact=True)).to_be_visible()
+    expect(page.get_by_text(squash(HI["caution_near_threshold"]), exact=True)).to_be_visible()
 
 
 @pytest.mark.parametrize(
@@ -184,7 +184,8 @@ def test_rejected_uploads_show_their_message(
     open_app(page, stack.ui_url)
     upload(page, getattr(stack.clips, clip))
     analyze(page)
-    expect(page.get_by_text(squash(EN[message]))).to_be_visible(timeout=RESULT_TIMEOUT_MS)
+    message_text = page.get_by_text(squash(EN[message]), exact=True)
+    expect(message_text).to_be_visible(timeout=RESULT_TIMEOUT_MS)
     expect(page.locator('[data-testid="stMetric"]')).to_have_count(0)
 
 
