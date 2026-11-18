@@ -44,7 +44,13 @@ dev = [
     "httpx>=0.27",
     "pytest>=8.0",
     "pytest-benchmark>=4.0",
+    "pytest-cov>=7.0",
     "ruff>=0.5",
+]
+# Browser end-to-end tests (tests/e2e, make e2e). Opt-in: `uv sync --group e2e`, then
+# `uv run playwright install chromium`.
+e2e = [
+    "playwright>=1.55",
 ]
 
 [build-system]
@@ -62,9 +68,15 @@ src = ["src", "tests"]
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
 
+[tool.coverage.report]
+# Floor = the total measured in CI's configuration (no torch, so ML code is partly skipped) on
+# 18 Nov 2026, 68 %, minus 2 points. Raise it as coverage grows; never lower it to pass.
+fail_under = 66
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra -m 'not slow'"
 markers = [
     "slow: needs model weights or large data; skipped in CI",
+    "e2e: drives the demo in headless Chromium (opt-in: VOXGUARD_E2E_TESTS=1)",
 ]

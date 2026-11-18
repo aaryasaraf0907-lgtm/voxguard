@@ -1,0 +1,4 @@
+# Accepted known vulnerabilities, read by .github/scripts/audit.sh (validated by audit_inputs.py).
+# One per line:   <PYSEC/GHSA/CVE id> review:<YYYY-MM-DD> <reason>
+# A malformed line, a missing reason or a past review date fails the audit. Keep this empty
+# unless no fixed version can be used yet; each entry is listed in the job summary.

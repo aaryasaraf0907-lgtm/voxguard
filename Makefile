@@ -1,5 +1,5 @@
-.PHONY: setup lint format test smoke smoke-eval docker-up docker-down docker-smoke docker-ml-smoke \
-	sanity-api sanity
+.PHONY: setup lint format test coverage audit e2e smoke smoke-eval docker-up docker-down docker-smoke \
+	docker-ml-smoke sanity-api sanity
 
 setup:
 	uv sync
@@ -14,6 +14,21 @@ format:
 
 test:
 	uv run pytest
+
+# Test suite with a coverage report; fails below [tool.coverage.report] fail_under.
+coverage:
+	uv run pytest --cov=voxguard --cov-report=
+	uv run coverage report
+
+# Known vulnerabilities in every locked package (nothing installed); see .github/scripts/audit.sh.
+audit:
+	.github/scripts/audit.sh
+
+# The demo in headless Chromium (stub detector, generated audio). Needs ffmpeg.
+e2e:
+	uv sync --extra api --extra ui --group e2e
+	uv run playwright install chromium
+	VOXGUARD_E2E_TESTS=1 uv run pytest tests/e2e -v
 
 smoke:
 	uv run --extra ml python -m voxguard.data.synthetic --n 100

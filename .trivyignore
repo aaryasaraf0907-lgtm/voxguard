@@ -1,0 +1,4 @@
+# Accepted image findings, read by Trivy and validated by .github/scripts/check_trivyignore.py.
+# Each entry is a '# reason: <why>' line directly followed by '<CVE/GHSA id> exp:<YYYY-MM-DD>'.
+# A missing reason, a missing or past expiry, or a malformed line fails the scan. Accepted
+# findings still appear in the job summary. Keep this empty unless no fixed version exists.
