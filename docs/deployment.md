@@ -322,8 +322,11 @@ docker compose logs api | grep -E "loaded|warm-up|thresholds"
 - `curl -s http://localhost:8000/v1/codecs` lists G.711, GSM and Opus as available. AMR is
   unavailable in this image's ffmpeg.
 - The UI sidebar (http://localhost:8501) shows "Connected" and the detector and model.
-- **Run one analysis just before presenting.** The first request after the stack has been idle
-  can be much slower; see the verification record below.
+- **Run one analysis just before presenting, then one more.** The first request after the stack
+  has been idle can be slower; the next one is back to normal (see "Idle latency" below). Repeat
+  this before the live part if the stack has been idle for ten minutes or more, keep the laptop
+  plugged in on a performance power mode, and close heavy apps. The full presenting sequence is
+  in the [demo script](demo-script.md).
 
 ### 3. During the demo
 
@@ -423,8 +426,29 @@ covered:
 
   The UI showed a detector latency of 6681.1 ms for that request. It came about 12 minutes after
   the last restart, with the API idle in between. Three requests right afterwards took 671,
-  522 and 551 ms, so it did not happen again, and its cause was not determined. It is one
-  observation, not a benchmark; hence the warm-up step in the pre-flight checks.
+  522 and 551 ms, so it did not happen again. It is one observation, not a benchmark; the
+  measurement below followed it up.
+
+**Idle latency (measured 18 Nov 2026, `dev` @ `76813dd`; same machine, image and model, CPU,
+offline, an isolated compose project).** 49 requests in three conditions, each repeated three
+times, with the container's major page faults, refaults, memory and CPU pressure and the host's
+swap recorded around every request:
+- **Fresh start, no idle:** the first request of each clip length (1, 2 and 3 windows, and the
+  M4A recording) was no slower than the second (ratio 0.93–1.14 in all 12 cases). The startup
+  warm-up already covers this, so a warm-up per clip length would not help.
+- **After 13–15 minutes idle:** the first request's detector latency was 574–2223 ms (median
+  713 ms), against about 490 ms when warm; every following request was back to 450–530 ms.
+  None of the slow requests had major page faults, refaults, swap use or memory pressure, so
+  the model's memory was not paged out.
+- **M4A after idle:** the ffmpeg decoder's first start after idle read its files from disk again
+  (about 210 major faults), adding about 0.4–0.8 s to the whole request (1.0–1.4 s instead of
+  about 0.6 s). This is not part of the detector latency.
+- **The 6.7 s of 17 Nov was not reproduced** (the slowest was 2.2 s).
+
+The slowdown after idle is consistent with the CPU or the WSL2 virtual machine leaving a
+power-saving state, but CPU frequency was not measured, so its cause is not established. One
+warm-up request removes it, which is why the pre-flight step runs one analysis and then another.
+One machine and one run; other hosts may differ.
 
 ## Private Hugging Face Space (optional future route; needs a paid plan)
 

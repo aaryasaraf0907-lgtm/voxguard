@@ -255,6 +255,7 @@ the Docker base images.
 
 - [docs/architecture.md](docs/architecture.md): components, codec simulation, latency
 - [docs/deployment.md](docs/deployment.md): Docker, compose, real detector, Hugging Face Space
+- [docs/demo-script.md](docs/demo-script.md): how to present the demo live and record the video
 - [docs/benchmarking.md](docs/benchmarking.md) and [docs/benchmarks.md](docs/benchmarks.md):
   latency method and measured results
 - [docs/results.md](docs/results.md): evaluation results (generated)
