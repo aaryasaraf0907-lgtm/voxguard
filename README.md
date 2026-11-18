@@ -21,14 +21,48 @@ wraps them in an application:
 - **Demo:** a Streamlit app (English and Hindi) to upload or record audio, optionally pass it
   through a simulated phone line, and review flagged calls, the blocklist and alerts.
 
+## Quick start: the demo with the real model
+
+You need only `git` and Docker with compose v2 (on Windows, Docker Desktop with WSL
+integration), plus a Hugging Face account in the private `voxguard-team` organisation. No Python,
+`uv` or `make` is needed for this path.
+
+1. **Token:** on Hugging Face, Settings → Access Tokens → Create new token, type **Read** (not
+   Write, not Fine-grained), any name.
+2. **Clone:**
+   ```bash
+   git clone https://github.com/aaryasaraf0907-lgtm/voxguard.git && cd voxguard && git checkout dev
+   cp .env.example .env
+   ```
+3. **Edit `.env`:** change these six lines (they are all already in the file):
+   ```bash
+   INSTALL_ML=1
+   VOXGUARD_DETECTOR=real
+   VOXGUARD_MODEL_REPO=voxguard-team/voxguard-ssl-aasist-codec-aug
+   HF_TOKEN=<your read token>
+   VOXGUARD_API_START_PERIOD=600s
+   VOXGUARD_SIMULATE_CODEC=g711_mulaw
+   ```
+4. **Start:** `docker compose up --build`. Ports 8000 or 8501 already in use? Run
+   `VOXGUARD_API_PORT=8001 VOXGUARD_UI_PORT=8502 docker compose up --build` and open port 8502
+   below instead.
+5. **Open** http://localhost:8501 once the `ui` container has started. It starts only after the
+   API is healthy, and the first start downloads the 1.26 GB checkpoint, so this takes a few
+   minutes; opening the page earlier gives "connection refused". The sidebar should say
+   "Connected" and "Detector: real". Upload a WAV, FLAC, OGG, MP3 or M4A file and press
+   **Analyze**.
+
+For development (tests, the local run without Docker, training), see [Setup](#setup).
+
 ## Status
 
 - Data pipeline, codec simulation, training, evaluation, API, prevention layer, demo UI, Docker
   and benchmarking are implemented.
-- First RawNet2 results (2x2 matrix, per codec, held-out GSM) are in
-  [docs/results.md](docs/results.md). They are **preliminary**: Aarya's STATUS notes that those
-  runs used inverted class weights (both arms alike), and RawNet2 is being retrained with the
-  fix. Corrected results will replace them; SSL-AASIST training is in progress.
+- **SSL-AASIST** is trained (clean and codec-augmented); the codec-augmented checkpoint is the
+  demo model, with its dev-set thresholds published next to it.
+- The RawNet2 results in [docs/results.md](docs/results.md) (2x2 matrix, per codec, held-out
+  GSM) are **preliminary**: those runs used inverted class weights (both arms alike), and RawNet2
+  is being retrained with the fix. The final four-model results will replace them.
 - Progress and known issues per person: [docs/STATUS.md](docs/STATUS.md). Scope and roadmap:
   `CLAUDE.md`.
 
@@ -71,7 +105,8 @@ tests/          pytest suite
 
 ## Setup
 
-Prerequisites:
+For development and the local run without Docker (the
+[Quick start](#quick-start-the-demo-with-the-real-model) needs none of this):
 
 - `git` and `make`.
 - [`uv`](https://docs.astral.sh/uv/getting-started/installation/), e.g.
@@ -168,13 +203,14 @@ docker compose up --build          # UI http://localhost:8501, API http://localh
 # ports taken? VOXGUARD_API_PORT=8001 VOXGUARD_UI_PORT=8502 docker compose up --build
 ```
 
-With the real detector, set these values in `.env`, then run `docker compose up --build` again:
+With the real detector, set these values in `.env` (from `.env.example`), then run
+`docker compose up --build` (again, if the stub stack was already built):
 
 ```bash
 INSTALL_ML=1
 VOXGUARD_DETECTOR=real
 VOXGUARD_MODEL_REPO=voxguard-team/voxguard-ssl-aasist-codec-aug
-HF_TOKEN=<your read token for voxguard-team>
+HF_TOKEN=<your read token for voxguard-team>   # Hugging Face: Settings, Access Tokens, type Read
 VOXGUARD_API_START_PERIOD=600s
 VOXGUARD_SIMULATE_CODEC=g711_mulaw
 ```
@@ -182,7 +218,9 @@ VOXGUARD_SIMULATE_CODEC=g711_mulaw
 `INSTALL_ML=1` builds the API image with a CPU-only torch (about 0.4 GB of Python wheels on
 amd64); keep it in `.env` so a later `--build` does not rebuild the image without torch. The
 first start downloads the checkpoint (SSL-AASIST: 1.26 GB), hence the longer health-check grace
-period. `.env` is git-ignored: never commit it or share the token.
+period. The UI container starts only once the API is healthy, so open http://localhost:8501
+after the `ui` container has started (with the ports-taken variant, http://localhost:8502).
+`.env` is git-ignored: never commit it or share the token.
 
 `curl localhost:8000/health` should then show `"detector": "real"`, and the UI sidebar
 "Detector: real". `voxguard-ssl-aasist-codec-aug` is the demo model (its `thresholds.json` sets the
@@ -226,7 +264,8 @@ uv run uvicorn voxguard.api.main:create_app --factory --port 8000
   explicit `VOXGUARD_THRESHOLD` overrides the file; `low_far` mode uses its own threshold.
   Without a file the detector's default of 0.5 applies, which is not an operating point for any
   trained checkpoint (their scores sit on very different scales; see `docs/results.md`), and the
-  API logs a warning. Trained checkpoints' `thresholds.json` files are not published yet.
+  API logs a warning. Both SSL-AASIST repos publish their `thresholds.json`; the RawNet2 repos
+  do not yet, so with them the API decides at 0.5 and warns.
 
 ## Tests and checks
 
