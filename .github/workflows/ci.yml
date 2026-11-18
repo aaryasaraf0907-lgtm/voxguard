@@ -4,12 +4,27 @@ on:
   pull_request:
     branches: [dev, main]
 
+# Least privilege: the jobs only read the repository.
+permissions:
+  contents: read
+
+# A new push to a PR cancels that PR's run still in progress (it would be superseded anyway).
+concurrency:
+  group: ci-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  # Trivy, pinned by digest (0.76.2). Its vulnerability DB is downloaded at run time.
+  TRIVY_IMAGE: aquasec/trivy:0.76.2@sha256:8f6bb947dbc528902e11f2f5be52f7b519f6a39d5d148f41166f2040499768fb
+  PIP_AUDIT_VERSION: "2.10.1"
+
 jobs:
   lint-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
       - name: Install ffmpeg (real codec tests)
         timeout-minutes: 8
         # Plain-HTTP Ubuntu mirrors stopped answering runners on 11 Nov 2026; fetch over HTTPS instead.
@@ -19,37 +34,107 @@ jobs:
           sudo apt-get -o Acquire::Retries=3 install -y --no-install-recommends ffmpeg
       - name: Install (core + api + ui extras + dev; no torch, no weights)
         run: uv sync --python 3.11 --extra api --extra ui
+      - name: Lock file matches pyproject.toml
+        run: uv lock --check
       - name: Codec availability
         run: uv run python -m voxguard.data.codecs
       - name: Ruff lint
         run: uv run ruff check .
       - name: Ruff format
         run: uv run ruff format --check .
-      - name: Pytest
-        run: uv run pytest -rs
+      - name: Dependency audit (every locked package, all extras and groups)
+        run: .github/scripts/audit.sh
+      - name: Pytest with coverage
+        run: uv run pytest -rs --cov=voxguard --cov-report=
+      - name: Coverage
+        run: |
+          uv run coverage report --format=markdown >> "$GITHUB_STEP_SUMMARY"
+          uv run coverage report
+
+  e2e:
+    # The demo in headless Chromium against the real API (stub detector, generated audio).
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+      - name: Install ffmpeg (phone line, M4A decoding)
+        timeout-minutes: 8
+        run: |
+          echo "https://mirrors.edge.kernel.org/ubuntu/" | sudo tee /etc/apt/apt-mirrors.txt
+          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update
+          sudo apt-get -o Acquire::Retries=3 install -y --no-install-recommends ffmpeg
+      - name: Install (api + ui extras + e2e group)
+        run: uv sync --python 3.11 --extra api --extra ui --group e2e
+      - name: Playwright version
+        id: pw
+        run: echo "version=$(uv run python -c 'import importlib.metadata as m; print(m.version("playwright"))')" >> "$GITHUB_OUTPUT"
+      - name: Cache Chromium
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+      - name: Install Chromium and its system libraries
+        timeout-minutes: 8
+        run: uv run playwright install --with-deps chromium
+      - name: Browser tests
+        env:
+          VOXGUARD_E2E_TESTS: "1"
+          VOXGUARD_E2E_ARTIFACTS: ${{ runner.temp }}/e2e-artifacts
+        run: uv run pytest tests/e2e -v
+      - name: Keep screenshots and server logs of a failed run
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: e2e-failure-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/e2e-artifacts
+          retention-days: 7
+          if-no-files-found: ignore
 
   docker:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
       - name: Install test dependencies
         run: uv sync --python 3.11 --extra api --extra ui
       - name: Docker smoke tests (build images, compose up, Space image)
         env:
           VOXGUARD_DOCKER_TESTS: "1"
         run: uv run pytest tests/test_docker_smoke.py -v -s
+      - name: Image scan (API, UI, Space)
+        # Built from this commit's checkout (the smoke tests remove their own images; unchanged
+        # layers come from this job's build cache), labelled with the commit, and checked
+        # against it before scanning, so a stale image can never be the one scanned.
+        env:
+          EXPECTED_REVISION: ${{ github.sha }}
+        run: |
+          for name in api ui space; do
+            docker build -q --pull --label "org.opencontainers.image.revision=$EXPECTED_REVISION" \
+              -f "docker/Dockerfile.$name" -t "voxguard-$name:scan-$EXPECTED_REVISION" .
+          done
+          .github/scripts/scan_image.sh "voxguard-api:scan-$EXPECTED_REVISION" \
+            "voxguard-ui:scan-$EXPECTED_REVISION" "voxguard-space:scan-$EXPECTED_REVISION"
 
   docker-ml:
     # INSTALL_ML=1 API image (CPU-only torch, docker/torch-cpu.txt): build check, CUDA audit, and
     # the real detector serving an untrained RawNet2 checkpoint (no token, no private weights).
     runs-on: ubuntu-latest
+    timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
       - name: Install test dependencies
         run: uv sync --python 3.11 --extra api --extra ui
       - name: ML image smoke tests
         env:
           VOXGUARD_DOCKER_ML_TESTS: "1"
         run: uv run pytest tests/test_docker_ml.py -v -s
+      - name: Image scan (ML API image)
+        env:
+          EXPECTED_REVISION: ${{ github.sha }}
+        run: |
+          docker build -q --pull --label "org.opencontainers.image.revision=$EXPECTED_REVISION" \
+            --build-arg INSTALL_ML=1 -f docker/Dockerfile.api -t "voxguard-api:ml-scan-$EXPECTED_REVISION" .
+          .github/scripts/scan_image.sh "voxguard-api:ml-scan-$EXPECTED_REVISION"

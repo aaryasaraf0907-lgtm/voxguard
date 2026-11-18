@@ -1,0 +1,28 @@
+# Weekly update PRs to dev, grouped so each ecosystem opens at most one PR for minor and patch
+# updates; major updates come as separate PRs. Every PR goes through CI and a normal merge.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: dev
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      actions-minor-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: uv
+    directory: /
+    target-branch: dev
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      python-minor-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: docker
+    directory: /docker
+    target-branch: dev
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3

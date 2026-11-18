@@ -232,9 +232,24 @@ uv run uvicorn voxguard.api.main:create_app --factory --port 8000
 make lint                         # ruff check + ruff format --check
 make test                         # pytest; torch, ffmpeg and Docker tests skip when unavailable
 make docker-smoke                 # builds the images and runs the Docker smoke tests
+make coverage                     # pytest with a coverage report (fails below the floor)
+make audit                        # known vulnerabilities in every locked package
+make e2e                          # the demo in headless Chromium (stub detector; needs ffmpeg)
 ```
 
-CI runs ruff and pytest (with ffmpeg, without torch) and the Docker smoke tests on every PR.
+CI runs on every PR to `dev` and `main`:
+
+- **lint-test:** ruff, the dependency audit, and pytest with coverage (with ffmpeg, without
+  torch). The coverage table is in the job summary.
+- **e2e:** the browser tests: uploads (WAV, M4A), the phone line side by side, the
+  near-threshold caution, the prevention tabs, Hindi, error messages, a narrow screen, and the
+  API going down and back.
+- **docker** and **docker-ml:** the Docker smoke tests, then a Trivy scan of each image (fails
+  on fixable critical vulnerabilities; fixable high ones are listed in the job summary).
+
+Accepted exceptions, each with a reason, go in `.github/pip-audit-ignore.txt` and
+`.trivyignore`. Dependabot opens weekly update PRs to `dev` for the Actions, the lock file and
+the Docker base images.
 
 ## Documentation
 
