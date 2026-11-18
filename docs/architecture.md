@@ -7,14 +7,49 @@ What is implemented on `dev`. The overall pipeline diagram is in `CLAUDE.md` sec
 | Component | Code | Role |
 |---|---|---|
 | Streamlit UI | `src/voxguard/ui/app.py`, `api_client.py`, `i18n.py` | Upload or record audio, phone-line toggle, results, flagged sessions, blocklist, alerts. Talks to the API over HTTP only; no inference or prevention logic. All strings through `i18n.t(key, lang)` (English, Hindi). |
-| FastAPI backend | `src/voxguard/api/main.py` (`create_app`) | `/health`, `/v1/analyze`, `/v1/sessions`, `/v1/blocklist`, `/v1/alerts`; schemas in `schemas.py` (CLAUDE.md section 7). |
+| FastAPI backend | `src/voxguard/api/main.py` (`create_app`) | `/health`, `/v1/analyze`, `/v1/codecs`, `/v1/sessions`, `/v1/blocklist`, `/v1/alerts`; schemas in `schemas.py` (CLAUDE.md section 7). |
 | Audio decoding | `api/audio.py`, `api/audio_ffmpeg.py`, `api/limits.py` | Upload limit (25 MB, enforced before multipart parsing), soundfile decoding to mono float32 at the native rate, duration/channel/rate checks; an ffmpeg fallback for M4A (AAC) and FLAC files libsndfile cannot read (below). |
 | Codec simulation | `api/codec_sim.py` -> `data/codecs.py` | Optional ffmpeg encode/decode before inference (below). |
-| Detector | `inference.py` (Aarya), `api/detector_loader.py` | `Detector` protocol; `StubDetector` (hash, default) or `RealDetector` (RawNet2 / SSL-AASIST checkpoint from a path or Hugging Face Hub). Built once at API startup; `VOXGUARD_DEVICE` picks cpu/cuda/auto. The detector does its own resampling and windowing. |
-| Prevention | `api/prevention.py` | One rule, `fake_score >= threshold` (threshold from the detector, or `VOXGUARD_LOW_FAR_THRESHOLD` in `low_far` mode). A flagged analysis writes the session, an alert and an atomic blocklist upsert in one transaction. |
+| Detector | `inference.py` (Aarya), `api/detector_loader.py` | `Detector` protocol; `StubDetector` (hash, default) or `RealDetector` (RawNet2 / SSL-AASIST checkpoint from a path or Hugging Face Hub). Built once at API startup, then one warm-up inference (startup below); `VOXGUARD_DEVICE` picks cpu/cuda/auto. The detector does its own resampling and windowing. |
+| Thresholds | `api/thresholds.py` | Reads and validates the checkpoint's `thresholds.json` (chosen on dev by `evaluate.py`) and matches it to the loaded checkpoint (below). |
+| Prevention | `api/prevention.py` | One rule, `fake_score >= threshold`, with the threshold chosen as below. A flagged analysis writes the session, an alert and an atomic blocklist upsert in one transaction. |
 | Persistence | `api/db.py` | SQLite (SQLAlchemy 2): `sessions`, `alerts`, `blocklist`; UTC-aware timestamps; foreign keys on; no migrations (`create_all`). |
-| Deployment | `docker/`, `docker-compose.yml` | API and UI images, compose with a `/data` volume, single-container Hugging Face Space image. See `docs/deployment.md`. |
+| Deployment | `docker/`, `docker-compose.yml` | Local Docker Compose is the deployment: API and UI images, a `/data` volume (SQLite database and Hugging Face cache). `INSTALL_ML=1` adds CPU-only torch to the API image for the real detector. A single-container Hugging Face Space image is kept as an optional route only (Docker Spaces need a paid plan). See `docs/deployment.md`. |
 | Benchmarks | `benchmark.py` | Detector, codec and API latency measured separately. See `docs/benchmarking.md`. |
+| Real-audio sanity tool | `scripts/real_audio_sanity.py` | A diagnostic run on consented, labelled recordings through the public API only (`/health`, `/v1/analyze`), against a scratch API and database; private reports with counts only. See `docs/real-audio-testing.md`. |
+
+### Startup
+
+1. Settings are read from `VOXGUARD_*` variables when the app is created; an invalid value
+   stops startup.
+2. The SQLite tables are created if missing.
+3. The detector is built (`VOXGUARD_DETECTOR=stub|real`). For the real one, the checkpoint is
+   loaded from `VOXGUARD_MODEL_REPO` (a local path or a Hugging Face repo, cached under
+   `/data/hf-cache` in compose), then one inference on 4 s of silence runs, so CUDA or CPU
+   start-up is not reported as the first request's latency. Any failure here (missing ML extra,
+   unavailable device, missing or unreadable checkpoint, failed warm-up) stops startup; there is
+   no fallback to the stub.
+4. Real detector only: `thresholds.json` is looked up next to the checkpoint. Its
+   `model_version` must name the same model and epoch as the loaded checkpoint
+   (`<name>[/<run>]:<source>:epoch<N>`, compared on the first and last parts only, since
+   `<source>` is the load location). A malformed or mismatched file, or a Hub error while
+   fetching it, stops startup. A missing file leaves the detector's own threshold, with a warning
+   when that would be the untuned 0.5 (`eer` mode, no `VOXGUARD_THRESHOLD`).
+
+### Which threshold applies
+
+In order:
+
+1. `VOXGUARD_THRESHOLD_MODE=low_far`: the explicit `VOXGUARD_LOW_FAR_THRESHOLD` (required in that
+   mode).
+2. An explicit `VOXGUARD_THRESHOLD`.
+3. The checkpoint's `thresholds.json`: its **phone** threshold for uploads of unknown origin and
+   for simulated phone lines, its **clean** threshold only for audio known to be clean. No request
+   field says that yet, so every request currently uses the phone threshold. The file's
+   `low_far` and `per_codec` values are validated but used for reporting only.
+4. The detector's own threshold (0.5).
+
+The response's `threshold` is the one applied, and the session stores it.
 
 ### Request flow (`POST /v1/analyze`)
 
@@ -25,7 +60,8 @@ What is implemented on `dev`. The overall pipeline diagram is in `CLAUDE.md` sec
    resample to 16 kHz and encode/decode with ffmpeg (500 on failure; never falls back to the
    original audio).
 3. `Detector.predict(waveform, sample_rate)`.
-4. Prevention decision; store session (+ alert + blocklist when flagged) in one transaction.
+4. Prevention decision at the threshold chosen as above; store session (+ alert + blocklist
+   when flagged) in one transaction.
 5. Return `AnalyzeResponse` (label, score, threshold, detector latency, model version, flagged,
    `codec_applied`, `codec_ms`).
 
@@ -140,7 +176,8 @@ curl -F file=@call.wav -F simulate_codec=true http://localhost:8000/v1/analyze
 ```
 
 **Limitations**
-- Audio moves through ffmpeg pipes; no temporary files are created.
+- The simulation moves audio through ffmpeg pipes and creates no temporary files (only the
+  decoder fallback above uses a private temporary file).
 - Non-16 kHz input is first resampled to 16 kHz with ffmpeg's resampler (libswresample, which
   low-pass filters before decimation), so content above 8 kHz is removed instead of aliasing
   into the band; input already at 16 kHz is not resampled. This reuses the ffmpeg this feature
