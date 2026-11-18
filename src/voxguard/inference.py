@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import math
 import os
 import time
 from collections.abc import Callable
@@ -116,8 +117,30 @@ class StubDetector:
         )
 
 
+# torchaudio builds a sinc filter of about (sr_in / g) x (sr_out / g) elements, g = gcd(sr_in,
+# sr_out): 44100 -> 16000 is 441 x 160, but 44101 Hz shares no factor with 16000 and would need
+# gigabytes (found in Person 2's review, 18 Nov 2026). Standard rates stay far below this cap
+# (largest: 11025 Hz, 441 x 640 = 282,240). The API checks the same bound before decoding.
+MAX_RESAMPLE_ELEMENTS = 1_000_000
+
+
+def resample_elements(sr_in: int, sr_out: int = TARGET_SR) -> int:
+    """Approximate size of torchaudio's resampling filter from ``sr_in`` to ``sr_out``."""
+    g = math.gcd(sr_in, sr_out)
+    return (sr_in // g) * (sr_out // g)
+
+
 def torch_resample(x: np.ndarray, sr_in: int, sr_out: int) -> np.ndarray:
-    """Band-limited resampling via torchaudio (used by the real detector)."""
+    """Band-limited resampling via torchaudio (used by the real detector).
+
+    Refuses rates whose filter would exceed ``MAX_RESAMPLE_ELEMENTS`` (ValueError) instead of
+    allocating gigabytes.
+    """
+    if resample_elements(sr_in, sr_out) > MAX_RESAMPLE_ELEMENTS:
+        raise ValueError(
+            f"resampling {sr_in} Hz to {sr_out} Hz needs too large a filter; "
+            "use a standard sample rate (e.g. 8000, 16000, 44100 or 48000 Hz)"
+        )
     import torch
     import torchaudio.functional as AF
 
@@ -216,7 +239,7 @@ class RealDetector:
 
 def get_detector() -> Detector:
     """Select the detector from VOXGUARD_DETECTOR=stub|real (default: stub)."""
-    kind = os.environ.get("VOXGUARD_DETECTOR", "stub").lower()
+    kind = os.environ.get("VOXGUARD_DETECTOR", "stub").strip().lower() or "stub"
     if kind == "stub":
         return StubDetector()
     if kind == "real":
