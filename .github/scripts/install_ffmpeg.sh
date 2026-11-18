@@ -8,8 +8,10 @@
 # others. So:
 #   1. candidates = two HTTPS mirrors plus the runner's own mirrors, deduplicated;
 #   2. each is probed with a small timed download (its InRelease file, 10 s cap);
-#   3. the list is rewritten fastest first, unreachable ones last but kept as fallbacks (plain
-#      URLs, so the runner's priority tags cannot reorder them);
+#   3. the list is rewritten fastest first with explicit priority:1..N tags, unreachable ones last
+#      but kept as fallbacks. The tags matter: without them apt's mirror method picks among the
+#      listed mirrors at random (apt-transport-mirror(1), "Fallback order for mirrors"), as the
+#      first CI run of this script showed (requests spread over all four, 82-135 kB/s);
 #   4. apt runs with IPv4 forced and more retries; update + install are retried 3 times.
 # The same list then serves later apt users in the job (e.g. Playwright's --with-deps).
 #
@@ -42,7 +44,7 @@ for url in "${candidates[@]}"; do
   ranked+=("$speed $url")
 done
 
-printf '%s\n' "${ranked[@]}" | sort -s -k1,1nr | cut -d' ' -f2 \
+printf '%s\n' "${ranked[@]}" | sort -s -k1,1nr | awk '{ print $2 "\tpriority:" NR }' \
   | $sudo_cmd tee "$mirrors_file.new" >/dev/null
 $sudo_cmd mv "$mirrors_file.new" "$mirrors_file"
 echo "apt mirrors, fastest first (probe speed in bytes/s):"

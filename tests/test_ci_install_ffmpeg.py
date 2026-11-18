@@ -60,14 +60,20 @@ def run(
     def read(p: Path) -> list[str]:
         return p.read_text().splitlines() if p.exists() else []
 
-    return proc.returncode, read(calls), mirrors_file.read_text().splitlines(), read(probes)
+    lines = mirrors_file.read_text().splitlines()
+    # every line is "<url>\tpriority:<rank>", ranks 1..N in file order (apt would otherwise pick
+    # among untagged mirrors at random)
+    assert [line.split("\t")[1] for line in lines] == [
+        f"priority:{i}" for i in range(1, len(lines) + 1)
+    ]
+    return proc.returncode, read(calls), [line.split("\t")[0] for line in lines], read(probes)
 
 
 def test_fastest_mirror_first_and_every_mirror_kept(tmp_path: Path) -> None:
     speeds = {KERNEL: "100000", ARCHIVE: "11000000", AZURE: "5000000", SECURITY: "fail"}
     code, calls, mirrors, probes = run(tmp_path, RUNNER, speeds)
     assert code == 0
-    assert mirrors == [ARCHIVE, AZURE, KERNEL, SECURITY]  # plain URLs: no priority tags
+    assert mirrors == [ARCHIVE, AZURE, KERNEL, SECURITY]  # runner's tags replaced by the ranking
     assert len(probes) == 4  # archive.ubuntu.com is in both lists but probed once
     assert any("install -y --no-install-recommends ffmpeg" in c for c in calls)
     assert all("Acquire::ForceIPv4=true" in c for c in calls)
