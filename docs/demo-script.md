@@ -1,0 +1,114 @@
+# Demo script
+
+How to present VoxGuard live (about 8 minutes) and record the demo video (about 3 minutes). It
+uses the local Docker Compose deployment with the real detector
+([M2 demo runbook](deployment.md#m2-demo-runbook-real-model-in-compose)).
+
+**Numbers are not repeated here.** For results, show [`docs/results.md`](results.md), which
+scripts generate (CLAUDE.md section 10). On screen, show only what the app itself displays.
+
+## Clips to prepare
+
+No audio is committed; keep the clips in a private folder outside the repo. **Score each clip
+beforehand** with the [sanity tool](real-audio-testing.md) against the same model and threshold,
+and pick only clips that behave as the script needs.
+
+| Role | What | Requirement |
+|---|---|---|
+| **G1, genuine** | A consented recording of the presenter, 10–30 s, quiet room, saved as M4A by the laptop recorder | Not flagged, clearly below the threshold, both as uploaded and through G.711 |
+| **G2, genuine (backup)** | An ASVspoof 2019 or 2021 LA eval bona fide file | As G1, with a wider margin |
+| **F1, F2, fake** | ASVspoof 2019 LA eval spoofs (the model's training domain; ODC-By, cite Todisco et al., Interspeech 2019) | Flagged, far above the threshold (no caution), both as uploaded and through G.711 |
+| **N1, near the threshold** | A consented genuine recording that the model flags with the caution | Flagged, below 1.5× the threshold, so the yellow caution shows |
+
+**Getting candidates.** Any ASVspoof 2019 LA eval file can be fetched on its own from the official
+`LA.zip` (it supports HTTP range requests), so a handful of clips is a few MB instead of the 7.6 GB
+archive. Labels come from the official eval key only, never from scores. Fakes from ASVspoof 2021
+LA work less reliably: its transmission conditions are outside training, and several of its spoofs
+score near or below the threshold. Pick from 2019 for F1 and F2.
+
+**Choosing.** Score every candidate as uploaded and with `--codec g711_mulaw`, then keep only clips
+whose decision is the same in both conditions and far from the threshold (for example, fakes at
+several times the threshold, genuine clips clearly below it). Scores are deterministic for the same
+file and model, so a clip chosen this way behaves the same on the day. Choose again whenever the
+model or the threshold changes.
+
+N1 is a genuine voice wrongly flagged. Present it as exactly that: the honest limit of the model
+on off-domain speech, and the reason for the caution.
+
+## Before the demo (T−30 min)
+
+1. Start the stack and run the pre-flight checks (runbook steps 1–2): `/health` shows the real
+   model, the log shows the phone threshold, `/v1/codecs` lists G.711, GSM and Opus.
+2. Reset the demo data (runbook step 4), so the lists start empty.
+3. **Warm up:** analyze G1 (not flagged, and with no caller ID, so the flagged sessions, blocklist
+   and alerts stay empty), then analyze it once more, within the last minute or two before
+   presenting, and again before the live part if the stack has been idle for ten minutes
+   or more. Keep the laptop plugged in, on a performance power mode, with heavy apps closed.
+   The first request after an idle period can be slower (see the runbook's idle-latency
+   measurement); the next one is back to normal.
+4. Open the UI (http://localhost:8501) in the browser you will present from. Check the sidebar
+   says **Connected** and shows the model. Set the zoom so the result metrics are readable on the
+   projector.
+5. Have the clips in one folder, a terminal with the runbook open, and the backup video ready.
+
+## Live run (about 8 minutes)
+
+| # | Time | Do | Say |
+|---|---|---|---|
+| 1 | 0:00 | Title screen or the README diagram | Scam calls use cloned voices. Real calls pass through phone codecs that remove the artifacts most detectors are trained on, so a detector that is accurate in the lab can fail on a phone line. |
+| 2 | 0:45 | **Analyze audio** → **Upload a file** → G1 → **Analyze** | A genuine recording: **Not flagged**. Point at the fake score, the threshold and the detector latency. |
+| 3 | 1:45 | F1 → **Analyze** | An AI-generated voice: **Flagged**, red banner. The score is far above the threshold. |
+| 4 | 2:30 | Turn on **Simulate phone line**, codec **G.711 µ-law** → **Analyze** F1 again | The same clip after a real telephone codec. Both results appear side by side; the decision holds on the phone line. This is the point of the codec-aware training. |
+| 5 | 3:30 | Show `docs/results.md`, the 2×2 matrix | The measured result: trained on clean audio vs codec-augmented, tested clean vs phone-degraded. Read the two phone-degraded cells. |
+| 6 | 4:30 | Enter a **Caller ID** (e.g. `+91-DEMO-0001`) → F2 → **Analyze**; open **Flagged sessions**, **Blocklist**, **Alerts** | Prevention: a flagged call is stored, an alert is raised, and the caller is added to the blocklist with a hit counter. Analyze F2 once more with the same ID to show the counter go up. |
+| 7 | 5:45 | N1 → **Analyze** | A genuine voice, flagged, but with the yellow caution "Close to the decision threshold". Flags just above the threshold are hints, not verdicts. Off-domain speech (unusual microphones, rooms, languages) is the model's main weakness; we report it rather than hide it. |
+| 8 | 6:45 | Sidebar → **हिन्दी** | The interface in Hindi. Detection was trained and evaluated in English; Hindi detection is only an evaluated generalisation test, not a supported feature. |
+| 9 | 7:30 | Back to English; summarise | The detector, the phone-line evaluation, the prevention layer, the latency on CPU. Questions. |
+
+Uploaded audio is never stored: only each session's score, threshold, label, flag, codec, model
+version, latency and optional caller ID.
+
+## If something goes wrong
+
+| Problem | Do |
+|---|---|
+| Sidebar shows **API unavailable** | `docker compose ps`; if the API is not running, `docker compose up -d --wait` (runbook step 5). Fill the wait by continuing with the slides. |
+| A request is slow | Wait: the first request after an idle period can take a few seconds, and the next one is back to normal. Say that the latency shown is the detector's time on a CPU laptop, and analyze the clip once more if it looks out of line. |
+| A result is not what the script expects | Say so: the model makes mistakes, and N1 already shows one. Move on with the next clip. |
+| Nothing works | Play the backup video. |
+
+The demo runs offline once the model is in the volume; no network is needed.
+
+## Likely questions
+
+- **What is new?** The codec-aware training and evaluation regime, not the architecture
+  (XLS-R + AASIST is published work): random telephone codecs during training, and evaluation on
+  clean and phone-degraded audio, including a codec never used in training (GSM).
+- **Why is the threshold so low?** It is chosen on the development set at the equal error rate,
+  separately for clean and phone audio. The model's scores for real speech sit in a narrow low
+  band, so the operating point is low; only the comparison with the threshold matters.
+- **How often does it flag real people?** Point to the out-of-domain evaluation in
+  `docs/results.md`, and to N1. Do not quote a rate that is not in the results.
+- **Does it work in Hindi?** Claim only what `docs/results.md` reports for the Hindi test set.
+- **Is it real time?** Show the detector latency in the result and the latency table in
+  `docs/results.md`.
+- **What would deployment need?** A telephony integration, an operator review step for flagged
+  calls (unblocking false alarms), and monitoring. None of these are in this prototype.
+
+## Video (about 3 minutes)
+
+Record the screen at 1080p with the presenter's voice; no other people's voices or data.
+
+| Shot | Length | Content |
+|---|---|---|
+| 1 | 20 s | The problem, over the architecture diagram |
+| 2 | 30 s | G1 not flagged, then F1 flagged |
+| 3 | 30 s | F1 on the simulated phone line, side by side |
+| 4 | 30 s | The 2×2 matrix in `docs/results.md` |
+| 5 | 35 s | Prevention: caller ID, flagged sessions, blocklist, alerts |
+| 6 | 20 s | N1 with the caution: the honest limitation |
+| 7 | 15 s | Hindi interface |
+| 8 | 20 s | Summary and limitations |
+
+Keep the repository and video private until the IPR cell confirms the provisional filing
+(CLAUDE.md section 15).
