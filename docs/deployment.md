@@ -69,6 +69,7 @@ ones that matter for deployment:
 | `VOXGUARD_UI_MAX_UPLOAD_MB` | `25` | UI uploader limit (whole MB); keep it at or below the API limit |
 | `INSTALL_ML` | `0` | build arg for the API image |
 | `VOXGUARD_API_PORT` / `VOXGUARD_UI_PORT` | `8000` / `8501` | host ports |
+| `VOXGUARD_BIND_ADDRESS` | `127.0.0.1` | host address the two ports are published on. The default is this machine only, because the API has no authentication; `0.0.0.0` also serves other devices on the network (use only on a network you trust) |
 
 Invalid values stop the API at startup with an error naming the variable (see
 Troubleshooting).
