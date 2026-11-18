@@ -188,9 +188,11 @@ period. `.env` is git-ignored: never commit it or share the token.
 "Detector: real". `voxguard-ssl-aasist-codec-aug` is the demo model (its `thresholds.json` sets the
 operating threshold); the RawNet2 repos are for integration and latency checks only (see Status).
 This path has been run end to end on amd64 (Windows with WSL2 and Docker Desktop): with the
-RawNet2 checkpoint, from a fresh clone with nothing cached, the first analysis in the UI came
-10 min 51 s after `git clone`, machine time only (installing Docker, getting Hugging Face access and editing `.env`
-not included). arm64 (Apple Silicon) has not been run yet. Prerequisites, what was verified, timings and
+SSL-AASIST demo model, from a fresh clone with nothing cached, the first analysis in the UI came
+3 min 28 s after `git clone` (18 Nov 2026; an earlier RawNet2 run on a slower connection took
+10 min 51 s). That is machine time only: installing Docker, getting Hugging Face access and
+editing `.env` are not included, and the time depends mostly on the network. arm64 (Apple
+Silicon) has not been run yet. Prerequisites, what was verified, timings and
 troubleshooting are in [docs/deployment.md](docs/deployment.md#real-detector).
 
 The API image includes ffmpeg (G.711, GSM and Opus; no AMR); SQLite and the downloaded
