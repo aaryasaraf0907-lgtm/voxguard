@@ -107,6 +107,11 @@ def test_flag_time_and_stored_session(client_factory) -> None:
     assert row.fake_score == body["fake_score"] and row.flagged is True  # stored as usual
 
 
+def _fake_resample_to_16k(x: np.ndarray, sample_rate: int) -> np.ndarray:
+    """Right output length, no ffmpeg."""
+    return np.resize(x, round(len(x) * 16_000 / sample_rate)).astype(np.float32)
+
+
 def test_timeline_follows_the_phone_line_simulation(client_factory, monkeypatch) -> None:
     seen = []
 
@@ -117,6 +122,8 @@ def test_timeline_follows_the_phone_line_simulation(client_factory, monkeypatch)
     monkeypatch.setattr(codec_sim, "ffmpeg_path", lambda: "/usr/bin/ffmpeg")
     monkeypatch.setattr(codec_sim, "available_codecs", lambda: {c: True for c in codecs.CODECS})
     monkeypatch.setattr(codec_sim, "apply_codec", fake_apply)
+    # No real ffmpeg (its path differs per OS: apt, Homebrew); the resampler is tested apart.
+    monkeypatch.setattr(codec_sim, "resample_to_16k", _fake_resample_to_16k)
     with client_factory(StubDetector(threshold=0.5)) as c:
         body = _post(c, make_wav(9.5, sr=44_100), codec="g711_mulaw", timeline="true").json()
     assert body["codec_applied"] == "g711_mulaw" and seen == [152_000]  # 9.5 s at 16 kHz
