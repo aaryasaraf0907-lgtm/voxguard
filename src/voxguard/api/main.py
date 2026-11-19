@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import HTMLResponse
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
@@ -44,6 +44,8 @@ from voxguard.api.monitor_page import render as render_monitor
 from voxguard.api.stream import handle_stream
 from voxguard.api.thresholds import ThresholdSet
 from voxguard.api.timeline import WindowScore, build_timeline, score_windows
+from voxguard.api.transactions import router as transactions_router
+from voxguard.api.webhook import Notifier
 from voxguard.data.codecs import CODECS
 from voxguard.inference import Detector, Prediction
 from voxguard.schemas import (
@@ -141,6 +143,8 @@ def create_app(
         app.state.settings = settings
         app.state.gate = AnalysisGate(settings.max_running_analyses, settings.max_waiting_analyses)
         app.state.live_streams = 0  # open /v1/stream connections (event loop only)
+        app.state.live_calls = {}  # session_id -> stream.LiveCall, while the call is going on
+        app.state.notifier = Notifier(settings.alert_webhook_url, settings.alert_webhook_secret)
         det = detector or load_detector(settings.device)
         if detector is None and thresholds is None:
             found = load_model_thresholds(det)
@@ -155,6 +159,7 @@ def create_app(
         try:
             yield
         finally:  # also when shutdown is interrupted
+            app.state.notifier.close()
             app.state.gate.close()
             engine.dispose()
 
@@ -172,6 +177,7 @@ def create_app(
 
     @app.post(ANALYZE_PATH, response_model=AnalyzeResponse)
     def analyze(
+        request: Request,
         file: Annotated[UploadFile, File()],
         det: Annotated[Detector, Depends(get_detector_dep)],
         db: Annotated[Session, Depends(get_db)],
@@ -238,6 +244,18 @@ def create_app(
             db.rollback()
             logger.exception("Could not store session")
             raise HTTPException(500, "Could not store session") from None
+        if row.flagged:
+            request.app.state.notifier.send(
+                "call_flagged",
+                {
+                    "session_id": row.session_id,
+                    "caller_id": row.caller_id,
+                    "source": "upload",
+                    "fake_score": row.fake_score,
+                    "threshold": row.threshold,
+                    "model_version": row.model_version,
+                },
+            )
 
         return AnalyzeResponse(
             session_id=row.session_id,
@@ -254,6 +272,7 @@ def create_app(
 
     # live call monitor (api/stream.py); the /monitor page is its browser client
     app.add_api_websocket_route("/v1/stream", handle_stream)
+    app.include_router(transactions_router)  # transfer checks, call timelines, incident reports
 
     @app.get("/monitor", response_class=HTMLResponse, include_in_schema=False)
     def monitor() -> HTMLResponse:

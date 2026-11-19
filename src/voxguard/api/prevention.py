@@ -13,7 +13,7 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from voxguard.api.db import AlertRow, BlocklistRow, SessionRow, begin_write
+from voxguard.api.db import AlertRow, BlocklistRow, CallWindowRow, SessionRow, begin_write
 from voxguard.api.deps import Settings
 from voxguard.api.thresholds import ThresholdSet
 from voxguard.inference import Prediction
@@ -107,8 +107,10 @@ def store_session(
     pred: Prediction,
     decision: Decision,
     codec_applied: str | None,
+    windows: list[tuple[float, float, float]] | None = None,
 ) -> SessionRow:
-    """Store one analysed session, plus its alert and blocklist update when flagged, in one
+    """Store one analysed session, plus its alert and blocklist update when flagged, and a live
+    call's per-window scores (``windows``: t_s, window score, running average), in one
     transaction. The timestamp is taken under SQLite's write lock, so it follows commit order.
     Raises SQLAlchemyError after rolling back; the caller maps it to its own error."""
     try:
@@ -126,6 +128,12 @@ def store_session(
             latency_ms=pred.latency_ms,
         )
         db.add(row)
+        if windows:
+            db.flush()  # the session row must exist before the rows that reference it
+            db.add_all(
+                CallWindowRow(session_id=session_id, t_s=t, window_score=w, running_score=r)
+                for t, w, r in windows
+            )
         if row.flagged:
             record_flag(db, row)
         db.commit()

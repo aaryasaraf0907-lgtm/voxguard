@@ -41,6 +41,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from voxguard.api import codec_sim, prevention
 from voxguard.api.deps import Settings
 from voxguard.api.gate import AnalysisGate, Busy
+from voxguard.api.risk import CAUTION_FACTOR, MIN_ALERT_WINDOWS
 from voxguard.data.codecs import CODECS
 from voxguard.inference import NUM_SAMPLES, TARGET_SR, Detector, Prediction
 
@@ -51,14 +52,6 @@ MIN_RATE, MAX_RATE = 8_000, 48_000
 MAX_FRAME_BYTES = 1024 * 1024  # about 5 s at 48 kHz; clients send about 0.25 s per frame
 IDLE_TIMEOUT_S = 30.0
 MIN_FINAL_S = 1.0  # a call shorter than one window is scored once at the end if this long
-# No alert on a single window: on the real model, the first window of a genuine recording sat
-# just over the threshold (0.012836 against 0.012676) and the next ones well below it, so the
-# alert waits for the running average of two windows (about 6 s of audio). Measured on a
-# genuine-then-fake call: alert 1.3 s after the fake part began, none during the genuine part.
-MIN_ALERT_WINDOWS = 2
-# Graded warning, the UI's near-threshold caution band (agreed 16 Nov, ui/app.py): just over the
-# threshold the page asks to verify the caller another way; well over it, to hang up.
-CAUTION_FACTOR = 1.5
 WINDOW_S = NUM_SAMPLES / TARGET_SR
 
 # WebSocket close codes (RFC 6455)
@@ -106,7 +99,11 @@ class WindowCutter:
 @dataclass
 class LiveCall:
     threshold: float
+    session_id: str = ""
+    caller_id: str | None = None
+    codec: str | None = None
     scores: list[float] = field(default_factory=list)
+    points: list[tuple[float, float, float]] = field(default_factory=list)  # t_s, window, running
     latencies: list[float] = field(default_factory=list)
     model_version: str = ""
     first_flag_s: float | None = None
@@ -121,6 +118,7 @@ class LiveCall:
         threshold (the moment to alert)."""
         self.scores.append(score)
         self.latencies.append(latency_ms)
+        self.points.append((t_s, score, self.running))
         self.model_version = model_version
         if (
             self.first_flag_s is None
@@ -235,12 +233,32 @@ async def _run(ws: WebSocket, cfg: Settings) -> None:
     probe = Prediction(0.0, "real", det.threshold, 0.0, det.model_version)
     threshold = prevention.effective_threshold(probe, cfg, state.thresholds, channel)
     session_id = uuid.uuid4().hex
-    cutter, call = WindowCutter(rate), LiveCall(threshold)
+    cutter = WindowCutter(rate)
+    call = LiveCall(threshold, session_id=session_id, caller_id=caller, codec=codec)
+    state.live_calls[session_id] = call  # read by POST /v1/transactions/check during the call
+    try:
+        await _serve(ws, cfg, det, gate, codec, cutter, call, caller, session_id)
+    finally:
+        state.live_calls.pop(session_id, None)
+
+
+async def _serve(
+    ws: WebSocket,
+    cfg: Settings,
+    det: Detector,
+    gate: AnalysisGate,
+    codec: str | None,
+    cutter: WindowCutter,
+    call: LiveCall,
+    caller: str | None,
+    session_id: str,
+) -> None:
+    state = ws.app.state
     await ws.send_json(
         {
             "type": "ready",
             "session_id": session_id,
-            "threshold": threshold,
+            "threshold": call.threshold,
             "window_s": WINDOW_S,
             "hop_s": HOP_S,
             "codec": codec,
@@ -321,14 +339,26 @@ async def _score_due(
         }
     )
     if alert:
+        level = "caution" if call.running < CAUTION_FACTOR * call.threshold else "high"
         await ws.send_json(
             {
                 "type": "alert",
                 "t_s": t_s,
                 "running_score": call.running,
                 "threshold": call.threshold,
-                "level": "caution" if call.running < CAUTION_FACTOR * call.threshold else "high",
+                "level": level,
             }
+        )
+        ws.app.state.notifier.send(
+            "live_alert",
+            {
+                "session_id": call.session_id,
+                "caller_id": call.caller_id,
+                "t_s": t_s,
+                "running_score": call.running,
+                "threshold": call.threshold,
+                "level": level,
+            },
         )
 
 
@@ -376,13 +406,27 @@ async def _finish(
     def store() -> bool:
         with state.session_factory() as db:  # type: ignore[attr-defined]
             try:
-                prevention.store_session(db, session_id, caller, clip, decision, codec)
+                prevention.store_session(
+                    db, session_id, caller, clip, decision, codec, windows=call.points
+                )
             except SQLAlchemyError:
                 logger.exception("live stream: could not store session")
                 return False
         return True
 
     stored = await to_thread.run_sync(store)
+    if stored and decision.flagged:
+        state.notifier.send(  # type: ignore[attr-defined]
+            "call_flagged",
+            {
+                "session_id": session_id,
+                "caller_id": caller,
+                "source": "live",
+                "fake_score": clip.fake_score,
+                "threshold": decision.threshold,
+                "model_version": clip.model_version,
+            },
+        )
     return {
         **base,
         "stored": stored,

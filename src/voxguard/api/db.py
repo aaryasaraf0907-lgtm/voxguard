@@ -1,4 +1,5 @@
-"""SQLAlchemy 2 models and engine setup: sessions, alerts and the caller blocklist."""
+"""SQLAlchemy 2 models and engine setup: sessions, alerts, the caller blocklist, live-call windows
+and transaction decisions with their audit trail."""
 
 from __future__ import annotations
 
@@ -69,6 +70,55 @@ class BlocklistRow(Base):
     hit_count: Mapped[int]
     first_seen: Mapped[datetime] = mapped_column(UTCDateTime)
     last_seen: Mapped[datetime] = mapped_column(UTCDateTime)
+
+
+class CallWindowRow(Base):
+    """Feature-level log of a live call: one row per scored window, numbers only, no audio."""
+
+    __tablename__ = "call_windows"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    session_id: Mapped[str] = mapped_column(ForeignKey("sessions.session_id"), index=True)
+    t_s: Mapped[float]  # end of the window, seconds into the call
+    window_score: Mapped[float]
+    running_score: Mapped[float]
+
+
+class TransactionRow(Base):
+    """A transfer checked against a call's risk (api/policy.py). ``session_id`` is not a foreign
+    key: a live call's session is stored only when the call ends."""
+
+    __tablename__ = "transactions"
+
+    decision_id: Mapped[str] = mapped_column(primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, index=True)
+    session_id: Mapped[str] = mapped_column(index=True)
+    amount_inr: Mapped[float]
+    beneficiary: Mapped[str | None]
+    high_value: Mapped[bool]
+    live: Mapped[bool]  # checked while the call was still going on
+    tier: Mapped[str]
+    action: Mapped[str]  # allow | step_up | hold
+    status: Mapped[str]  # allowed | pending | held | released
+    score: Mapped[float | None]
+    threshold: Mapped[float]
+    windows: Mapped[int | None]
+    reasons: Mapped[str]  # JSON list of reason codes
+    required_steps: Mapped[str]  # JSON list of verification methods
+
+
+class TransactionEventRow(Base):
+    """Append-only audit trail of a transaction decision."""
+
+    __tablename__ = "transaction_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    decision_id: Mapped[str] = mapped_column(ForeignKey("transactions.decision_id"), index=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    kind: Mapped[str]  # decided | verified | released
+    method: Mapped[str | None]
+    verified_by: Mapped[str | None]
+    note: Mapped[str | None]
 
 
 def require_sqlite_url(url: str) -> URL:
