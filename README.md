@@ -20,6 +20,10 @@ wraps them in an application:
   raises an alert and adds the caller to a blocklist.
 - **Demo:** a Streamlit app (English and Hindi) to upload or record audio, optionally pass it
   through a simulated phone line, and review flagged calls, the blocklist and alerts.
+- **Live call monitor:** a page (http://localhost:8000/monitor, linked from the app's sidebar)
+  that listens through the microphone, or plays a recording, and updates the risk every 2 s
+  while the call is going on, warning before the caller is done talking. It listens to a
+  microphone or a file, not a phone line.
 
 ## Quick start: the demo with the real model
 
@@ -50,7 +54,8 @@ integration), plus a Hugging Face account in the private `voxguard-team` organis
    API is healthy, and the first start downloads the 1.26 GB checkpoint, so this takes a few
    minutes; opening the page earlier gives "connection refused". The sidebar should say
    "Connected" and "Detector: real". Upload a WAV, FLAC, OGG, MP3 or M4A file and press
-   **Analyze**.
+   **Analyze**. For the live call monitor, use **Open the live call monitor** in the sidebar
+   (http://localhost:8000/monitor).
 
 For development (tests, the local run without Docker, training), see [Setup](#setup).
 

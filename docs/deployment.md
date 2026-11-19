@@ -66,6 +66,9 @@ ones that matter for deployment:
 | `VOXGUARD_API_START_PERIOD` | `20s` | API health-check grace period (compose); `600s` for the real detector |
 | `VOXGUARD_API_START_TIMEOUT` | 600 (real) / 60 | Space image only: seconds `space_start.sh` waits for the API |
 | `VOXGUARD_MAX_UPLOAD_MB` / `VOXGUARD_MAX_AUDIO_SECONDS` | `25` / `60` | API limits |
+| `VOXGUARD_MAX_STREAMS` / `VOXGUARD_MAX_STREAM_SECONDS` | `4` / `600` | live calls at once on `/v1/stream` and the longest call, in seconds of audio |
+| `VOXGUARD_STREAM_ORIGINS` | empty | extra browser origins allowed to open `/v1/stream` (comma-separated); the API's own `/monitor` page always may |
+| `VOXGUARD_MONITOR_URL` (UI) | `<VOXGUARD_API_URL>/monitor` | the sidebar link to the live call monitor; compose sets `http://localhost:${VOXGUARD_API_PORT}/monitor`, since the browser cannot reach `http://api:8000` |
 | `VOXGUARD_MAX_RUNNING_ANALYSES` / `VOXGUARD_MAX_WAITING_ANALYSES` | `2` / `8` | analyses at once and how many more may wait (up to 45 s); beyond that 503 "busy" with `Retry-After`. Raise them only with more memory (see "Load test") |
 | `VOXGUARD_UI_MAX_UPLOAD_MB` | `25` | UI uploader limit (whole MB); keep it at or below the API limit |
 | `INSTALL_ML` | `0` | build arg for the API image |
