@@ -44,17 +44,18 @@ class AnalysisGate:
         self.running, self.waiting, self.wait_s = running, waiting, wait_s
         self._workers = ThreadPoolExecutor(max_workers=running, thread_name_prefix="analysis")
 
-    def run(self, fn: Callable[..., T], *args: object) -> T:
+    def run(self, fn: Callable[..., T], *args: object, wait_s: float | None = None) -> T:
         """Run ``fn(*args)`` on a dedicated analysis thread once a slot is free; its result or
-        exception is passed through. Raises Busy without a slot."""
-        with self.slot():  # at most `running` hold a slot, so a worker is always free
+        exception is passed through. Raises Busy without a slot. ``wait_s`` overrides how long
+        to wait for one (a live stream waits at most one hop, then skips that window)."""
+        with self.slot(wait_s):  # at most `running` hold a slot, so a worker is always free
             return self._workers.submit(fn, *args).result()
 
     def close(self) -> None:
         self._workers.shutdown(wait=True)
 
     @contextmanager
-    def slot(self) -> Iterator[None]:
+    def slot(self, wait_s: float | None = None) -> Iterator[None]:
         """Hold one analysis slot for the ``with`` block. Raises Busy without one."""
         if not self._slots.acquire(blocking=False):
             with self._lock:
@@ -62,7 +63,7 @@ class AnalysisGate:
                     raise Busy("queue full")
                 self._waiting += 1
             try:
-                got = self._slots.acquire(timeout=self.wait_s)
+                got = self._slots.acquire(timeout=self.wait_s if wait_s is None else wait_s)
             finally:
                 with self._lock:
                     self._waiting -= 1

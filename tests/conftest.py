@@ -54,3 +54,31 @@ def client_factory() -> Callable[..., object]:
 def client(client_factory: Callable[..., object]) -> Iterator[TestClient]:
     with client_factory() as c:  # type: ignore[attr-defined]
         yield c
+
+
+@pytest.fixture
+def live_server(tmp_path):
+    """The real app (stub detector) under uvicorn on a free 127.0.0.1 port, in a thread.
+    Yields (ws:// base URL, session factory)."""
+    import socket
+    import threading
+    import time
+
+    uvicorn = pytest.importorskip("uvicorn")
+    pytest.importorskip("websockets")
+    app = create_app(
+        StubDetector(threshold=0.5), Settings(db_url=f"sqlite:///{tmp_path / 'live.db'}")
+    )
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="error"))
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    for _ in range(200):
+        if server.started:
+            break
+        time.sleep(0.05)
+    yield f"ws://127.0.0.1:{port}", lambda: app.state.session_factory()
+    server.should_exit = True
+    thread.join(10)

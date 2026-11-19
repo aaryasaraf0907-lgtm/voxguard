@@ -26,6 +26,7 @@ ml = [
 api = [
     "fastapi>=0.110",
     "uvicorn>=0.29",
+    "websockets>=13",  # WebSocket support in uvicorn (/v1/stream) and the stream_call.py client
     "python-multipart>=0.0.9",
     "sqlalchemy>=2.0",
     "soundfile>=0.12",
