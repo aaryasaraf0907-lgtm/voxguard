@@ -66,6 +66,7 @@ ones that matter for deployment:
 | `VOXGUARD_API_START_PERIOD` | `20s` | API health-check grace period (compose); `600s` for the real detector |
 | `VOXGUARD_API_START_TIMEOUT` | 600 (real) / 60 | Space image only: seconds `space_start.sh` waits for the API |
 | `VOXGUARD_MAX_UPLOAD_MB` / `VOXGUARD_MAX_AUDIO_SECONDS` | `25` / `60` | API limits |
+| `VOXGUARD_MAX_RUNNING_ANALYSES` / `VOXGUARD_MAX_WAITING_ANALYSES` | `2` / `8` | analyses at once and how many more may wait (up to 45 s); beyond that 503 "busy" with `Retry-After`. Raise them only with more memory (see "Load test") |
 | `VOXGUARD_UI_MAX_UPLOAD_MB` | `25` | UI uploader limit (whole MB); keep it at or below the API limit |
 | `INSTALL_ML` | `0` | build arg for the API image |
 | `VOXGUARD_API_PORT` / `VOXGUARD_UI_PORT` | `8000` / `8501` | host ports |
@@ -521,6 +522,77 @@ Limitations on a Space:
   the checkpoint cache are lost on every restart or rebuild.
 - If the API process dies after startup, the UI keeps running and shows "API unavailable"
   until the Space restarts.
+
+## Load test
+
+`scripts/load_test.py` (`make load-test`) sends concurrent analyses through the public API in a
+closed loop: N workers, each sending the next request as soon as the last one answers. Per level
+it runs two warm-up analyses, then at least `--duration` seconds and `--min-requests` requests.
+It checks every status, that each caller's blocklist count equals its flagged responses, and,
+with `--poll`, that a client polling `/v1/alerts?since=` sees every alert. With `--container`, it
+also checks that the container did not restart, stayed healthy and left no ffmpeg process or
+temp directory behind. The audio is synthetic (seeded tone plus noise) and is never written to
+disk. It refuses demo ports and other machines: run it against a scratch API
+(`make sanity-api`) or a scratch compose project, never the demo database. Reports go to a new
+directory outside the repo.
+
+| Mix | Requests |
+|---|---|
+| A | 4 s, 16 kHz WAV, no codec (the section 10 clip) |
+| B | A with `codec=g711_mulaw` |
+| C | 2 to 60 s, 16 or 44.1 kHz, half with a codec, about 5 % M4A |
+| D | limits: a valid 23 MB upload (200), one byte over the upload limit (413), 61 s (422) |
+
+```bash
+# scratch compose project with the real detector on another port, then:
+make load-test LOAD_URL=http://127.0.0.1:18310 OUT=$HOME/private/load-1 \
+    LOAD_ARGS="--mix A --levels 1,2,4,8 --container <project>-api-1 --poll"
+```
+
+### Results (19 Nov 2026)
+
+Real detector (`ssl_aasist/ssl-aasist-codec-aug-v2`, epoch 11) in an isolated compose project
+built from this branch: laptop CPU (i5-13450HX, 16 threads, 7.6 GB RAM for WSL), container
+limited to 4 GB, model loaded offline from a cache. 60 s per level. Times are per request in ms
+(p50 / p95). "Detector" is `latency_ms`, the model only; "client" is the whole request as the
+caller sees it, including waiting for an analysis slot. Every level below passed every check:
+no 5xx, no time-out, no restart, exact blocklist and alert counts, nothing left behind.
+
+| Mix | At once | Requests | Req/s | Client p50 / p95 | Detector p50 / p95 | Codec p95 | Peak memory |
+|---|---|---|---|---|---|---|---|
+| A | 1 | 124 | 2.1 | 484 / 516 | 474 / 506 | | 1.83 GiB |
+| A | 2 | 158 | 2.6 | 738 / 901 | 728 / 890 | | 1.90 GiB |
+| A | 4 | 168 | 2.8 | 1448 / 1513 | 721 / 753 | | 1.85 GiB |
+| A | 8 | 173 | 2.8 | 2869 / 2996 | 715 / 754 | | 1.85 GiB |
+| B | 1 | 92 | 1.5 | 654 / 687 | 561 / 592 | 90 | 1.91 GiB |
+| B | 8 | 156 | 2.5 | 3212 / 3408 | 705 / 737 | 118 | 1.96 GiB |
+| C | 1 | 34 | 0.5 | 720 / 6036 | 618 / 5999 | 194 | 2.16 GiB |
+| C | 4 | 41 | 0.6 | 3716 / 18825 | 1788 / 9486 | 273 | 2.64 GiB |
+| D | 2 | 34 | 1.1 | 67 / 5292 | 5012 / 5171 | | 3.11 GiB |
+| A, burst | 48 | 15,702 | 248 | 140 / 190 | 1217 / 1389 | | 2.29 GiB |
+
+- **Section 10 goal** (4 s clip, one at a time, detector p95 under 2 s on CPU): met, 506 ms.
+- **Demo** (two people at once, whole request p95 under 5 s, no errors): met, 901 ms.
+- **Capacity:** about 2.75 analyses per second on this laptop. More people at once only makes
+  each wait longer (8 at once: about 3 s per 4 s clip). Long clips are the slow ones: a 60 s
+  clip takes about 6 s alone.
+- **Burst:** 104 analysed, 15,598 answered at once with 503 "busy" and `Retry-After: 5`
+  (p95 190 ms), memory 2.3 GiB, `/health` and the lists still answering (p95 under 0.25 s).
+
+### What the load test found and changed
+
+Before these changes, at the same settings:
+
+| Problem | Seen | Fix |
+|---|---|---|
+| 16 or more analyses at once gave 500 "Could not store session" (SQLite "database is locked": readers blocked the commit and the 5 s lock wait ran out) | stub detector, 17 of 27,134 requests | WAL journal and a 30 s lock wait (`api/db.py`) |
+| A client polling `/v1/alerts?since=` missed alerts: timestamps were taken before the commit, so rows committed out of timestamp order (up to 897 in one 20 s level) | stub detector, 2 to 48 at once: up to 12 % missed | the write lock is taken first, then the timestamp (`BEGIN IMMEDIATE`) |
+| Four 60 s clips at once, or a burst of 48, got the API OOM-killed (over 4 GB) | real detector, 5 kills | at most 2 analyses run at once and 8 wait; more get 503 "busy" (`api/gate.py`, `VOXGUARD_MAX_RUNNING_ANALYSES` / `VOXGUARD_MAX_WAITING_ANALYSES`) |
+| With that limit alone, the burst still reached 4 GB: analyses ran on up to 40 different request threads, and each thread that calls torch keeps its own thread team and memory arenas | real detector, 1 kill | analyses run on 2 dedicated threads; `MALLOC_ARENA_MAX=2` in the API image |
+
+Throughput did not drop with the limit (2.75 analyses/s at 4 at once, before and after), because
+the model already used every core for one analysis. Raise the limits only with more memory: a
+60 s clip alone peaks around 2.2 GiB in the container.
 
 ## Troubleshooting
 
