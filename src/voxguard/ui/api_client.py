@@ -17,6 +17,7 @@ from voxguard.schemas import (
     CodecsResponse,
     HealthResponse,
     SessionRecord,
+    TransactionDecision,
 )
 
 DEFAULT_API_URL = "http://localhost:8000"
@@ -166,6 +167,10 @@ class VoxGuardClient:
 
     def blocklist(self) -> list[BlocklistEntry]:
         return self._parse_list(BlocklistEntry, self._request("GET", "/v1/blocklist"))
+
+    def transactions(self, limit: int = 50) -> list[TransactionDecision]:
+        payload = self._request("GET", "/v1/transactions", params={"limit": limit})
+        return self._parse_list(TransactionDecision, payload)
 
     def alerts(self, since: datetime | None = None, limit: int = 100) -> list[AlertRecord]:
         params: dict[str, Any] = {"limit": limit}

@@ -191,6 +191,14 @@ def artifacts_dir(tmp: Path) -> Path:
     return path
 
 
+E2E_POLICY = {
+    "unknown": ["step_up", "step_up"],
+    "low": ["allow", "step_up"],
+    "caution": ["step_up", "hold"],
+    "high": ["hold", "hold"],
+}
+
+
 @pytest.fixture(scope="session")
 def stack(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Stack]:
     tmp = tmp_path_factory.mktemp("e2e")
@@ -204,6 +212,9 @@ def stack(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Stack]:
         "VOXGUARD_DB_URL": f"sqlite:///{tmp / 'e2e.db'}",
         "VOXGUARD_SIMULATE_CODEC": "g711_mulaw",
         "VOXGUARD_THRESHOLD": repr(clips.threshold),
+        # a high-value transfer needs at least one verification step at every risk tier, so the
+        # browser test of the transfer panel always exercises the verification buttons
+        "VOXGUARD_TRANSACTION_POLICY": json.dumps(E2E_POLICY),
     }
     s = Stack(
         api_url=f"http://127.0.0.1:{api_port}",

@@ -25,6 +25,7 @@ CACHE_TTL_S = 5.0
 AUDIO_TYPES = ["wav", "flac", "ogg", "mp3", "m4a"]  # libsndfile reads all but m4a (ffmpeg)
 SESSIONS_LIMIT = 50
 ALERTS_LIMIT = 100
+TRANSACTIONS_LIMIT = 50
 # Near-threshold caution (agreed with Aarya, 16 Nov): one-sided, only for flagged results that
 # scored less than CAUTION_FACTOR x the threshold. Results under the threshold get no caution.
 CAUTION_FACTOR = 1.5
@@ -332,7 +333,7 @@ def render_analyze(client: Any, lang: str) -> None:
                         codec=codec,
                         timeline=show_timeline,
                     )
-                invalidate("sessions", "blocklist", "alerts")
+                invalidate("sessions", "blocklist", "alerts", "transactions")
             except ApiError as err:
                 st.error(error_text(err, lang, simulated=simulate))
             st.session_state[RESULTS_KEY] = {"audio": digest, **results}
@@ -347,15 +348,34 @@ def render_analyze(client: Any, lang: str) -> None:
         render_result(next(iter(results.values())), lang)
 
 
-def render_table(rows: list[dict[str, Any]], empty_key: str, lang: str) -> None:
+def report_url(client: Any, session_id: str, lang: str) -> str:
+    """The incident report, as the browser reaches it (the API's public address)."""
+    base = monitor_url(client).removesuffix("/monitor")
+    return f"{base}/v1/sessions/{session_id}/report?lang={lang}"
+
+
+def render_table(
+    rows: list[dict[str, Any]], empty_key: str, lang: str, link_column: str | None = None
+) -> None:
     if rows:
-        st.dataframe(rows, hide_index=True, width="stretch")
+        config = (
+            {link_column: st.column_config.LinkColumn(display_text=t("col_report", lang))}
+            if link_column
+            else None
+        )
+        st.dataframe(rows, hide_index=True, width="stretch", column_config=config)
     else:
         st.info(t(empty_key, lang))
 
 
 def _monitor(
-    lang: str, name: str, header_key: str, fetch: Any, to_rows: Any, empty_key: str
+    lang: str,
+    name: str,
+    header_key: str,
+    fetch: Any,
+    to_rows: Any,
+    empty_key: str,
+    link_column: str | None = None,
 ) -> None:
     st.header(t(header_key, lang))
     st.caption(t("utc_note", lang))
@@ -366,7 +386,7 @@ def _monitor(
     except ApiError as err:
         st.error(error_text(err, lang))
         return
-    render_table(to_rows(items), empty_key, lang)
+    render_table(to_rows(items), empty_key, lang, link_column)
 
 
 def render_monitoring(client: Any, lang: str, tabs: list[Any]) -> None:
@@ -404,8 +424,25 @@ def render_monitoring(client: Any, lang: str, tabs: list[Any]) -> None:
                 t("col_score", lang): round(a.fake_score, 4),
                 t("col_message", lang): a.message,
                 t("col_session", lang): a.session_id,
+                t("col_report", lang): report_url(client, a.session_id, lang),
             }
             for a in items
+        ]
+
+    def transaction_rows(items: list[Any]) -> list[dict[str, Any]]:
+        return [
+            {
+                t("col_time", lang): fmt_time(d.created_at),
+                t("col_amount", lang): round(d.amount_inr, 2),
+                t("tx_beneficiary", lang): d.beneficiary or missing,
+                t("tx_tier", lang): t(f"tx_tier_{d.tier}", lang),
+                t("tx_action", lang): t(f"tx_action_{d.action}", lang),
+                t("tx_status", lang): t(f"tx_status_{d.status}", lang),
+                t("tx_steps", lang): ", ".join(t(f"tx_method_{m}", lang) for m in d.completed_steps)
+                or missing,
+                t("col_report", lang): report_url(client, d.session_id, lang),
+            }
+            for d in items
         ]
 
     with tabs[0]:
@@ -434,6 +471,17 @@ def render_monitoring(client: Any, lang: str, tabs: list[Any]) -> None:
             lambda: client.alerts(limit=ALERTS_LIMIT),
             alert_rows,
             "empty_alerts",
+            link_column=t("col_report", lang),
+        )
+    with tabs[3]:
+        _monitor(
+            lang,
+            "transactions",
+            "transactions_header",
+            lambda: client.transactions(limit=TRANSACTIONS_LIMIT),
+            transaction_rows,
+            "empty_transactions",
+            link_column=t("col_report", lang),
         )
 
 
@@ -447,7 +495,16 @@ def main() -> None:
         st.warning(t("stub_notice", lang))
 
     tabs = st.tabs(
-        [t(k, lang) for k in ("tab_analyze", "tab_sessions", "tab_blocklist", "tab_alerts")]
+        [
+            t(k, lang)
+            for k in (
+                "tab_analyze",
+                "tab_sessions",
+                "tab_blocklist",
+                "tab_alerts",
+                "tab_transactions",
+            )
+        ]
     )
     with tabs[0]:
         render_analyze(client, lang)

@@ -13,6 +13,34 @@ APP = Path(__file__).parents[1] / "src" / "voxguard" / "ui" / "app.py"
 MONITOR = Path(__file__).parents[1] / "src" / "voxguard" / "api" / "monitor_page.py"
 
 
+REPORT = Path(__file__).parents[1] / "src" / "voxguard" / "api" / "report_page.py"
+
+
+def _report_keys() -> set[str]:
+    """Literal keys in the incident report template (api/report_page.py)."""
+    return set(re.findall(r"""["']([a-z]+_[a-z0-9_]+)["']""", REPORT.read_text())) & set(EN)
+
+
+def _transaction_keys() -> set[str]:
+    """Labels built from the transfer policy's values (tiers, actions, statuses, methods, reason
+    codes), used by the report, the monitor page and the Streamlit Transactions tab."""
+    from voxguard.api import policy
+
+    keys = {f"tx_tier_{x}" for x in policy.TIERS} | {f"tx_action_{x}" for x in policy.ACTIONS}
+    keys |= {f"tx_status_{policy.initial_status(a)}" for a in policy.ACTIONS} | {
+        "tx_status_released"
+    }
+    keys |= {f"tx_method_{x}" for x in policy.METHODS} | {
+        f"tx_reason_risk_{x}" for x in policy.TIERS
+    }
+    keys |= {f"tx_reason_{x}" for x in ("not_enough_audio", "caller_flagged_before", "high_value")}
+    return keys
+
+
+def test_every_transaction_label_exists() -> None:
+    assert _transaction_keys() <= set(EN)
+
+
 def _monitor_keys() -> set[str]:
     """Keys the live call monitor page (HTML/JS inside monitor_page.py) refers to."""
     return set(re.findall(r"monitor_\w+", MONITOR.read_text())) - {"monitor_page"}
@@ -39,7 +67,8 @@ def test_placeholders_match_between_languages() -> None:
 def test_hindi_is_actually_translated() -> None:
     same = {k for k in EN if EN[k] == HI[k]}
     # brand name, "API" heading, bilingual selector label, em dash: intentionally identical
-    assert same <= {"app_title", "api_section", "language", "missing_value"}
+    # "OTP" is used as is in Hindi
+    assert same <= {"app_title", "api_section", "language", "missing_value", "tx_method_otp"}
 
 
 def test_unknown_key_fails_clearly() -> None:
@@ -91,7 +120,8 @@ def test_no_unused_translation_keys() -> None:
         for n in ast.walk(ast.parse(APP.read_text()))
         if isinstance(n, ast.Constant) and isinstance(n.value, str)
     }  # keys also reach t() through variables, e.g. the tab and header tuples
-    assert set(EN) - constants - dynamic - _monitor_keys() == set()
+    used = _monitor_keys() | _report_keys() | _transaction_keys()
+    assert set(EN) - constants - dynamic - used == set()
 
 
 def test_every_key_the_monitor_page_uses_exists_and_is_sent_to_it() -> None:
