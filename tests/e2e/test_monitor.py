@@ -112,6 +112,11 @@ def test_a_played_recording_is_monitored_on_the_phone_line(monitor: Page, stack:
     assert row["codec_applied"] == "g711_mulaw"
 
 
+def test_consent_notice_is_shown_and_guidance_waits_for_an_alert(monitor: Page) -> None:
+    expect(monitor.locator("#consent")).to_have_text(EN["monitor_consent"])
+    expect(monitor.locator("#guidance")).to_be_hidden()  # shown once an alert has been raised
+
+
 def test_the_page_switches_to_hindi(monitor: Page) -> None:
     monitor.locator("#lang").select_option("hi")
     expect(monitor.locator("h1")).to_have_text(HI["monitor_title"])

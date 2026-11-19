@@ -51,6 +51,7 @@ def test_messages_are_readable() -> None:
     alert = {"type": "alert", "t_s": 6.25, "running_score": 0.9, "threshold": 0.5}
     assert "ALERT" in sc.describe({**alert, "level": "high"}) and "6.2" in sc.describe(alert)
     assert "CAUTION" in sc.describe({**alert, "level": "caution"})
+    assert "1930" in sc.describe(alert)  # what to do, with India's cyber crime helpline
     final = {
         "type": "final",
         "stored": True,

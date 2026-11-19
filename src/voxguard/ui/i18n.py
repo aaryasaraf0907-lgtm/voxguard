@@ -162,6 +162,22 @@ EN: dict[str, str] = {
         "Listens through this computer's microphone, or plays a recording; it is not connected"
         " to a phone line. The first score needs about 4 s of audio."
     ),
+    "monitor_consent": (
+        "Before you start: tell the other person that the call is being checked for AI-generated"
+        " voices. Use it only on calls you take part in."
+    ),
+    "monitor_guidance_title": "What to do now",
+    "monitor_guidance_callback": (
+        "Hang up and call back on a number you already have for this person or organisation."
+    ),
+    "monitor_guidance_question": (
+        "Ask something only the real person would know. Urgency or secrecy is not a reason to skip"
+        " checks."
+    ),
+    "monitor_guidance_report": (
+        "If money, OTPs or passwords were asked for, report it: call 1930 (National Cyber Crime"
+        " Helpline) or use cybercrime.gov.in."
+    ),
     "monitor_caller": "Caller ID (optional)",
     "monitor_codec": "Phone line",
     "monitor_codec_none": "None (audio as captured)",
@@ -349,6 +365,21 @@ HI: dict[str, str] = {
     "monitor_note": (
         "इस कंप्यूटर के माइक्रोफ़ोन से सुनता है, या रिकॉर्डिंग चलाता है; यह फ़ोन लाइन से जुड़ा"
         " नहीं है। पहले स्कोर के लिए लगभग 4 सेकंड का ऑडियो चाहिए।"
+    ),
+    "monitor_consent": (
+        "शुरू करने से पहले: सामने वाले व्यक्ति को बताएँ कि कॉल की AI से बनी आवाज़ों के लिए जाँच हो"
+        " रही है। इसे केवल उन्हीं कॉल पर इस्तेमाल करें जिनमें आप शामिल हैं।"
+    ),
+    "monitor_guidance_title": "अब क्या करें",
+    "monitor_guidance_callback": (
+        "कॉल काटें और इस व्यक्ति या संस्था के उस नंबर पर वापस कॉल करें जो आपके पास पहले से है।"
+    ),
+    "monitor_guidance_question": (
+        "कुछ ऐसा पूछें जो केवल असली व्यक्ति जानता हो। जल्दबाज़ी या गोपनीयता जाँच छोड़ने का कारण नहीं है।"
+    ),
+    "monitor_guidance_report": (
+        "अगर पैसे, OTP या पासवर्ड माँगे गए हों तो रिपोर्ट करें: 1930 (राष्ट्रीय साइबर अपराध हेल्पलाइन)"
+        " पर कॉल करें या cybercrime.gov.in पर जाएँ।"
     ),
     "monitor_caller": "कॉलर आईडी (वैकल्पिक)",
     "monitor_codec": "फ़ोन लाइन",

@@ -232,7 +232,10 @@ HTML and JavaScript, no framework, nothing from the network) is its browser clie
    the first time the running average of **at least two windows** reaches the threshold: on the
    real model, a genuine recording's first window sat just over it (0.012836 against 0.012676).
    The page grades it: just over the threshold (under 1.5 x, the UI's caution band) it asks to
-   verify the caller another way; well over it, to hang up and call back.
+   verify the caller another way; well over it, to hang up and call back. Once an alert is
+   raised the page lists what to do (call back on a known number, ask something only the real
+   person knows, report at 1930, India's National Cyber Crime Helpline, or cybercrime.gov.in). A
+   consent notice asks the user to tell the other party that the call is being checked.
 4. On `{"type": "end"}`, a hang-up or the length limit, one session is stored through the usual
    prevention layer (alert and blocklist when flagged). Its score is the running average of the
    live windows. A call shorter than one window is scored once at the end if it is at least 1 s.

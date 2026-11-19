@@ -110,6 +110,9 @@ def describe(m: dict) -> str:
         )
         return (
             f"{m['t_s']:6.1f} s  {head} (running {m['running_score']:.6f} >= {m['threshold']:.6f})"
+            "\n         Call back on a number you already have; ask something only the real"
+            " person knows;\n         if money or OTPs were asked for, report it: 1930 or"
+            " cybercrime.gov.in"
         )
     if kind == "final":
         if not m.get("stored"):

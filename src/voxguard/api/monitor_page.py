@@ -66,6 +66,9 @@ PAGE = r"""<!doctype html>
   #banner.info { background:var(--info); color:var(--info-fg); }
   #banner.caution { background:#fef3c7; color:#78350f; }
   #banner strong { font-size:1.25rem; display:block; }
+  #guidance { margin-top:10px; }
+  #guidance ul { margin:4px 0 0; padding-left:20px; }
+  #consent { border-left:4px solid #f59e0b; background:#fffbeb; padding:8px 12px; border-radius:6px; }
   .stats { display:grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap:12px; margin:8px 0 16px; }
   .stat { background:var(--panel); border-radius:10px; padding:10px 12px; }
   .stat span { display:block; font-size:.8rem; color:var(--muted); }
@@ -88,6 +91,7 @@ PAGE = r"""<!doctype html>
     </label>
   </div>
   <p class="muted" data-t="monitor_note"></p>
+  <p id="consent" data-t="monitor_consent"></p>
 
   <div class="row">
     <label><span data-t="monitor_caller"></span><input id="caller" maxlength="128" autocomplete="off"></label>
@@ -100,7 +104,16 @@ PAGE = r"""<!doctype html>
     <button id="play" data-t="monitor_play" disabled></button>
   </div>
 
-  <div id="banner"><strong id="headline"></strong><div id="detail"></div></div>
+  <div id="banner"><strong id="headline"></strong><div id="detail"></div>
+    <div id="guidance" hidden>
+      <b data-t="monitor_guidance_title"></b>
+      <ul>
+        <li data-t="monitor_guidance_callback"></li>
+        <li data-t="monitor_guidance_question"></li>
+        <li data-t="monitor_guidance_report"></li>
+      </ul>
+    </div>
+  </div>
   <div class="stats">
     <div class="stat"><span data-t="monitor_elapsed"></span><b id="elapsed">–</b></div>
     <div class="stat"><span data-t="monitor_window"></span><b id="window">–</b></div>
@@ -149,6 +162,7 @@ function applyLanguage() {
 function showBanner(kind, headKey, detail) {
   state.banner = [kind, headKey, detail];
   $("banner").className = kind;
+  $("guidance").hidden = !state.alerted;  // what to do, once an alert has been raised
   $("headline").textContent = headKey ? t(headKey, detail && detail.vars) : "";
   $("detail").textContent = detail && detail.key ? t(detail.key, detail.vars) : (detail && detail.text) || "";
 }

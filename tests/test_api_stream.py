@@ -301,6 +301,9 @@ def test_monitor_page_is_served_with_both_languages() -> None:
     body = r.text
     assert "__STRINGS__" not in body and "/v1/stream" in body
     assert EN["monitor_alert_advice"] in body and HI["monitor_alert_advice"] in body
+    for key in ("monitor_consent", "monitor_guidance_report"):  # consent notice, 1930 guidance
+        assert EN[key] in body and HI[key] in body
+    assert 'id="consent"' in body and 'id="guidance" hidden' in body  # guidance only after alert
     assert "<script src=" not in body and "https://" not in body  # nothing from the network
 
 
