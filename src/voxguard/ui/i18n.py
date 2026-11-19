@@ -154,6 +154,63 @@ EN: dict[str, str] = {
     "timeline_running": "Running average",
     "timeline_threshold": "Threshold",
     "timeline_replay": "Replay",
+    "monitor_link": "Open the live call monitor",
+    "monitor_link_help": "Listens while a call is going on and warns during the call.",
+    "monitor_title": "VoxGuard live call monitor",
+    "monitor_intro": "Listens while the call is going on and updates the risk every 2 seconds.",
+    "monitor_note": (
+        "Listens through this computer's microphone, or plays a recording; it is not connected"
+        " to a phone line. The first score needs about 4 s of audio."
+    ),
+    "monitor_caller": "Caller ID (optional)",
+    "monitor_codec": "Phone line",
+    "monitor_codec_none": "None (audio as captured)",
+    "monitor_start_mic": "Start listening (microphone)",
+    "monitor_file": "Or play a recording and monitor it",
+    "monitor_play": "Play and monitor",
+    "monitor_stop": "Stop",
+    "monitor_status_idle": "Not listening.",
+    "monitor_status_connecting": "Connecting…",
+    "monitor_status_listening": "Listening… the first score comes after about 4 s.",
+    "monitor_safe": "Below the threshold so far.",
+    "monitor_checking": "Checking: one window is over the threshold; waiting for more audio.",
+    "monitor_caution": "Caution: the risk is just over the threshold.",
+    "monitor_caution_advice": (
+        "Verify the caller another way before acting on this call: call back on a number you"
+        " already trust."
+    ),
+    "monitor_alert": "Warning: this voice may be AI-generated.",
+    "monitor_alert_advice": (
+        "Do not approve payments or share codes on this call. Hang up and call back on a number"
+        " you already trust."
+    ),
+    "monitor_alert_cleared": (
+        "The risk reached the threshold at {seconds} s and is below it now. Verify the caller"
+        " before acting."
+    ),
+    "monitor_elapsed": "Audio",
+    "monitor_window": "Window score",
+    "monitor_running": "Running average",
+    "monitor_threshold": "Threshold",
+    "monitor_seconds": "Seconds of audio",
+    "monitor_busy": "Server busy: a window was skipped.",
+    "monitor_final_flagged": (
+        "Call ended: flagged (score {score} ≥ threshold {threshold}). Saved as session {session}."
+    ),
+    "monitor_final_clear": (
+        "Call ended: not flagged (score {score} < threshold {threshold}). Saved as session"
+        " {session}."
+    ),
+    "monitor_final_none": "The call ended before any audio could be scored.",
+    "monitor_error": "Error: {detail}",
+    "monitor_mic_denied": (
+        "Microphone access was blocked. Allow it in the browser's address bar and try again."
+    ),
+    "monitor_unsupported": (
+        "This browser cannot capture audio here. Use a recent Chrome, Edge or Firefox, on"
+        " localhost or HTTPS."
+    ),
+    "monitor_disconnected": "The connection to the API closed.",
     "timeline_series": "Series",
     "err_busy": (
         "The server is busy with other analyses right now. Nothing was analyzed; please try"
@@ -285,6 +342,60 @@ HI: dict[str, str] = {
     "timeline_running": "चालू औसत",
     "timeline_threshold": "सीमा",
     "timeline_replay": "दोबारा चलाएँ",
+    "monitor_link": "लाइव कॉल मॉनिटर खोलें",
+    "monitor_link_help": "कॉल चलते समय सुनता है और कॉल के दौरान ही चेतावनी देता है।",
+    "monitor_title": "VoxGuard लाइव कॉल मॉनिटर",
+    "monitor_intro": "कॉल चलते समय सुनता है और हर 2 सेकंड में जोखिम अपडेट करता है।",
+    "monitor_note": (
+        "इस कंप्यूटर के माइक्रोफ़ोन से सुनता है, या रिकॉर्डिंग चलाता है; यह फ़ोन लाइन से जुड़ा"
+        " नहीं है। पहले स्कोर के लिए लगभग 4 सेकंड का ऑडियो चाहिए।"
+    ),
+    "monitor_caller": "कॉलर आईडी (वैकल्पिक)",
+    "monitor_codec": "फ़ोन लाइन",
+    "monitor_codec_none": "कोई नहीं (जैसा रिकॉर्ड हुआ)",
+    "monitor_start_mic": "सुनना शुरू करें (माइक्रोफ़ोन)",
+    "monitor_file": "या कोई रिकॉर्डिंग चलाएँ और उसकी निगरानी करें",
+    "monitor_play": "चलाएँ और निगरानी करें",
+    "monitor_stop": "रोकें",
+    "monitor_status_idle": "सुन नहीं रहा।",
+    "monitor_status_connecting": "जुड़ रहा है…",
+    "monitor_status_listening": "सुन रहा है… पहला स्कोर लगभग 4 सेकंड बाद आएगा।",
+    "monitor_safe": "अब तक सीमा से नीचे।",
+    "monitor_checking": "जाँच जारी: एक विंडो सीमा से ऊपर है; और ऑडियो की प्रतीक्षा है।",
+    "monitor_caution": "सावधानी: जोखिम सीमा से थोड़ा ऊपर है।",
+    "monitor_caution_advice": (
+        "इस कॉल पर कुछ भी करने से पहले कॉलर की किसी और तरीके से पुष्टि करें: किसी भरोसेमंद नंबर पर वापस कॉल करें।"
+    ),
+    "monitor_alert": "चेतावनी: यह आवाज़ AI से बनी हो सकती है।",
+    "monitor_alert_advice": (
+        "इस कॉल पर कोई भुगतान स्वीकृत न करें और कोई कोड न बताएँ। कॉल काटें और किसी भरोसेमंद"
+        " नंबर पर वापस कॉल करें।"
+    ),
+    "monitor_alert_cleared": (
+        "जोखिम {seconds} सेकंड पर सीमा तक पहुँचा था और अभी उससे नीचे है। कुछ भी करने से पहले कॉलर की पुष्टि करें।"
+    ),
+    "monitor_elapsed": "ऑडियो",
+    "monitor_window": "विंडो स्कोर",
+    "monitor_running": "चालू औसत",
+    "monitor_threshold": "सीमा",
+    "monitor_seconds": "ऑडियो के सेकंड",
+    "monitor_busy": "सर्वर व्यस्त: एक विंडो छोड़ दी गई।",
+    "monitor_final_flagged": (
+        "कॉल समाप्त: चिह्नित (स्कोर {score} ≥ सीमा {threshold})। सत्र {session} के रूप में सहेजा गया।"
+    ),
+    "monitor_final_clear": (
+        "कॉल समाप्त: चिह्नित नहीं (स्कोर {score} < सीमा {threshold})। सत्र {session} के रूप में सहेजा गया।"
+    ),
+    "monitor_final_none": "किसी भी ऑडियो का स्कोर बनने से पहले कॉल समाप्त हो गई।",
+    "monitor_error": "त्रुटि: {detail}",
+    "monitor_mic_denied": (
+        "माइक्रोफ़ोन की अनुमति रोकी गई। ब्राउज़र के पता बार में अनुमति दें और फिर कोशिश करें।"
+    ),
+    "monitor_unsupported": (
+        "यह ब्राउज़र यहाँ ऑडियो नहीं ले सकता। localhost या HTTPS पर हाल का Chrome, Edge या"
+        " Firefox इस्तेमाल करें।"
+    ),
+    "monitor_disconnected": "API से कनेक्शन बंद हो गया।",
     "timeline_series": "श्रृंखला",
     "err_busy": (
         "सर्वर अभी दूसरे विश्लेषणों में व्यस्त है। कुछ भी जाँचा नहीं गया; कृपया कुछ सेकंड बाद फिर कोशिश करें।"

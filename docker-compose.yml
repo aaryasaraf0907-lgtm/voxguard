@@ -41,6 +41,8 @@ services:
     image: voxguard-ui:local
     environment:
       VOXGUARD_API_URL: http://api:8000
+      # the live call monitor link: the browser reaches the API through the published port
+      VOXGUARD_MONITOR_URL: http://localhost:${VOXGUARD_API_PORT:-8000}/monitor
       STREAMLIT_SERVER_MAX_UPLOAD_SIZE: ${VOXGUARD_UI_MAX_UPLOAD_MB:-25}
     depends_on:
       api:

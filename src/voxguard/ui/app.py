@@ -6,6 +6,7 @@ The UI only talks to the FastAPI backend; it does no inference and no prevention
 from __future__ import annotations
 
 import hashlib
+import os
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -101,7 +102,17 @@ def render_sidebar(client: Any, lang_default: str) -> tuple[str, str | None]:
         except ApiError as err:
             st.error(t("status_unavailable", lang))
             st.caption(error_text(err, lang))
+        st.link_button(
+            t("monitor_link", lang), monitor_url(client), help=t("monitor_link_help", lang)
+        )
     return lang, detector
+
+
+def monitor_url(client: Any) -> str:
+    """The live call monitor page, as the browser reaches it. In docker compose the UI talks to
+    the API by service name (http://api:8000), which the browser cannot reach, so compose sets
+    VOXGUARD_MONITOR_URL."""
+    return os.environ.get("VOXGUARD_MONITOR_URL", "").strip() or f"{client.base_url}/monitor"
 
 
 def near_threshold(score: float, threshold: float) -> bool:

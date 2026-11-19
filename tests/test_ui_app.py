@@ -804,3 +804,15 @@ def test_timeline_chart_is_log_scale_with_threshold_and_flag_marker() -> None:
         hi,
     ]
     assert len(first["layer"][0]["data"]["values"]) == 2  # one point, two series
+
+
+def test_sidebar_links_to_the_live_call_monitor(monkeypatch) -> None:
+    monkeypatch.delenv("VOXGUARD_MONITOR_URL", raising=False)
+    at = _run(FakeClient())
+    (link,) = at.get("link_button")
+    assert (
+        link.proto.label == t("monitor_link", "en") and link.proto.url == "http://fake:8000/monitor"
+    )
+    monkeypatch.setenv("VOXGUARD_MONITOR_URL", "http://localhost:8001/monitor")
+    (link,) = _run(FakeClient(), lang="hi").get("link_button")
+    assert link.proto.label == t("monitor_link", "hi") and link.proto.url.endswith(":8001/monitor")

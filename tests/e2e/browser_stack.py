@@ -10,6 +10,7 @@ Generated audio only; nothing leaves the temporary directory.
 
 from __future__ import annotations
 
+import atexit
 import contextlib
 import io
 import json
@@ -229,16 +230,28 @@ def stack(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Stack]:
         s.stop_api()
 
 
+_PLAYWRIGHT: list[object] = []  # one sync Playwright per process, shared by every test module
+
+
+def playwright() -> object:
+    """The process's Playwright instance, started on first use and stopped at exit. A session
+    fixture imported into two test modules runs once per module, and one process cannot run two
+    sync Playwright instances, so the instance itself must be shared."""
+    if not _PLAYWRIGHT:
+        from playwright.sync_api import sync_playwright  # e2e group only; tests skip without it
+
+        _PLAYWRIGHT.append(sync_playwright().start())
+        atexit.register(_PLAYWRIGHT[0].stop)  # type: ignore[attr-defined]
+    return _PLAYWRIGHT[0]
+
+
 @pytest.fixture(scope="session")
 def browser() -> Iterator[object]:
-    from playwright.sync_api import sync_playwright  # e2e group only; the tests skip without it
-
-    with sync_playwright() as p:
-        b = p.chromium.launch()
-        try:
-            yield b
-        finally:
-            b.close()
+    b = playwright().chromium.launch()  # type: ignore[attr-defined]
+    try:
+        yield b
+    finally:
+        b.close()
 
 
 @pytest.fixture
