@@ -61,9 +61,19 @@ The response's `threshold` is the one applied, and the session stores it.
    (501, server default only) and available (503), then
    resample to 16 kHz and encode/decode with ffmpeg (500 on failure; never falls back to the
    original audio).
+   Steps 1 (decode onwards) to 3 hold one of a limited number of analysis slots
+   (`api/gate.py`): at most `VOXGUARD_MAX_RUNNING_ANALYSES` (default 2) run at once and at most
+   `VOXGUARD_MAX_WAITING_ANALYSES` (default 8) wait, up to 45 s, for a turn. Beyond that the
+   answer is 503 with `Retry-After: 5` at once, and nothing is scored or stored. The load test
+   showed why: throughput stops growing at about 2.8 analyses/s from 4 at once on a laptop CPU,
+   while memory keeps growing, and 4 long clips or a burst of 48 requests got the API
+   OOM-killed (docs/deployment.md, "Load test").
 3. `Detector.predict(waveform, sample_rate)`.
 4. Prevention decision at the threshold chosen as above; store session (+ alert + blocklist
-   when flagged) in one transaction.
+   when flagged) in one transaction. The transaction starts with SQLite's write lock
+   (`BEGIN IMMEDIATE`) and the timestamps are taken after it, so they follow commit order: an
+   `/v1/alerts?since=` poller never skips an alert that committed late. The database runs in
+   WAL mode with a 30 s lock wait, so reads do not block writes.
 5. Return `AnalyzeResponse` (label, score, threshold, detector latency, model version, flagged,
    `codec_applied`, `codec_ms`).
 
@@ -82,8 +92,9 @@ The response's `threshold` is the one applied, and the session stores it.
   switching language does not refetch them; **Refresh** and a new analysis refetch at once.
   Errors are never cached.
 - HTTP errors map to messages by kind: 413, 415, 422, 501 (simulation not configured), 503
-  (simulation unavailable; for an analysis without simulation, the decoder's ffmpeg is
-  missing), other 5xx, timeouts, unreachable API.
+  with `Retry-After` (server busy: try again in a few seconds), other 503 (simulation
+  unavailable; for an analysis without simulation, the decoder's ffmpeg is missing), other 5xx,
+  timeouts, unreachable API.
 
 ## Audio decoding and the ffmpeg fallback
 

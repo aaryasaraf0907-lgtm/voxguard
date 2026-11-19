@@ -12,6 +12,7 @@ from fastapi import Request
 from sqlalchemy.orm import Session
 
 from voxguard.api.db import require_sqlite_url
+from voxguard.api.gate import DEFAULT_RUNNING, DEFAULT_WAITING, AnalysisGate
 from voxguard.api.thresholds import ThresholdSet
 from voxguard.data.codecs import CODECS
 from voxguard.inference import Detector, threshold_from_env
@@ -34,6 +35,19 @@ def _positive_float_env(name: str, default: float) -> float:
     return value
 
 
+def _int_env(name: str, default: int, minimum: int) -> int:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        raise ValueError(f"{name} must be a whole number >= {minimum}, got {raw!r}") from None
+    if value < minimum:
+        raise ValueError(f"{name} must be a whole number >= {minimum}, got {raw!r}")
+    return value
+
+
 @dataclass(frozen=True)
 class Settings:
     max_upload_bytes: int = int(DEFAULT_MAX_UPLOAD_MB * 1024 * 1024)
@@ -44,6 +58,8 @@ class Settings:
     simulate_codec: str | None = None  # codec used when a request sets simulate_codec=true
     threshold_override: float | None = None  # VOXGUARD_THRESHOLD if set: beats thresholds.json
     device: str = "cpu"  # VOXGUARD_DEVICE for the real detector: cpu | cuda | auto
+    max_running_analyses: int = DEFAULT_RUNNING  # VOXGUARD_MAX_RUNNING_ANALYSES (see api/gate.py)
+    max_waiting_analyses: int = DEFAULT_WAITING  # VOXGUARD_MAX_WAITING_ANALYSES
 
     def __post_init__(self) -> None:
         require_sqlite_url(self.db_url)
@@ -57,6 +73,10 @@ class Settings:
         t = self.threshold_override
         if t is not None and (not math.isfinite(t) or not 0.0 <= t <= 1.0):
             raise ValueError(f"VOXGUARD_THRESHOLD must be in [0, 1], got {t!r}")
+        if self.max_running_analyses < 1 or self.max_waiting_analyses < 0:
+            raise ValueError(
+                "VOXGUARD_MAX_RUNNING_ANALYSES must be >= 1 and VOXGUARD_MAX_WAITING_ANALYSES >= 0"
+            )
         if self.threshold_mode not in ("eer", "low_far"):
             raise ValueError(
                 f"VOXGUARD_THRESHOLD_MODE must be 'eer' or 'low_far', got {self.threshold_mode!r}"
@@ -97,6 +117,8 @@ class Settings:
                 threshold_from_env() if os.environ.get("VOXGUARD_THRESHOLD", "").strip() else None
             ),
             device=os.environ.get("VOXGUARD_DEVICE", "").strip().lower() or "cpu",
+            max_running_analyses=_int_env("VOXGUARD_MAX_RUNNING_ANALYSES", DEFAULT_RUNNING, 1),
+            max_waiting_analyses=_int_env("VOXGUARD_MAX_WAITING_ANALYSES", DEFAULT_WAITING, 0),
         )
 
 
@@ -106,6 +128,10 @@ def get_settings(request: Request) -> Settings:
 
 def get_detector_dep(request: Request) -> Detector:
     return request.app.state.detector
+
+
+def get_gate(request: Request) -> AnalysisGate:
+    return request.app.state.gate
 
 
 def get_thresholds(request: Request) -> ThresholdSet | None:

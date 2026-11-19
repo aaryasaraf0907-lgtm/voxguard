@@ -132,6 +132,16 @@ def test_http_errors_map_to_distinct_kinds(status: int, kind: str) -> None:
     assert (exc.value.kind, exc.value.status, exc.value.detail) == (kind, status, "nope")
 
 
+def test_503_with_retry_after_means_busy() -> None:
+    """The API's analysis queue is full: temporary, unlike a missing codec or decoder."""
+    r = _response(503, {"detail": "Server busy"})
+    r.headers["Retry-After"] = "5"
+    c, _ = _client(r)
+    with pytest.raises(ApiError) as exc:
+        c.health()
+    assert (exc.value.kind, exc.value.status, exc.value.detail) == ("busy", 503, "Server busy")
+
+
 def test_validation_error_list_detail_is_stringified() -> None:
     c, _ = _client(_response(422, {"detail": [{"loc": ["query", "limit"], "msg": "bad"}]}))
     with pytest.raises(ApiError) as exc:

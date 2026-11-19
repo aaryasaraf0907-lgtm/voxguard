@@ -4,7 +4,8 @@ Every user-visible string in the UI goes through ``t(key, lang)``. Both dictiona
 identical keys and no empty values (enforced by tests).
 
 Hindi (``hi``): reviewed by Aarya on PR #14 (CLAUDE.md section 11); her edits are applied. Strings
-added after that review (phone-line simulation, 503 handling) still need her review.
+added after that review (phone-line simulation, 503 handling, server busy) still need her
+review.
 """
 
 from __future__ import annotations
@@ -128,6 +129,10 @@ EN: dict[str, str] = {
         "This server can't decode this file format right now (its ffmpeg is missing)."
         " Nothing was analyzed; try a WAV or FLAC file."
     ),
+    "err_busy": (
+        "The server is busy with other analyses right now. Nothing was analyzed; please try"
+        " again in a few seconds."
+    ),
     "err_server": "The API reported an internal error. Please try again.",
     "err_bad_response": "The API returned an unexpected response.",
     "err_other": "The request failed.",
@@ -233,6 +238,9 @@ HI: dict[str, str] = {
     "err_decoder_unavailable": (
         "यह सर्वर अभी इस फ़ाइल प्रारूप को डिकोड नहीं कर सकता (उसमें ffmpeg नहीं है)।"
         " कुछ भी जाँचा नहीं गया; WAV या FLAC फ़ाइल आज़माएँ।"
+    ),
+    "err_busy": (
+        "सर्वर अभी दूसरे विश्लेषणों में व्यस्त है। कुछ भी जाँचा नहीं गया; कृपया कुछ सेकंड बाद फिर कोशिश करें।"
     ),
     "err_server": "API ने आंतरिक त्रुटि बताई। कृपया फिर कोशिश करें।",
     "err_bad_response": "API से अप्रत्याशित उत्तर मिला।",
