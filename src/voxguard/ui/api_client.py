@@ -32,6 +32,7 @@ ErrorKind = Literal[
     "invalid",
     "not_implemented",
     "unavailable",
+    "busy",
     "server",
     "bad_response",
     "other",
@@ -72,7 +73,11 @@ def _detail(response: requests.Response) -> str | None:
     return None if detail is None else str(detail)[:300]
 
 
-def _kind_for(status: int) -> ErrorKind:
+def _kind_for(status: int, retry_after: str | None = None) -> ErrorKind:
+    # 503 with Retry-After: the API's analysis queue is full (temporary). Without it, 503 means
+    # a missing codec or decoder (lasting until the server is fixed).
+    if status == 503 and retry_after is not None:
+        return "busy"
     if status in _STATUS_KIND:
         return _STATUS_KIND[status]
     return "server" if status >= 500 else "other"
@@ -98,7 +103,8 @@ class VoxGuardClient:
         except requests.RequestException:
             raise ApiError("unreachable") from None
         if not response.ok:
-            raise ApiError(_kind_for(response.status_code), response.status_code, _detail(response))
+            kind = _kind_for(response.status_code, response.headers.get("Retry-After"))
+            raise ApiError(kind, response.status_code, _detail(response))
         try:
             return response.json()
         except ValueError:

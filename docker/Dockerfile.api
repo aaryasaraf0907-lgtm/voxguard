@@ -42,9 +42,13 @@ RUN useradd --create-home --uid 1000 voxguard && mkdir -p /data && chown voxguar
 USER voxguard
 # UV_NO_SYNC: a `uv run` in the container must not sync the environment to uv.lock, which
 # would replace the CPU-only torch with the CUDA build.
+# MALLOC_ARENA_MAX: glibc otherwise keeps a memory arena per thread that ever allocated, and the
+# load test showed the API's memory growing with the number of request threads (docs/deployment.md,
+# "Load test").
 ENV VOXGUARD_DB_URL=sqlite:////data/voxguard.db \
     HF_HOME=/data/hf-cache \
-    UV_NO_SYNC=1
+    UV_NO_SYNC=1 \
+    MALLOC_ARENA_MAX=2
 
 EXPOSE 8000
 HEALTHCHECK --interval=10s --timeout=5s --start-period=20s --retries=3 \

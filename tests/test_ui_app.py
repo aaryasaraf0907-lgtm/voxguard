@@ -338,7 +338,16 @@ def test_recorded_audio_is_analyzed_too() -> None:
 
 @pytest.mark.parametrize(
     "kind",
-    ["too_large", "unsupported", "invalid", "not_implemented", "unavailable", "server", "timeout"],
+    [
+        "too_large",
+        "unsupported",
+        "invalid",
+        "not_implemented",
+        "unavailable",
+        "busy",
+        "server",
+        "timeout",
+    ],
 )
 def test_analysis_errors_show_distinct_messages(kind: str) -> None:
     client = FakeClient()

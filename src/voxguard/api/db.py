@@ -8,8 +8,11 @@ from typing import Any
 from sqlalchemy import DateTime, Engine, ForeignKey, TypeDecorator, create_engine, event
 from sqlalchemy.engine import URL, make_url
 from sqlalchemy.exc import ArgumentError
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 from sqlalchemy.pool import StaticPool
+
+BUSY_TIMEOUT_MS = 30_000
+IMMEDIATE = "voxguard_begin_immediate"  # execution option read by the "begin" listener
 
 
 class UTCDateTime(TypeDecorator[datetime]):
@@ -98,13 +101,39 @@ def make_engine(url: str) -> Engine:
         kwargs["poolclass"] = StaticPool
     engine = create_engine(url, **kwargs)
 
+    file_db = parsed.database not in (None, "", ":memory:")
+
     @event.listens_for(engine, "connect")
-    def _enforce_foreign_keys(dbapi_connection: Any, _record: Any) -> None:
+    def _configure_connection(dbapi_connection: Any, _record: Any) -> None:
+        # SQLAlchemy emits BEGIN itself (_begin below), so the driver must not (its implicit
+        # transactions start late and cannot be IMMEDIATE).
+        dbapi_connection.isolation_level = None
         cursor = dbapi_connection.cursor()
         cursor.execute("PRAGMA foreign_keys=ON")
+        # Load test (18 Nov 2026): with the default rollback journal and 5 s lock wait, 16+
+        # simultaneous analyses plus a polling reader gave "database is locked" (500). WAL lets
+        # readers run during a write; writers still take turns, waiting up to 30 s.
+        cursor.execute(f"PRAGMA busy_timeout={BUSY_TIMEOUT_MS}")
+        if file_db:
+            cursor.execute("PRAGMA journal_mode=WAL")
         cursor.close()
 
+    @event.listens_for(engine, "begin")
+    def _begin(conn: Any) -> None:
+        immediate = conn.get_execution_options().get(IMMEDIATE, False)
+        conn.exec_driver_sql("BEGIN IMMEDIATE" if immediate else "BEGIN")
+
     return engine
+
+
+def begin_write(db: Session) -> None:
+    """Start ``db``'s transaction holding SQLite's write lock (BEGIN IMMEDIATE).
+
+    Writers then take turns, so a timestamp taken after this call follows commit order: an
+    ``/v1/alerts?since=`` poller cannot miss a row that commits after it read a newer one. (The
+    load test saw up to 900 out-of-order commits per minute without it.) Call it before the
+    first statement of the transaction."""
+    db.connection(execution_options={IMMEDIATE: True})
 
 
 def create_tables(engine: Engine) -> None:

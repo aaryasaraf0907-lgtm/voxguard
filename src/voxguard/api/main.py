@@ -17,17 +17,32 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from voxguard.api import codec_sim, prevention
 from voxguard.api.audio import decode_audio
-from voxguard.api.db import AlertRow, BlocklistRow, SessionRow, create_tables, make_engine
-from voxguard.api.deps import Settings, get_db, get_detector_dep, get_settings, get_thresholds
+from voxguard.api.db import (
+    AlertRow,
+    BlocklistRow,
+    SessionRow,
+    begin_write,
+    create_tables,
+    make_engine,
+)
+from voxguard.api.deps import (
+    Settings,
+    get_db,
+    get_detector_dep,
+    get_gate,
+    get_settings,
+    get_thresholds,
+)
 from voxguard.api.detector_loader import (
     load_detector,
     load_model_thresholds,
     warn_if_default_threshold,
 )
+from voxguard.api.gate import RETRY_AFTER_S, AnalysisGate, Busy
 from voxguard.api.limits import BodySizeLimitMiddleware
 from voxguard.api.thresholds import ThresholdSet
 from voxguard.data.codecs import CODECS
-from voxguard.inference import Detector
+from voxguard.inference import Detector, Prediction
 from voxguard.schemas import (
     AlertRecord,
     AnalyzeResponse,
@@ -47,6 +62,37 @@ MULTIPART_OVERHEAD_BYTES = 64 * 1024  # boundaries and form fields around the fi
 
 def _codec_unavailable(codec: str) -> str:
     return f"Codec simulation for {codec} is unavailable on this server."
+
+
+def _score(
+    data: bytes, chosen: str | None, det: Detector, cfg: Settings
+) -> tuple[Prediction, str | None, float | None]:
+    """Decode, simulate the phone line if ``chosen``, and run the detector.
+
+    Returns (prediction, codec applied, codec wall time in ms). Raises HTTPException; on any
+    failure nothing has been scored or stored."""
+    waveform, sample_rate = decode_audio(data, cfg.max_audio_seconds, cfg.max_upload_bytes)
+    codec_ms: float | None = None
+    if chosen is not None:  # before inference; never falls back to the original audio
+        t0 = time.perf_counter()
+        try:
+            waveform, sample_rate = codec_sim.simulate_phone_line(waveform, sample_rate, chosen)
+        except codec_sim.CodecUnavailableError:
+            raise HTTPException(503, _codec_unavailable(chosen)) from None
+        except codec_sim.CodecInputTooShortError:
+            ms = codec_sim.MIN_CODEC_SAMPLES * 1000 // codec_sim.SAMPLE_RATE
+            raise HTTPException(
+                422, f"Audio is too short for phone-line simulation (at least {ms} ms)"
+            ) from None
+        except codec_sim.CodecSimulationError:
+            raise HTTPException(500, "Codec simulation failed") from None
+        codec_ms = (time.perf_counter() - t0) * 1000.0
+    try:
+        pred = det.predict(waveform, sample_rate)
+    except Exception:
+        logger.exception("Detector failed")
+        raise HTTPException(500, "Detector failed") from None
+    return pred, chosen, codec_ms
 
 
 def configure_logging() -> None:
@@ -81,6 +127,7 @@ def create_app(
         engine = make_engine(settings.db_url)
         create_tables(engine)
         app.state.settings = settings
+        app.state.gate = AnalysisGate(settings.max_running_analyses, settings.max_waiting_analyses)
         det = detector or load_detector(settings.device)
         if detector is None and thresholds is None:
             found = load_model_thresholds(det)
@@ -95,6 +142,7 @@ def create_app(
         try:
             yield
         finally:  # also when shutdown is interrupted
+            app.state.gate.close()
             engine.dispose()
 
     app = FastAPI(title="VoxGuard", lifespan=lifespan)
@@ -116,6 +164,7 @@ def create_app(
         db: Annotated[Session, Depends(get_db)],
         cfg: Annotated[Settings, Depends(get_settings)],
         model_thresholds: Annotated[ThresholdSet | None, Depends(get_thresholds)],
+        gate: Annotated[AnalysisGate, Depends(get_gate)],
         caller_id: Annotated[str | None, Form(max_length=128)] = None,
         simulate_codec: Annotated[bool, Form()] = False,
         codec: Annotated[str | None, Form(max_length=32)] = None,
@@ -147,28 +196,17 @@ def create_app(
         if len(data) > cfg.max_upload_bytes:
             raise HTTPException(413, "Upload too large")
 
-        waveform, sample_rate = decode_audio(data, cfg.max_audio_seconds, cfg.max_upload_bytes)
-
-        codec_applied: str | None = None
-        codec_ms: float | None = None
-        if chosen is not None:  # before inference; on failure nothing is stored or scored
-            t0 = time.perf_counter()
-            try:
-                waveform, sample_rate = codec_sim.simulate_phone_line(waveform, sample_rate, chosen)
-            except codec_sim.CodecUnavailableError:
-                raise HTTPException(503, _codec_unavailable(chosen)) from None
-            except codec_sim.CodecInputTooShortError:
-                ms = codec_sim.MIN_CODEC_SAMPLES * 1000 // codec_sim.SAMPLE_RATE
-                raise HTTPException(
-                    422, f"Audio is too short for phone-line simulation (at least {ms} ms)"
-                ) from None
-            except codec_sim.CodecSimulationError:
-                raise HTTPException(500, "Codec simulation failed") from None
-            codec_ms = (time.perf_counter() - t0) * 1000.0
-            codec_applied = chosen
-
         try:
-            pred = det.predict(waveform, sample_rate)
+            # decode, simulation and inference hold the memory: bounded, on dedicated threads
+            pred, codec_applied, codec_ms = gate.run(_score, data, chosen, det, cfg)
+        except Busy:
+            logger.warning("analysis refused: server busy (%d running)", gate.running)
+            raise HTTPException(
+                503,
+                "Server busy: too many analyses at once. Try again in a few seconds.",
+                headers={"Retry-After": str(RETRY_AFTER_S)},
+            ) from None
+        try:
             # no request field says audio is known to be clean: uploads are of unknown origin
             channel = prevention.channel_for(known_clean=False, codec_applied=codec_applied)
             decision = prevention.decide(pred, cfg, model_thresholds, channel)
@@ -176,19 +214,20 @@ def create_app(
             logger.exception("Detector failed")
             raise HTTPException(500, "Detector failed") from None
 
-        row = SessionRow(
-            session_id=uuid.uuid4().hex,
-            created_at=datetime.now(UTC),
-            caller_id=prevention.normalize_caller_id(caller_id),
-            label=decision.label,
-            fake_score=pred.fake_score,
-            threshold=decision.threshold,
-            flagged=decision.flagged,
-            codec_applied=codec_applied,
-            model_version=pred.model_version,
-            latency_ms=pred.latency_ms,
-        )
         try:  # session, alert and blocklist update commit together or not at all
+            begin_write(db)  # timestamp taken under the write lock: follows commit order
+            row = SessionRow(
+                session_id=uuid.uuid4().hex,
+                created_at=datetime.now(UTC),
+                caller_id=prevention.normalize_caller_id(caller_id),
+                label=decision.label,
+                fake_score=pred.fake_score,
+                threshold=decision.threshold,
+                flagged=decision.flagged,
+                codec_applied=codec_applied,
+                model_version=pred.model_version,
+                latency_ms=pred.latency_ms,
+            )
             db.add(row)
             if row.flagged:
                 prevention.record_flag(db, row)

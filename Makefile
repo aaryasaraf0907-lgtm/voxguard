@@ -1,5 +1,5 @@
 .PHONY: setup lint format test coverage audit e2e smoke smoke-eval docker-up docker-down docker-smoke \
-	docker-ml-smoke sanity-api sanity
+	docker-ml-smoke sanity-api sanity load-test
 
 setup:
 	uv sync
@@ -57,6 +57,12 @@ docker-smoke:
 # INSTALL_ML=1 image: CPU-only torch audit + real detector on an untrained checkpoint
 docker-ml-smoke:
 	VOXGUARD_DOCKER_ML_TESTS=1 uv run pytest tests/test_docker_ml.py -v
+
+# Load test (docs/deployment.md, "Load test"). Against a scratch API or compose project only,
+# never the demo one; reports stay private. E.g.
+#    make load-test LOAD_URL=http://127.0.0.1:18310 OUT=$$HOME/private/load-1 LOAD_ARGS="--mix B --poll"
+load-test:
+	uv run python scripts/load_test.py --api-url "$(LOAD_URL)" --out "$(OUT)" $(LOAD_ARGS)
 
 # Real-audio sanity check (docs/real-audio-testing.md). Diagnostic only; reports stay private.
 # 1) a scratch API on a NEW database outside the repo (never the demo database), e.g.
