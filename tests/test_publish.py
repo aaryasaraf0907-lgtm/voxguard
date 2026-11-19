@@ -20,7 +20,7 @@ INFO = {"name": "ssl_aasist", "run": "ssl-aasist-codec-aug-v2", "epoch": 7}
 def test_model_card_states_thresholds_privacy_and_attribution() -> None:
     hist = [{"epoch": 0, "train_loss": 0.9, "dev_eer": 0.37}]
     card = model_card(THR["model_version"], INFO, THR, hist)
-    assert card.startswith("---\n") and "# VoxGuard: ssl-aasist-codec-aug-v2" in card
+    assert card.startswith("---\n") and "# LineTrue: ssl-aasist-codec-aug-v2" in card
     assert "Confidential" in card and "do not make this repository public" in card
     assert "| EER threshold | 0.0123 | 0.0456 |" in card
     assert "| Dev EER | 0.40 % | 2.00 % |" in card
@@ -51,7 +51,7 @@ def test_publish_dry_run_checks_the_api_accepts_the_file(tmp_path: Path, capsys)
     (tmp_path / "thresholds.json").write_text(json.dumps(thr))
     version = publish(tmp_path / "best.pt", "voxguard-team/voxguard-rawnet2-clean", dry_run=True)
     assert version == "rawnet2/rawnet2-clean-v2:voxguard-rawnet2-clean:epoch2"
-    assert "# VoxGuard: rawnet2-clean-v2" in capsys.readouterr().out
+    assert "# LineTrue: rawnet2-clean-v2" in capsys.readouterr().out
 
     (tmp_path / "thresholds.json").write_text(json.dumps({**thr, "model_version": "x:y:epoch9"}))
     from voxguard.api.thresholds import ThresholdsError

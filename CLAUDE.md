@@ -1,4 +1,4 @@
-# CLAUDE.md — VoxGuard
+# CLAUDE.md — LineTrue
 
 > Shared project brief for BOTH teammates' Claude Code sessions. Read it fully before doing anything.
 > If it conflicts with a direct instruction from the user in the session, follow the user and flag the conflict.
@@ -9,7 +9,7 @@
 
 ## 1. What we are building
 
-**VoxGuard** is a codec-aware voice-deepfake (vishing) detector for telephone-quality audio, plus a thin "prevention" layer and a demo app.
+**LineTrue** (display name since 19 Nov 2026; formerly VoxGuard, renamed because a public SIH26104 repo uses that name. Code identifiers stay `voxguard`: the package, `VOXGUARD_*` variables, image, repo and HF repo names) is a codec-aware voice-deepfake (vishing) detector for telephone-quality audio, plus a thin "prevention" layer and a demo app.
 
 - University semester project: Engineering Design & Innovation. Team of **2**. Final submission **mid-December 2026** (~6 weeks from 1 Nov). **All tools must be free.**
 - Aligned with SIH 2026 problem statement **SIH26104** (AICTE): "AI-Powered Real-Time Detection and Prevention of Voice Cloning Impersonation Attacks" -> detection AND prevention, and REAL-TIME (latency is a reported metric).

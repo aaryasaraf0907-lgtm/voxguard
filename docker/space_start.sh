@@ -27,13 +27,13 @@ while time.monotonic() < deadline:
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
-        sys.exit("VoxGuard API exited during startup; see the error above.")
+        sys.exit("LineTrue API exited during startup; see the error above.")
     try:
         urllib.request.urlopen("http://127.0.0.1:8000/health", timeout=2)
         sys.exit(0)
     except OSError:
         time.sleep(0.5)
-sys.exit(f"VoxGuard API did not become healthy within {timeout:g} s")
+sys.exit(f"LineTrue API did not become healthy within {timeout:g} s")
 PY
 
 exec streamlit run src/voxguard/ui/app.py \

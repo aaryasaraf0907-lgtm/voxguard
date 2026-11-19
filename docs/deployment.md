@@ -1,6 +1,6 @@
 # Deployment
 
-VoxGuard ships three images, all on `python:3.11-slim-bookworm`, installed with `uv sync --frozen`
+LineTrue ships three images, all on `python:3.11-slim-bookworm`, installed with `uv sync --frozen`
 from the committed `uv.lock`, and run as the non-root user `voxguard` (uid 1000):
 
 | Image | Dockerfile | Contents | Port |
@@ -498,11 +498,11 @@ has been deployed):
 
    ```markdown
    ---
-   title: VoxGuard
+   title: LineTrue
    sdk: docker
    app_port: 7860
    ---
-   Private VoxGuard demo.
+   Private LineTrue demo.
    ```
 
 4. In the Space **Settings > Variables and secrets**: add `VOXGUARD_SIMULATE_CODEC` (e.g.
@@ -515,7 +515,7 @@ has been deployed):
    and `VOXGUARD_MODEL_REPO` (e.g. `voxguard-team/voxguard-ssl-aasist-codec-aug`). Leave
    `VOXGUARD_DEVICE` unset (CPU). The locked torch is the CUDA build from PyPI, so this image is
    several GB and builds slowly even on CPU hardware (see Real detector above).
-6. `git add . && git commit -m "Deploy VoxGuard" && git push`. The Space builds and starts; open
+6. `git add . && git commit -m "Deploy LineTrue" && git push`. The Space builds and starts; open
    it and check the sidebar shows "Connected" and, for the real detector, "Detector: real" with
    the checkpoint's model version. If the API cannot load the model, the Space log shows the
    API's error and the container stops; it never falls back to the stub.
@@ -609,7 +609,7 @@ the model already used every core for one analysis. Raise the limits only with m
 | Build fails in `sh docker/ml_cpu.sh torch` or `... check` | The CPU-only check failed (the message names the cause: a CUDA package, a version that differs from `docker/torch-cpu.txt`, or a wheel whose hash does not match). Do not loosen the check; see [CPU-only torch](#cpu-only-torch-in-the-ml-images). |
 | API log shows `Temporary failure in name resolution ... thresholds.json` at startup | No network, but the checkpoint is cached: the API retries the `thresholds.json` lookup, then starts normally. |
 | Build fails with `no space left on device` | The ML image needs several GB: free disk, or raise Docker Desktop's disk limit; `docker system df` shows what Docker uses. |
-| Space log: `VoxGuard API did not become healthy within 60 s` | Raise `VOXGUARD_API_START_TIMEOUT` in the Space variables. |
+| Space log: `LineTrue API did not become healthy within 60 s` | Raise `VOXGUARD_API_START_TIMEOUT` in the Space variables. |
 | Real detector flags almost everything or nothing; API log warns `VOXGUARD_THRESHOLD is the default` | The checkpoint has no `thresholds.json` (or `VOXGUARD_THRESHOLD` is set): upload its `thresholds.json`, or set `VOXGUARD_THRESHOLD` explicitly. |
 | `api` exits with `unusable thresholds for VOXGUARD_MODEL_REPO=...` | `thresholds.json` is malformed, has a value outside [0, 1], or its `model_version` names a different model or epoch than the loaded checkpoint: fix the file. |
 | UI sidebar shows "API unavailable" | `docker compose ps` should show `api` as healthy. In compose the UI must use `http://api:8000`, not `localhost` (each container has its own localhost). |
