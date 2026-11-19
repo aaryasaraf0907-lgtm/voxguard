@@ -432,3 +432,20 @@ def test_an_unreachable_webhook_does_not_break_requests(caplog) -> None:
 def test_webhook_settings_are_checked(url, secret) -> None:
     with pytest.raises(ValueError, match="WEBHOOK"):
         Settings(alert_webhook_url=url, alert_webhook_secret=secret)
+
+
+def test_a_live_callers_id_is_matched_as_the_blocklist_stores_it() -> None:
+    """Spaces around a live call's caller_id must not hide an earlier flag (the blocklist keeps
+    the stripped id): a known caller's transfer is stepped up, not allowed."""
+    with TestClient(create_app(_Scripted([0.5, 0.05]), Settings(db_url="sqlite://"))) as c:
+        _upload(c, caller="+91-1")  # flagged: on the blocklist now
+        with c.websocket_connect("/v1/stream?sample_rate=16000&caller_id=%20%2B91-1%20") as ws:
+            sid = ws.receive_json()["session_id"]
+            _send(ws, 0, 7)  # two windows, both low (0.05)
+            _read_scores(ws, 2)
+            d = _check(c, sid).json()
+            ws.send_text(json.dumps({"type": "end"}))
+            while ws.receive_json()["type"] != "final":
+                pass
+    assert d["tier"] == "caution" and "caller_flagged_before" in d["reasons"]
+    assert d["action"] == "step_up"

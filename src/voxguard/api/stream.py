@@ -162,7 +162,7 @@ def _params(ws: WebSocket, cfg: Settings) -> tuple[int, str | None, str | None]:
         raise StreamError("sample_rate must be a whole number of Hz") from None
     if not MIN_RATE <= rate <= MAX_RATE:
         raise StreamError(f"sample_rate must be between {MIN_RATE} and {MAX_RATE} Hz")
-    caller = q.get("caller_id") or None
+    caller = prevention.normalize_caller_id(q.get("caller_id"))  # as the blocklist stores it
     if caller is not None and len(caller) > 128:
         raise StreamError("caller_id is longer than 128 characters")
     codec = q.get("codec") or None
