@@ -154,7 +154,7 @@ EN: dict[str, str] = {
     "timeline_running": "Running average",
     "timeline_threshold": "Threshold",
     "timeline_replay": "Replay",
-    "report_title": "VoxGuard incident report",
+    "report_title": "LineTrue incident report",
     "report_generated": "Generated {time}. Times are UTC.",
     "report_flagged": "Flagged: the call scored at or above the threshold.",
     "report_not_flagged": "Not flagged: the call scored below the threshold.",
@@ -173,7 +173,7 @@ EN: dict[str, str] = {
     ),
     "report_transfers": "Transfers checked against this call",
     "report_no_transfers": "No transfer was checked against this call.",
-    "report_privacy": "No audio was kept: VoxGuard stores scores, thresholds and decisions only.",
+    "report_privacy": "No audio was kept: LineTrue stores scores, thresholds and decisions only.",
     "report_disclaimer": (
         "A detection score is evidence to verify, not proof. Confirm through a call-back on a"
         " known number before acting."
@@ -207,7 +207,7 @@ EN: dict[str, str] = {
     "tx_reason_high_value": "The amount is at or above the high-value limit.",
     "monitor_tx_title": "Transfer approval during this call",
     "monitor_tx_help": (
-        "Try to approve a transfer while the call is going on: VoxGuard checks the call's risk"
+        "Try to approve a transfer while the call is going on: LineTrue checks the call's risk"
         " first."
     ),
     "monitor_tx_amount": "Amount (₹)",
@@ -440,7 +440,7 @@ HI: dict[str, str] = {
     "timeline_running": "चालू औसत",
     "timeline_threshold": "सीमा",
     "timeline_replay": "दोबारा चलाएँ",
-    "report_title": "VoxGuard घटना रिपोर्ट",
+    "report_title": "LineTrue घटना रिपोर्ट",
     "report_generated": "{time} पर बनी। समय UTC में हैं।",
     "report_flagged": "चिह्नित: कॉल का स्कोर सीमा के बराबर या उससे अधिक रहा।",
     "report_not_flagged": "चिह्नित नहीं: कॉल का स्कोर सीमा से कम रहा।",
@@ -457,7 +457,7 @@ HI: dict[str, str] = {
     ),
     "report_transfers": "इस कॉल के आधार पर जाँचे गए ट्रांसफ़र",
     "report_no_transfers": "इस कॉल के आधार पर कोई ट्रांसफ़र नहीं जाँचा गया।",
-    "report_privacy": "कोई ऑडियो नहीं रखा गया: VoxGuard केवल स्कोर, सीमाएँ और निर्णय सहेजता है।",
+    "report_privacy": "कोई ऑडियो नहीं रखा गया: LineTrue केवल स्कोर, सीमाएँ और निर्णय सहेजता है।",
     "report_disclaimer": (
         "पहचान स्कोर पुष्टि करने लायक संकेत है, सबूत नहीं। कुछ करने से पहले किसी ज्ञात नंबर पर"
         " वापस कॉल करके पुष्टि करें।"
@@ -490,7 +490,7 @@ HI: dict[str, str] = {
     "tx_reason_caller_flagged_before": "यह कॉलर पिछली किसी कॉल पर चिह्नित हुआ था।",
     "tx_reason_high_value": "राशि उच्च-मूल्य सीमा के बराबर या उससे अधिक है।",
     "monitor_tx_title": "इस कॉल के दौरान ट्रांसफ़र की स्वीकृति",
-    "monitor_tx_help": ("कॉल चलते समय ट्रांसफ़र स्वीकृत करके देखें: VoxGuard पहले कॉल का जोखिम जाँचता है।"),
+    "monitor_tx_help": ("कॉल चलते समय ट्रांसफ़र स्वीकृत करके देखें: LineTrue पहले कॉल का जोखिम जाँचता है।"),
     "monitor_tx_amount": "राशि (₹)",
     "monitor_tx_beneficiary": "लाभार्थी (लेबल)",
     "monitor_tx_approve": "ट्रांसफ़र स्वीकृत करें",

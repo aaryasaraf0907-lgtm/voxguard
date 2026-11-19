@@ -1,4 +1,5 @@
-"""Signed alert webhook: lets SMS, e-mail or a security team's systems receive VoxGuard alerts.
+"""Signed alert webhook: lets SMS, e-mail or a security team's systems receive LineTrue alerts
+(the header names keep the original ``VoxGuard`` prefix, like the ``VOXGUARD_*`` settings).
 
 With ``VOXGUARD_ALERT_WEBHOOK_URL`` set, each event is POSTed as JSON with
 ``X-VoxGuard-Event: <event>`` and ``X-VoxGuard-Signature: sha256=<hex>``, the HMAC-SHA256 of the
