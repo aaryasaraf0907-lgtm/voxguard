@@ -309,7 +309,10 @@ function renderFinal() {
   if (f.error) { $("final").textContent = t("monitor_error", { detail: f.error }); return; }
   if (!f.stored && f.windows === 0) { $("final").textContent = t("monitor_final_none"); return; }
   const vars = { score: f.fake_score.toFixed(6), threshold: f.threshold.toFixed(6), session: f.session_id };
-  $("final").textContent = t(f.flagged ? "monitor_final_flagged" : "monitor_final_clear", vars);
+  let text = t(f.flagged ? "monitor_final_flagged" : "monitor_final_clear", vars);
+  // the two-window rule gates only the live alert: a short call can be flagged with none
+  if (f.flagged && f.first_flag_s === null) text += " " + t("monitor_final_no_live_alert");
+  $("final").textContent = text;
 }
 
 function stop() {

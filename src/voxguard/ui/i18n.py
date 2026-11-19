@@ -218,6 +218,9 @@ EN: dict[str, str] = {
         " {session}."
     ),
     "monitor_final_none": "The call ended before any audio could be scored.",
+    "monitor_final_no_live_alert": (
+        "It was flagged on the whole call; the call was too short for a live alert."
+    ),
     "monitor_error": "Error: {detail}",
     "monitor_mic_denied": (
         "Microphone access was blocked. Allow it in the browser's address bar and try again."
@@ -418,6 +421,7 @@ HI: dict[str, str] = {
         "कॉल समाप्त: चिह्नित नहीं (स्कोर {score} < सीमा {threshold})। सत्र {session} के रूप में सहेजा गया।"
     ),
     "monitor_final_none": "किसी भी ऑडियो का स्कोर बनने से पहले कॉल समाप्त हो गई।",
+    "monitor_final_no_live_alert": ("पूरी कॉल पर यह चिह्नित हुई; लाइव चेतावनी के लिए कॉल बहुत छोटी थी।"),
     "monitor_error": "त्रुटि: {detail}",
     "monitor_mic_denied": (
         "माइक्रोफ़ोन की अनुमति रोकी गई। ब्राउज़र के पता बार में अनुमति दें और फिर कोशिश करें।"

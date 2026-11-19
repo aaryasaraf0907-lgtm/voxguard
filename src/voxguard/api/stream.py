@@ -350,8 +350,8 @@ async def _finish(
                 lambda: gate.run(_score_window, det, cutter.buffer, cutter.sample_rate, codec)
             )
             call.add(pred.fake_score, pred.latency_ms, pred.model_version, cutter.seconds)
-        except (Busy, codec_sim.CodecUnavailableError, codec_sim.CodecSimulationError):
-            logger.warning("live stream: the short call could not be scored")
+        except Exception:  # busy, codec or detector failure: still send `final` (no verdict)
+            logger.exception("live stream: the short call could not be scored")
     base = {
         "type": "final",
         "session_id": session_id,
