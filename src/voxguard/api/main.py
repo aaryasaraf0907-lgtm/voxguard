@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, UploadFile
+from fastapi.responses import HTMLResponse
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
@@ -21,7 +22,6 @@ from voxguard.api.db import (
     AlertRow,
     BlocklistRow,
     SessionRow,
-    begin_write,
     create_tables,
     make_engine,
 )
@@ -40,6 +40,8 @@ from voxguard.api.detector_loader import (
 )
 from voxguard.api.gate import RETRY_AFTER_S, AnalysisGate, Busy
 from voxguard.api.limits import BodySizeLimitMiddleware
+from voxguard.api.monitor_page import render as render_monitor
+from voxguard.api.stream import handle_stream
 from voxguard.api.thresholds import ThresholdSet
 from voxguard.api.timeline import WindowScore, build_timeline, score_windows
 from voxguard.data.codecs import CODECS
@@ -138,6 +140,7 @@ def create_app(
         create_tables(engine)
         app.state.settings = settings
         app.state.gate = AnalysisGate(settings.max_running_analyses, settings.max_waiting_analyses)
+        app.state.live_streams = 0  # open /v1/stream connections (event loop only)
         det = detector or load_detector(settings.device)
         if detector is None and thresholds is None:
             found = load_model_thresholds(det)
@@ -228,23 +231,9 @@ def create_app(
             raise HTTPException(500, "Detector failed") from None
 
         try:  # session, alert and blocklist update commit together or not at all
-            begin_write(db)  # timestamp taken under the write lock: follows commit order
-            row = SessionRow(
-                session_id=uuid.uuid4().hex,
-                created_at=datetime.now(UTC),
-                caller_id=prevention.normalize_caller_id(caller_id),
-                label=decision.label,
-                fake_score=pred.fake_score,
-                threshold=decision.threshold,
-                flagged=decision.flagged,
-                codec_applied=codec_applied,
-                model_version=pred.model_version,
-                latency_ms=pred.latency_ms,
+            row = prevention.store_session(
+                db, uuid.uuid4().hex, caller_id, pred, decision, codec_applied
             )
-            db.add(row)
-            if row.flagged:
-                prevention.record_flag(db, row)
-            db.commit()
         except SQLAlchemyError:
             db.rollback()
             logger.exception("Could not store session")
@@ -262,6 +251,14 @@ def create_app(
             codec_ms=codec_ms,
             **(_timeline_fields(windows, decision.threshold) if windows is not None else {}),
         )
+
+    # live call monitor (api/stream.py); the /monitor page is its browser client
+    app.add_api_websocket_route("/v1/stream", handle_stream)
+
+    @app.get("/monitor", response_class=HTMLResponse, include_in_schema=False)
+    def monitor() -> HTMLResponse:
+        """The live call monitor page (browser client of /v1/stream)."""
+        return HTMLResponse(render_monitor(), headers={"Cache-Control": "no-store"})
 
     @app.get("/v1/codecs", response_model=CodecsResponse)
     def list_codecs(cfg: Annotated[Settings, Depends(get_settings)]) -> CodecsResponse:

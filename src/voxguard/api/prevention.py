@@ -5,14 +5,15 @@ from __future__ import annotations
 import math
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Literal
 
 from sqlalchemy import func
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from voxguard.api.db import AlertRow, BlocklistRow, SessionRow
+from voxguard.api.db import AlertRow, BlocklistRow, SessionRow, begin_write
 from voxguard.api.deps import Settings
 from voxguard.api.thresholds import ThresholdSet
 from voxguard.inference import Prediction
@@ -97,6 +98,41 @@ def upsert_blocklist(db: Session, caller_id: str, seen_at: datetime) -> None:
             },
         )
     )
+
+
+def store_session(
+    db: Session,
+    session_id: str,
+    caller_id: str | None,
+    pred: Prediction,
+    decision: Decision,
+    codec_applied: str | None,
+) -> SessionRow:
+    """Store one analysed session, plus its alert and blocklist update when flagged, in one
+    transaction. The timestamp is taken under SQLite's write lock, so it follows commit order.
+    Raises SQLAlchemyError after rolling back; the caller maps it to its own error."""
+    try:
+        begin_write(db)
+        row = SessionRow(
+            session_id=session_id,
+            created_at=datetime.now(UTC),
+            caller_id=normalize_caller_id(caller_id),
+            label=decision.label,
+            fake_score=pred.fake_score,
+            threshold=decision.threshold,
+            flagged=decision.flagged,
+            codec_applied=codec_applied,
+            model_version=pred.model_version,
+            latency_ms=pred.latency_ms,
+        )
+        db.add(row)
+        if row.flagged:
+            record_flag(db, row)
+        db.commit()
+    except SQLAlchemyError:
+        db.rollback()
+        raise
+    return row
 
 
 def record_flag(db: Session, session_row: SessionRow) -> None:

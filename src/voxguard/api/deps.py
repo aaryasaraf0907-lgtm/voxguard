@@ -20,6 +20,8 @@ from voxguard.inference import Detector, threshold_from_env
 DEFAULT_DB_URL = "sqlite:///./voxguard.db"
 DEFAULT_MAX_UPLOAD_MB = 25.0
 DEFAULT_MAX_AUDIO_SECONDS = 60.0
+DEFAULT_MAX_STREAMS = 4
+DEFAULT_MAX_STREAM_SECONDS = 600.0
 
 
 def _positive_float_env(name: str, default: float) -> float:
@@ -60,6 +62,11 @@ class Settings:
     device: str = "cpu"  # VOXGUARD_DEVICE for the real detector: cpu | cuda | auto
     max_running_analyses: int = DEFAULT_RUNNING  # VOXGUARD_MAX_RUNNING_ANALYSES (see api/gate.py)
     max_waiting_analyses: int = DEFAULT_WAITING  # VOXGUARD_MAX_WAITING_ANALYSES
+    max_streams: int = DEFAULT_MAX_STREAMS  # VOXGUARD_MAX_STREAMS: live calls at once (/v1/stream)
+    max_stream_seconds: float = DEFAULT_MAX_STREAM_SECONDS  # VOXGUARD_MAX_STREAM_SECONDS
+    # VOXGUARD_STREAM_ORIGINS: extra browser origins allowed to open /v1/stream (comma-separated);
+    # the API's own origin (the /monitor page) and non-browser clients are always allowed
+    stream_origins: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         require_sqlite_url(self.db_url)
@@ -77,6 +84,10 @@ class Settings:
             raise ValueError(
                 "VOXGUARD_MAX_RUNNING_ANALYSES must be >= 1 and VOXGUARD_MAX_WAITING_ANALYSES >= 0"
             )
+        if self.max_streams < 1:
+            raise ValueError("VOXGUARD_MAX_STREAMS must be >= 1")
+        if not math.isfinite(self.max_stream_seconds) or self.max_stream_seconds <= 0:
+            raise ValueError("VOXGUARD_MAX_STREAM_SECONDS must be a positive number")
         if self.threshold_mode not in ("eer", "low_far"):
             raise ValueError(
                 f"VOXGUARD_THRESHOLD_MODE must be 'eer' or 'low_far', got {self.threshold_mode!r}"
@@ -119,6 +130,15 @@ class Settings:
             device=os.environ.get("VOXGUARD_DEVICE", "").strip().lower() or "cpu",
             max_running_analyses=_int_env("VOXGUARD_MAX_RUNNING_ANALYSES", DEFAULT_RUNNING, 1),
             max_waiting_analyses=_int_env("VOXGUARD_MAX_WAITING_ANALYSES", DEFAULT_WAITING, 0),
+            max_streams=_int_env("VOXGUARD_MAX_STREAMS", DEFAULT_MAX_STREAMS, 1),
+            max_stream_seconds=_positive_float_env(
+                "VOXGUARD_MAX_STREAM_SECONDS", DEFAULT_MAX_STREAM_SECONDS
+            ),
+            stream_origins=tuple(
+                o.strip().rstrip("/")
+                for o in os.environ.get("VOXGUARD_STREAM_ORIGINS", "").split(",")
+                if o.strip()
+            ),
         )
 
 

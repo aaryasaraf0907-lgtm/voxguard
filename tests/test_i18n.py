@@ -1,4 +1,5 @@
 import ast
+import re
 from pathlib import Path
 from typing import get_args
 
@@ -9,6 +10,12 @@ from voxguard.ui.api_client import ErrorKind
 from voxguard.ui.i18n import EN, HI, TranslationError, t
 
 APP = Path(__file__).parents[1] / "src" / "voxguard" / "ui" / "app.py"
+MONITOR = Path(__file__).parents[1] / "src" / "voxguard" / "api" / "monitor_page.py"
+
+
+def _monitor_keys() -> set[str]:
+    """Keys the live call monitor page (HTML/JS inside monitor_page.py) refers to."""
+    return set(re.findall(r"monitor_\w+", MONITOR.read_text())) - {"monitor_page"}
 
 
 def test_same_keys_in_both_languages() -> None:
@@ -84,7 +91,16 @@ def test_no_unused_translation_keys() -> None:
         for n in ast.walk(ast.parse(APP.read_text()))
         if isinstance(n, ast.Constant) and isinstance(n.value, str)
     }  # keys also reach t() through variables, e.g. the tab and header tuples
-    assert set(EN) - constants - dynamic == set()
+    assert set(EN) - constants - dynamic - _monitor_keys() == set()
+
+
+def test_every_key_the_monitor_page_uses_exists_and_is_sent_to_it() -> None:
+    from voxguard.api.monitor_page import strings
+
+    used = _monitor_keys()
+    assert len(used) > 20 and used <= set(EN)
+    sent = strings()
+    assert set(sent["en"]) == set(sent["hi"]) and used <= set(sent["en"])
 
 
 def test_ui_has_no_hardcoded_display_strings() -> None:

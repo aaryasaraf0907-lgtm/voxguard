@@ -214,6 +214,48 @@ curl -F file=@call.wav -F simulate_codec=true http://localhost:8000/v1/analyze
   the randomized training augmentation.
 - The set of available encoders is read once per process; install ffmpeg before starting the API.
 
+## Live call monitor (`WS /v1/stream`, `/monitor`)
+
+`api/stream.py` scores a call while it is still going on; `/monitor` (`api/monitor_page.py`, plain
+HTML and JavaScript, no framework, nothing from the network) is its browser client, and
+`scripts/stream_call.py` streams a file at real speed for demos and measurements.
+
+1. The client opens `ws://<api>/v1/stream?sample_rate=<Hz>` (8-48 kHz; optional `caller_id`,
+   `codec`) and sends mono float32 frames of about 0.25 s. The page captures at the browser's own
+   rate and the server resamples, so Firefox works too.
+2. Once one detector window has arrived (64,600 samples at 16 kHz, about 4 s), the latest window
+   is scored every 2 s of audio, exactly as `POST /v1/analyze` scores a 4 s clip (codec first,
+   then `Detector.predict`), through the same analysis-slot limit; a window that gets no slot
+   within one step is skipped and reported as `busy`. If scoring falls behind, only the newest
+   window is scored.
+3. Each `score` message carries the window score and the running average. An `alert` is sent
+   the first time the running average of **at least two windows** reaches the threshold: on the
+   real model, a genuine recording's first window sat just over it (0.012836 against 0.012676).
+   The page grades it: just over the threshold (under 1.5 x, the UI's caution band) it asks to
+   verify the caller another way; well over it, to hang up and call back. Once an alert is
+   raised the page lists what to do (call back on a known number, ask something only the real
+   person knows, report at 1930, India's National Cyber Crime Helpline, or cybercrime.gov.in). A
+   consent notice asks the user to tell the other party that the call is being checked.
+4. On `{"type": "end"}`, a hang-up or the length limit, one session is stored through the usual
+   prevention layer (alert and blocklist when flagged). Its score is the running average of the
+   live windows. A call shorter than one window is scored once at the end if it is at least 1 s.
+5. Only the latest window of audio is kept, in memory; nothing is written to disk.
+
+Limits: `VOXGUARD_MAX_STREAMS` (4) calls at once, `VOXGUARD_MAX_STREAM_SECONDS` (600) per call,
+1 MB frames, 30 s without a frame. Browsers send `Origin` on a WebSocket handshake: only the
+API's own origin (the `/monitor` page) and `VOXGUARD_STREAM_ORIGINS` may open a stream, so a page
+on another site cannot use a local API; clients without `Origin` (`stream_call.py`) are allowed.
+
+Measured on the real model (laptop CPU, isolated compose project, private clips): a score
+arrives 0.45-0.57 s after its last audio; the detector needs about 0.46 s per 2 s step. On a
+genuine recording followed by a fake one, the alert came 1.3 s after the fake part began
+(1.7 s in the browser), with none during the genuine part; four calls at once: no window
+skipped, scores within 1.6 s, 2.0 GiB.
+
+What it is not: it listens to a microphone or a file, not a phone line (telephony is out of
+scope); the codec runs per window, not across the whole call; the first score needs one window
+and an alert two (about 6 s). Browsers allow the microphone only on localhost or HTTPS.
+
 ## Latency
 
 Three different times exist, and the API reports the first two separately:

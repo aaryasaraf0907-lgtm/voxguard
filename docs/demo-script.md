@@ -65,13 +65,15 @@ on off-domain speech, and the reason for the caution.
 | 3 | 1:45 | F1 → **Analyze** | An AI-generated voice: **Flagged**, red banner. The score is far above the threshold. |
 | 4 | 2:30 | Turn on **Simulate phone line**, codec **G.711 µ-law** → **Analyze** F1 again | The same clip after a real telephone codec. Both results appear side by side; the decision holds on the phone line. This is the point of the codec-aware training. |
 | 5 | 3:15 | Turn on **Show live-monitoring timeline**, phone line off → M → **Analyze**; press **Replay** | What a live call monitor would have shown: each 4 s window and the running average against the threshold. The genuine part stays below it; the alert comes a few seconds after the fake voice starts. Same verdict as without the timeline. |
-| 6 | 3:50 | Show `docs/results.md`, the 2×2 matrix | The measured result: trained on clean audio vs codec-augmented, tested clean vs phone-degraded. Read the two phone-degraded cells. |
-| 7 | 4:40 | Enter a **Caller ID** (e.g. `+91-DEMO-0001`) → F2 → **Analyze**; open **Flagged sessions**, **Blocklist**, **Alerts** | Prevention: a flagged call is stored, an alert is raised, and the caller is added to the blocklist with a hit counter. Analyze F2 once more with the same ID to show the counter go up. |
-| 8 | 5:50 | N1 → **Analyze** | A genuine voice, flagged, but with the yellow caution "Close to the decision threshold". Flags just above the threshold are hints, not verdicts. Off-domain speech (unusual microphones, rooms, languages) is the model's main weakness; we report it rather than hide it. |
-| 9 | 6:50 | Sidebar → **हिन्दी** | The interface in Hindi. Detection was trained and evaluated in English; Hindi detection is only an evaluated generalisation test, not a supported feature. |
-| 10 | 7:30 | Back to English; summarise | The detector, the phone-line evaluation, the prevention layer, the latency on CPU. Questions. |
+| 6 | 3:40 | Sidebar → **Open the live call monitor** → choose M → **Play and monitor** (or **Start listening** and play M from a phone next to the laptop) | The same mixed call, live: the score updates every 2 s while it plays. The genuine part stays below the threshold; a few seconds after the fake voice starts, the banner turns red: *do not approve payments, hang up and call back on a number you trust*, with what to do next (ask something only the real person knows; report at 1930 or cybercrime.gov.in). Point at the consent notice: the other party is told the call is checked. A single window is never enough to warn: it waits for two. Backup: `python scripts/stream_call.py M.wav` in a terminal. |
+| 7 | 4:30 | Show `docs/results.md`, the 2×2 matrix | The measured result: trained on clean audio vs codec-augmented, tested clean vs phone-degraded. Read the two phone-degraded cells. |
+| 8 | 5:10 | Enter a **Caller ID** (e.g. `+91-DEMO-0001`) → F2 → **Analyze**; open **Flagged sessions**, **Blocklist**, **Alerts** | Prevention: a flagged call is stored, an alert is raised, and the caller is added to the blocklist with a hit counter. Analyze F2 once more with the same ID to show the counter go up. |
+| 9 | 6:10 | N1 → **Analyze** | A genuine voice, flagged, but with the yellow caution "Close to the decision threshold". Flags just above the threshold are hints, not verdicts. Off-domain speech (unusual microphones, rooms, languages) is the model's main weakness; we report it rather than hide it. |
+| 10 | 7:00 | Sidebar → **हिन्दी** | The interface in Hindi. Detection was trained and evaluated in English; Hindi detection is only an evaluated generalisation test, not a supported feature. |
+| 11 | 7:40 | Back to English; summarise | The detector, the phone-line evaluation, the prevention layer, the latency on CPU. Questions. |
 
-Uploaded audio is never stored: only each session's score, threshold, label, flag, codec, model
+Uploaded audio is never stored, and the live call monitor keeps only the latest 4 s in memory:
+only each session's score, threshold, label, flag, codec, model
 version, latency and optional caller ID.
 
 ## If something goes wrong
@@ -99,7 +101,8 @@ The demo runs offline once the model is in the volume; no network is needed.
 - **Is it real time?** Show the detector latency in the result and the latency table in
   `docs/results.md`: each 4 s window is scored faster than it plays, on a laptop CPU. The
   timeline shows when a live monitor would have flagged the call; the demo scores a recording,
-  it is not connected to a phone line. Capacity under load is in `docs/deployment.md`,
+  it is not connected to a phone line. The live call monitor (step 6) does score while the
+  audio plays, from a microphone or a file. Capacity under load is in `docs/deployment.md`,
   "Load test".
 - **What would deployment need?** A telephony integration, an operator review step for flagged
   calls (unblocking false alarms), and monitoring. None of these are in this prototype.
@@ -114,6 +117,7 @@ Record the screen at 1080p with the presenter's voice; no other people's voices 
 | 2 | 30 s | G1 not flagged, then F1 flagged |
 | 3 | 30 s | F1 on the simulated phone line, side by side |
 | 3b | 20 s | M with the timeline and Replay: the alert after the fake part starts |
+| 3c | 25 s | M on the live call monitor: below the threshold, then the red warning while it plays |
 | 4 | 30 s | The 2×2 matrix in `docs/results.md` |
 | 5 | 35 s | Prevention: caller ID, flagged sessions, blocklist, alerts |
 | 6 | 20 s | N1 with the caution: the honest limitation |
