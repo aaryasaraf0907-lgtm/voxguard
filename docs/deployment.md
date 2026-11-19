@@ -66,6 +66,9 @@ ones that matter for deployment:
 | `VOXGUARD_API_START_PERIOD` | `20s` | API health-check grace period (compose); `600s` for the real detector |
 | `VOXGUARD_API_START_TIMEOUT` | 600 (real) / 60 | Space image only: seconds `space_start.sh` waits for the API |
 | `VOXGUARD_MAX_UPLOAD_MB` / `VOXGUARD_MAX_AUDIO_SECONDS` | `25` / `60` | API limits |
+| `VOXGUARD_HIGH_VALUE_INR` | `50000` | transfers at or above this are high value (stricter actions; see `docs/architecture.md`) |
+| `VOXGUARD_TRANSACTION_POLICY` | empty (the default table) | JSON, every tier `[normal, high-value]` action: `allow`, `step_up` or `hold` |
+| `VOXGUARD_ALERT_WEBHOOK_URL` / `VOXGUARD_ALERT_WEBHOOK_SECRET` | empty | optional signed alert webhook; the secret (16+ characters) is required with the URL |
 | `VOXGUARD_MAX_STREAMS` / `VOXGUARD_MAX_STREAM_SECONDS` | `4` / `600` | live calls at once on `/v1/stream` and the longest call, in seconds of audio |
 | `VOXGUARD_STREAM_ORIGINS` | empty | extra browser origins allowed to open `/v1/stream` (comma-separated); the API's own `/monitor` page always may |
 | `VOXGUARD_MONITOR_URL` (UI) | `<VOXGUARD_API_URL>/monitor` | the sidebar link to the live call monitor; compose sets `http://localhost:${VOXGUARD_API_PORT}/monitor`, since the browser cannot reach `http://api:8000` |

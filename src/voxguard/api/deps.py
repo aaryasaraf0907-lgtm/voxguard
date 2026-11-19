@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from voxguard.api.db import require_sqlite_url
 from voxguard.api.gate import DEFAULT_RUNNING, DEFAULT_WAITING, AnalysisGate
+from voxguard.api.policy import DEFAULT_HIGH_VALUE_INR, DEFAULT_POLICY, parse_policy
 from voxguard.api.thresholds import ThresholdSet
 from voxguard.data.codecs import CODECS
 from voxguard.inference import Detector, threshold_from_env
@@ -67,6 +68,11 @@ class Settings:
     # VOXGUARD_STREAM_ORIGINS: extra browser origins allowed to open /v1/stream (comma-separated);
     # the API's own origin (the /monitor page) and non-browser clients are always allowed
     stream_origins: tuple[str, ...] = ()
+    high_value_inr: float = DEFAULT_HIGH_VALUE_INR  # VOXGUARD_HIGH_VALUE_INR (api/policy.py)
+    # tier -> (normal-value action, high-value action), as pairs so Settings stays hashable
+    transaction_policy: tuple[tuple[str, tuple[str, str]], ...] = tuple(DEFAULT_POLICY.items())
+    alert_webhook_url: str | None = None  # VOXGUARD_ALERT_WEBHOOK_URL (api/webhook.py)
+    alert_webhook_secret: str | None = None  # VOXGUARD_ALERT_WEBHOOK_SECRET, signs each request
 
     def __post_init__(self) -> None:
         require_sqlite_url(self.db_url)
@@ -88,6 +94,14 @@ class Settings:
             raise ValueError("VOXGUARD_MAX_STREAMS must be >= 1")
         if not math.isfinite(self.max_stream_seconds) or self.max_stream_seconds <= 0:
             raise ValueError("VOXGUARD_MAX_STREAM_SECONDS must be a positive number")
+        if self.alert_webhook_url is not None:
+            if not self.alert_webhook_url.startswith(("http://", "https://")):
+                raise ValueError("VOXGUARD_ALERT_WEBHOOK_URL must be an http(s) URL")
+            if not self.alert_webhook_secret or len(self.alert_webhook_secret) < 16:
+                raise ValueError(
+                    "VOXGUARD_ALERT_WEBHOOK_SECRET must be set (at least 16 characters) when "
+                    "VOXGUARD_ALERT_WEBHOOK_URL is: every request is signed with it"
+                )
         if self.threshold_mode not in ("eer", "low_far"):
             raise ValueError(
                 f"VOXGUARD_THRESHOLD_MODE must be 'eer' or 'low_far', got {self.threshold_mode!r}"
@@ -134,6 +148,13 @@ class Settings:
             max_stream_seconds=_positive_float_env(
                 "VOXGUARD_MAX_STREAM_SECONDS", DEFAULT_MAX_STREAM_SECONDS
             ),
+            high_value_inr=_positive_float_env("VOXGUARD_HIGH_VALUE_INR", DEFAULT_HIGH_VALUE_INR),
+            transaction_policy=tuple(
+                parse_policy(os.environ.get("VOXGUARD_TRANSACTION_POLICY", "")).items()
+            ),
+            alert_webhook_url=os.environ.get("VOXGUARD_ALERT_WEBHOOK_URL", "").strip() or None,
+            alert_webhook_secret=os.environ.get("VOXGUARD_ALERT_WEBHOOK_SECRET", "").strip()
+            or None,
             stream_origins=tuple(
                 o.strip().rstrip("/")
                 for o in os.environ.get("VOXGUARD_STREAM_ORIGINS", "").split(",")

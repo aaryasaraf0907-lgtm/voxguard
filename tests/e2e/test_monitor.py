@@ -117,6 +117,31 @@ def test_consent_notice_is_shown_and_guidance_waits_for_an_alert(monitor: Page) 
     expect(monitor.locator("#guidance")).to_be_hidden()  # shown once an alert has been raised
 
 
+def test_a_transfer_is_checked_against_the_call_and_verified(monitor: Page, stack: Any) -> None:
+    """Approve a transfer for a monitored call: the decision follows the policy; any verification
+    it asks for can be recorded until the transfer is released; the report opens."""
+    monitor.locator("#file").set_input_files(str(stack.clips.near))
+    monitor.get_by_role("button", name=EN["monitor_play"]).click()
+    wait_final(monitor)
+    monitor.locator("#amount").fill("75000")
+    monitor.get_by_role("button", name=EN["monitor_tx_approve"]).click()
+    decision = monitor.locator("#decision")
+    expect(decision).to_have_class(re.compile(r"pending|held"))  # the e2e policy: never allowed
+    for _ in range(3):  # at most two steps (a hold), then released
+        if re.search(r"allowed|released", decision.get_attribute("class") or ""):
+            break
+        monitor.locator("#verifier").fill("E2E Tester")  # shown only when steps are needed
+        monitor.locator("#step-buttons button:enabled").first.click()
+        monitor.wait_for_timeout(300)
+    expect(decision).to_have_class("released")
+    href = monitor.locator("#report").get_attribute("href")
+    assert href and "/report?lang=en" in href
+    with urllib.request.urlopen(f"{stack.api_url}{href}", timeout=10) as r:
+        assert r.status == 200 and EN["report_title"] in r.read().decode()
+    with urllib.request.urlopen(f"{stack.api_url}/v1/transactions?limit=5", timeout=10) as r:
+        assert json.loads(r.read())[0]["amount_inr"] == 75000
+
+
 def test_the_page_switches_to_hindi(monitor: Page) -> None:
     monitor.locator("#lang").select_option("hi")
     expect(monitor.locator("h1")).to_have_text(HI["monitor_title"])

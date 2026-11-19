@@ -32,6 +32,7 @@ class FakeClient:
         self.sessions_response: list[SessionRecord] = []
         self.blocklist_response: list[BlocklistEntry] = []
         self.alerts_response: list[AlertRecord] = []
+        self.transactions_response: list = []
         self.analyze_response: AnalyzeResponse | ApiError | None = None
         self.codecs_response: CodecsResponse | ApiError = CodecsResponse(
             default="g711_mulaw",
@@ -89,6 +90,11 @@ class FakeClient:
         self._check()
         return self.alerts_response
 
+    def transactions(self, limit=50):
+        self.calls.append(("transactions", limit))
+        self._check()
+        return self.transactions_response
+
 
 def _analyze_calls(client: FakeClient) -> list[tuple]:
     return [c for c in client.calls if c[0] == "analyze"]
@@ -128,7 +134,8 @@ def test_renders_english() -> None:
     assert not at.exception
     assert at.title[0].value == t("app_title", "en")
     assert [tab.label for tab in at.tabs] == [
-        t(k, "en") for k in ("tab_analyze", "tab_sessions", "tab_blocklist", "tab_alerts")
+        t(k, "en")
+        for k in ("tab_analyze", "tab_sessions", "tab_blocklist", "tab_alerts", "tab_transactions")
     ]
     assert t("status_connected", "en") in _text(at)
     assert t("status_detail", "en", detector="stub", model="m-1") in _text(at)
@@ -816,3 +823,61 @@ def test_sidebar_links_to_the_live_call_monitor(monkeypatch) -> None:
     monkeypatch.setenv("VOXGUARD_MONITOR_URL", "http://localhost:8001/monitor")
     (link,) = _run(FakeClient(), lang="hi").get("link_button")
     assert link.proto.label == t("monitor_link", "hi") and link.proto.url.endswith(":8001/monitor")
+
+
+def _decision(status: str = "held"):
+    from voxguard.schemas import TransactionDecision
+
+    return TransactionDecision(
+        decision_id="d1",
+        created_at=T0,
+        session_id="sess-9",
+        amount_inr=75000.0,
+        beneficiary="A/c XXXX1234",
+        high_value=True,
+        live=True,
+        tier="high",
+        action="hold",
+        status=status,
+        score=0.5,
+        threshold=0.01,
+        windows=3,
+        reasons=["risk_high", "high_value"],
+        required_steps=["second_approver", "callback"],
+        completed_steps=["callback"],
+    )
+
+
+@pytest.mark.parametrize("lang", ["en", "hi"])
+def test_transactions_tab_lists_decisions_with_a_report_link(monkeypatch, lang: str) -> None:
+    monkeypatch.setenv("VOXGUARD_MONITOR_URL", "http://localhost:8000/monitor")
+    client = FakeClient()
+    client.transactions_response = [_decision()]
+    at = _run(client, lang)
+    (df,) = [d for d in at.dataframe if t("col_amount", lang) in d.value.columns]
+    row = df.value.iloc[0]
+    assert row[t("tx_status", lang)] == t("tx_status_held", lang)
+    assert row[t("tx_steps", lang)] == t("tx_method_callback", lang)
+    assert (
+        row[t("col_report", lang)] == f"http://localhost:8000/v1/sessions/sess-9/report?lang={lang}"
+    )
+
+
+def test_alerts_link_to_the_incident_report(monkeypatch) -> None:
+    monkeypatch.delenv("VOXGUARD_MONITOR_URL", raising=False)
+    client = FakeClient()
+    client.alerts_response = [
+        AlertRecord(
+            alert_id="a1",
+            created_at=T0,
+            session_id="s-1",
+            caller_id=None,
+            fake_score=0.9,
+            message="Flagged call",
+        )
+    ]
+    at = _run(client)
+    (df,) = [d for d in at.dataframe if t("col_message", "en") in d.value.columns]
+    assert (
+        df.value.iloc[0][t("col_report", "en")] == "http://fake:8000/v1/sessions/s-1/report?lang=en"
+    )

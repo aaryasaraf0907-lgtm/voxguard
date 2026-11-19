@@ -337,3 +337,13 @@ def test_caution_band_matches_the_ui() -> None:
         if isinstance(n, ast.Assign) and getattr(n.targets[0], "id", "") == "CAUTION_FACTOR"
     )
     assert ui_factor == stream.CAUTION_FACTOR
+
+
+def test_a_detector_failure_on_a_short_call_still_sends_final() -> None:
+    class Broken(ScriptedDetector):
+        def predict(self, waveform, sample_rate):
+            raise RuntimeError("boom")
+
+    with _client(Broken([0.5])) as c:
+        msgs = _call(c, "sample_rate=16000", _audio(2.0, 16_000), 16_000)
+    assert msgs[-1]["type"] == "final" and not msgs[-1]["stored"] and msgs[-1]["windows"] == 0

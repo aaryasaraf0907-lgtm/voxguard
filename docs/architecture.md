@@ -256,6 +256,41 @@ What it is not: it listens to a microphone or a file, not a phone line (telephon
 scope); the codec runs per window, not across the whole call; the first score needs one window
 and an alert two (about 6 s). Browsers allow the microphone only on localhost or HTTPS.
 
+## Transfer checks, evidence and alerts (`api/policy.py`, `api/transactions.py`)
+
+Graded verification, not a binary accusation: a transfer asked for during or after a checked
+call is decided from the call's risk.
+
+| Tier | When | Normal value | High value (≥ `VOXGUARD_HIGH_VALUE_INR`, 50,000) |
+|---|---|---|---|
+| unknown | live call, fewer than 2 windows heard | step-up | step-up |
+| low | below the threshold | allow | allow |
+| caution | threshold to 1.5 x it | step-up | hold |
+| high | 1.5 x the threshold or more | hold | hold |
+
+- A caller flagged on an earlier call moves one tier up. The table can be replaced with
+  `VOXGUARD_TRANSACTION_POLICY` (JSON, every tier: `[normal, high-value]`).
+- **Step-up:** any one of a call-back on a number already on file, an OTP, or a second
+  approver. **Hold:** a second approver and a call-back. Steps are attestations recorded with
+  the name of whoever did them; the prototype sends no OTP and places no call.
+- A live call is read from the monitor's running average (the API keeps live calls in memory
+  while they last); a finished one from its stored session. Decisions and every step are stored
+  with an append-only audit trail (`transactions`, `transaction_events`).
+- **Feature-level log:** a live call's per-window scores are stored with its session
+  (`call_windows`, numbers only, no audio) and returned by `/v1/sessions/{id}/timeline`.
+- **Incident report** (`/v1/sessions/{id}/report?lang=en|hi`, `api/report_page.py`): the
+  verdict, the timeline as a chart and a table, every transfer decision and step, the 1930 /
+  cybercrime.gov.in guidance and a no-audio statement. Self-contained HTML, every value escaped.
+  Linked from the monitor page and the Alerts and Transactions tabs.
+- **Signed webhook** (`api/webhook.py`): with `VOXGUARD_ALERT_WEBHOOK_URL`, events are POSTed
+  as JSON with `X-VoxGuard-Signature: sha256=<HMAC of the body>` from one background thread;
+  failures are logged by type only and never slow a request.
+
+Measured on the real model (private clips, browser, a ₹75,000 transfer during a genuine-then-fake
+call): at 3.5 s (no window yet) *verify first*; at 9.6 s (genuine part, risk low) *allowed*; at
+16.7 s (3.8 s into the fake part, risk high) *held*, released only after a second approver and a
+call-back.
+
 ## Latency
 
 Three different times exist, and the API reports the first two separately:
