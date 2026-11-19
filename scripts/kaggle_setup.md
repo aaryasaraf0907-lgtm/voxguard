@@ -1,6 +1,6 @@
 # Training on Kaggle (or Colab) free GPUs
 
-Exact steps to run VoxGuard data prep and training from this **private** repo. Facts marked
+Exact steps to run LineTrue data prep and training from this **private** repo. Facts marked
 *(verified)* were checked in a real Kaggle notebook on 8 Nov 2026.
 
 ## Recommended: drive Kaggle from your terminal (no notebook cells)

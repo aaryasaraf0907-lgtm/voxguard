@@ -1,4 +1,7 @@
-# VoxGuard
+# LineTrue
+
+> Formerly VoxGuard (renamed 19 Nov 2026). Only the display name changed: the code, the `voxguard`
+> package, the `VOXGUARD_*` settings and the repository keep the old name.
 
 Codec-aware voice-deepfake (vishing) detector for telephone-quality audio, with a thin
 prevention layer and a demo app. University project (Engineering Design & Innovation),
@@ -11,7 +14,7 @@ attacks, with latency as a reported metric).
 
 Most audio-deepfake detectors are trained and tested on clean studio audio, but scam calls pass
 through lossy telephone codecs (G.711, AMR, GSM, Opus) that remove the artifacts those
-detectors rely on. VoxGuard trains and evaluates detectors under simulated phone channels, and
+detectors rely on. LineTrue trains and evaluates detectors under simulated phone channels, and
 wraps them in an application:
 
 - **Detection:** RawNet2 (baseline) and SSL-AASIST (XLS-R + AASIST) models behind one
@@ -202,7 +205,7 @@ Using the demo:
 
 ## Run with Docker Compose (the deployment)
 
-Local Docker Compose is how VoxGuard is deployed: the API and the UI in two containers on your
+Local Docker Compose is how LineTrue is deployed: the API and the UI in two containers on your
 machine. With the stub detector:
 
 ```bash

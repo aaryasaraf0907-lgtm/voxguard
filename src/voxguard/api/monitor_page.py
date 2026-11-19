@@ -46,7 +46,7 @@ PAGE = r"""<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>VoxGuard live call monitor</title>
+<title>LineTrue live call monitor</title>
 <style>
   :root { --fg:#1f2430; --muted:#6b7280; --line:#e5e7eb; --bg:#ffffff; --panel:#f6f7f9;
           --safe:#dcfce7; --safe-fg:#14532d; --alert:#fee2e2; --alert-fg:#7f1d1d; --info:#e0ecff;

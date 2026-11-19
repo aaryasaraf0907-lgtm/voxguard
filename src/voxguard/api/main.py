@@ -110,7 +110,7 @@ def _timeline_fields(windows: list[WindowScore], threshold: float) -> dict[str, 
 
 
 def configure_logging() -> None:
-    """Show VoxGuard's own INFO lines (model loaded, warm-up, thresholds) when served.
+    """Show LineTrue's own INFO lines (model loaded, warm-up, thresholds) when served.
 
     uvicorn configures only its own loggers, so without this the ``voxguard`` INFO records are
     dropped and only warnings reach the console. Nothing changes when logging is already
@@ -163,7 +163,7 @@ def create_app(
             app.state.gate.close()
             engine.dispose()
 
-    app = FastAPI(title="VoxGuard", lifespan=lifespan)
+    app = FastAPI(title="LineTrue", lifespan=lifespan)
     app.add_middleware(
         BodySizeLimitMiddleware,
         max_body_bytes=settings.max_upload_bytes + MULTIPART_OVERHEAD_BYTES,

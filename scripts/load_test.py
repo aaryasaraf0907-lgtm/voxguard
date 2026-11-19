@@ -1,4 +1,4 @@
-"""Load test for the VoxGuard API: closed-loop concurrency levels through the public API.
+"""Load test for the LineTrue API: closed-loop concurrency levels through the public API.
 
     python scripts/load_test.py --api-url http://127.0.0.1:18300 --mix A --levels 1,2,4,8 \\
         --out ~/private/loadtest-1 [--container voxguard-load-api-1] [--poll]

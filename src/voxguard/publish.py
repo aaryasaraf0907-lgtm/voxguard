@@ -40,9 +40,9 @@ def model_card(
         "tags: [audio, anti-spoofing, deepfake-detection, private]",
         "---",
         "",
-        f"# VoxGuard: {info.get('run') or info['name']}",
+        f"# LineTrue: {info.get('run') or info['name']}",
         "",
-        "> **Confidential.** Private VoxGuard team model; do not make this repository public or "
+        "> **Confidential.** Private LineTrue team model; do not make this repository public or "
         "describe the method publicly before the IPR cell confirms the patent filing.",
         "",
         f"- **model_version:** `{model_version}`",
@@ -72,7 +72,7 @@ def model_card(
         lines += [f"| {r['epoch']} | {r['train_loss']:.4f} | {_pct(r.get('dev_eer'))} |"
                   for r in history]  # fmt: skip
     lines += ["", "Full evaluation (2x2 matrix, per codec, latency): `docs/results.md` in the "
-              "VoxGuard repository."]  # fmt: skip
+              "LineTrue repository."]  # fmt: skip
     return "\n".join(lines) + "\n"
 
 

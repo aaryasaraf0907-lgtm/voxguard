@@ -274,7 +274,7 @@ def test_space_exits_early_when_the_api_cannot_start(space: tuple[str, str]) -> 
     out = r.stdout + r.stderr
     assert r.returncode != 0 and elapsed < 60, (elapsed, out[-2000:])
     assert "VOXGUARD_SIMULATE_CODEC must be one of" in out
-    assert "VoxGuard API exited during startup" in out
+    assert "LineTrue API exited during startup" in out
 
 
 def test_space_start_timeout_is_validated(space: tuple[str, str]) -> None:

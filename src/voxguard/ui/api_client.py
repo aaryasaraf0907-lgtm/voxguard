@@ -1,4 +1,4 @@
-"""Thin HTTP client for the VoxGuard API. No business logic: it sends requests, validates the
+"""Thin HTTP client for the LineTrue API. No business logic: it sends requests, validates the
 responses against the shared schemas and turns every failure into an ``ApiError``."""
 
 from __future__ import annotations
