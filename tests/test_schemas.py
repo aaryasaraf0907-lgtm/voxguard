@@ -26,9 +26,10 @@ def test_analyze_response_from_prediction() -> None:
         flagged=pred.fake_score >= pred.threshold,
     )
     assert resp.codec_applied is None and resp.codec_ms is None
+    assert resp.timeline is None and resp.first_flag_s is None  # only with timeline=true
     assert set(resp.model_dump()) == {
         "session_id", "label", "fake_score", "threshold", "latency_ms",
-        "model_version", "flagged", "codec_applied", "codec_ms",
+        "model_version", "flagged", "codec_applied", "codec_ms", "timeline", "first_flag_s",
     }  # fmt: skip
 
 
