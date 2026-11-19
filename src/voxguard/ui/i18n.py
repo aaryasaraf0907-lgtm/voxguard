@@ -4,8 +4,8 @@ Every user-visible string in the UI goes through ``t(key, lang)``. Both dictiona
 identical keys and no empty values (enforced by tests).
 
 Hindi (``hi``): reviewed by Aarya on PR #14 (CLAUDE.md section 11); her edits are applied. Strings
-added after that review (phone-line simulation, 503 handling, server busy) still need her
-review.
+added after that review (phone-line simulation, 503 handling, server busy, the
+timeline) still need her review.
 """
 
 from __future__ import annotations
@@ -129,6 +129,32 @@ EN: dict[str, str] = {
         "This server can't decode this file format right now (its ffmpeg is missing)."
         " Nothing was analyzed; try a WAV or FLAC file."
     ),
+    "timeline_label": "Show live-monitoring timeline",
+    "timeline_help": (
+        "Scores the recording window by window (about 4 s each), as a live call monitor would,"
+        " and shows when the running average reached the threshold. Same verdict as without it;"
+        " a little slower."
+    ),
+    "timeline_header": "Live-monitoring timeline",
+    "timeline_flagged_at": (
+        "A live monitor using this threshold would have flagged this call after {seconds} s of"
+        " audio."
+    ),
+    "timeline_never": "The running average never reached the threshold.",
+    "timeline_flagged_briefly": (
+        "The running average reached the threshold after {seconds} s of audio, then fell below"
+        " it: a live monitor would have raised an early alert that the full recording does not"
+        " support."
+    ),
+    "timeline_note": (
+        "Computed window by window on this recording; not a measured early-detection rate."
+    ),
+    "timeline_x": "Seconds of audio",
+    "timeline_window": "Window score",
+    "timeline_running": "Running average",
+    "timeline_threshold": "Threshold",
+    "timeline_replay": "Replay",
+    "timeline_series": "Series",
     "err_busy": (
         "The server is busy with other analyses right now. Nothing was analyzed; please try"
         " again in a few seconds."
@@ -239,6 +265,27 @@ HI: dict[str, str] = {
         "यह सर्वर अभी इस फ़ाइल प्रारूप को डिकोड नहीं कर सकता (उसमें ffmpeg नहीं है)।"
         " कुछ भी जाँचा नहीं गया; WAV या FLAC फ़ाइल आज़माएँ।"
     ),
+    "timeline_label": "लाइव निगरानी टाइमलाइन दिखाएँ",
+    "timeline_help": (
+        "रिकॉर्डिंग को विंडो दर विंडो (लगभग 4 सेकंड की) जाँचता है, जैसे लाइव कॉल मॉनिटर करता,"
+        " और दिखाता है कि चालू औसत सीमा तक कब पहुँचा। नतीजा वही रहता है; थोड़ा धीमा।"
+    ),
+    "timeline_header": "लाइव निगरानी टाइमलाइन",
+    "timeline_flagged_at": (
+        "इस सीमा पर एक लाइव मॉनिटर इस कॉल को ऑडियो के {seconds} सेकंड बाद चिह्नित कर देता।"
+    ),
+    "timeline_never": "चालू औसत कभी सीमा तक नहीं पहुँचा।",
+    "timeline_flagged_briefly": (
+        "चालू औसत ऑडियो के {seconds} सेकंड बाद सीमा तक पहुँचा, फिर उससे नीचे आ गया: लाइव मॉनिटर"
+        " एक शुरुआती चेतावनी देता, जिसका पूरी रिकॉर्डिंग समर्थन नहीं करती।"
+    ),
+    "timeline_note": "इस रिकॉर्डिंग पर विंडो दर विंडो गणना; यह मापी गई शुरुआती पहचान दर नहीं है।",
+    "timeline_x": "ऑडियो के सेकंड",
+    "timeline_window": "विंडो स्कोर",
+    "timeline_running": "चालू औसत",
+    "timeline_threshold": "सीमा",
+    "timeline_replay": "दोबारा चलाएँ",
+    "timeline_series": "श्रृंखला",
     "err_busy": (
         "सर्वर अभी दूसरे विश्लेषणों में व्यस्त है। कुछ भी जाँचा नहीं गया; कृपया कुछ सेकंड बाद फिर कोशिश करें।"
     ),

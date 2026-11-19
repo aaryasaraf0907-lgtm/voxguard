@@ -68,7 +68,15 @@ The response's `threshold` is the one applied, and the session stores it.
    showed why: throughput stops growing at about 2.8 analyses/s from 4 at once on a laptop CPU,
    while memory keeps growing, and 4 long clips or a burst of 48 requests got the API
    OOM-killed (docs/deployment.md, "Load test").
-3. `Detector.predict(waveform, sample_rate)`.
+3. `Detector.predict(waveform, sample_rate)`. With `timeline=true` (`api/timeline.py`), the
+   audio is resampled once with the detector's own resampler, split with `inference.to_windows`
+   (the detector's 4 s windows, the last overlapping the one before), and each window is scored
+   with `predict`. The clip score is their mean, which is how the detector averages them anyway,
+   so the verdict and the stored session are the same (scores equal to within float rounding on
+   the real model). The response adds `timeline` (per window: start, end, score, running average,
+   at or over the threshold) and `first_flag_s` (when the running average first reached the
+   threshold), both response-only. It is a view of a recording, not phone streaming. Measured on
+   the real model: 0 to 13 % slower than a plain analysis, since windows are not batched.
 4. Prevention decision at the threshold chosen as above; store session (+ alert + blocklist
    when flagged) in one transaction. The transaction starts with SQLite's write lock
    (`BEGIN IMMEDIATE`) and the timestamps are taken after it, so they follow commit order: an
@@ -85,6 +93,11 @@ The response's `threshold` is the one applied, and the session stores it.
   about 0.0127-0.019 at the demo threshold): results under the threshold get no caution, and a
   clearly high score reads as a clear fake. It is computed in the UI from the response's
   `fake_score` and `threshold`; the label, the flag and the API response are unchanged.
+- **Show live-monitoring timeline** asks for `timeline=true`. The chart (log scale, so a threshold
+  near 0.01 and scores far from it are readable) shows each window's score and the running
+  average, a dashed threshold line and a marker where a live monitor would have flagged the call;
+  **Replay** draws it window by window. If the running average reached the threshold early but
+  the full recording is below it, the UI says so instead of claiming the call would be flagged.
 - Results are kept per audio clip (SHA-256 of the bytes) and per mode (original, phone line).
   Selecting a different file or recording discards them, so a result is never shown next to
   audio it was not computed from. When a clip has both results they are shown side by side.

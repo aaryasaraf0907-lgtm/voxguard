@@ -34,6 +34,31 @@ class AnalyzeResponse(BaseModel):
             "is detector inference only."
         ),
     )
+    timeline: list[TimelinePoint] | None = Field(
+        default=None,
+        description=(
+            "Only with timeline=true: each detector window's score and the running average, in "
+            "time order. The last running_score equals fake_score. Not stored."
+        ),
+    )
+    first_flag_s: float | None = Field(
+        default=None,
+        ge=0.0,
+        description=(
+            "Only with timeline=true: seconds of audio after which the running average first "
+            "reached the threshold; null if it never did. Not stored."
+        ),
+    )
+
+
+class TimelinePoint(BaseModel):
+    """One detector window of the live-monitoring timeline (``timeline=true``)."""
+
+    start_s: float = Field(ge=0.0)  # window start, seconds into the (16 kHz) audio
+    end_s: float = Field(ge=0.0)  # the last window overlaps the one before it
+    fake_score: float = Field(ge=0.0, le=1.0)  # this window alone
+    running_score: float = Field(ge=0.0, le=1.0)  # mean of the windows up to this one
+    flagged: bool  # running_score >= threshold (the prevention rule)
 
 
 class CodecInfo(BaseModel):

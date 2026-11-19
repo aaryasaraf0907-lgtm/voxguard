@@ -41,6 +41,7 @@ from voxguard.api.detector_loader import (
 from voxguard.api.gate import RETRY_AFTER_S, AnalysisGate, Busy
 from voxguard.api.limits import BodySizeLimitMiddleware
 from voxguard.api.thresholds import ThresholdSet
+from voxguard.api.timeline import WindowScore, build_timeline, score_windows
 from voxguard.data.codecs import CODECS
 from voxguard.inference import Detector, Prediction
 from voxguard.schemas import (
@@ -65,12 +66,12 @@ def _codec_unavailable(codec: str) -> str:
 
 
 def _score(
-    data: bytes, chosen: str | None, det: Detector, cfg: Settings
-) -> tuple[Prediction, str | None, float | None]:
+    data: bytes, chosen: str | None, det: Detector, cfg: Settings, with_timeline: bool = False
+) -> tuple[Prediction, str | None, float | None, list[WindowScore] | None]:
     """Decode, simulate the phone line if ``chosen``, and run the detector.
 
-    Returns (prediction, codec applied, codec wall time in ms). Raises HTTPException; on any
-    failure nothing has been scored or stored."""
+    Returns (prediction, codec applied, codec wall time in ms, per-window scores if
+    ``with_timeline``). Raises HTTPException; on any failure nothing has been scored or stored."""
     waveform, sample_rate = decode_audio(data, cfg.max_audio_seconds, cfg.max_upload_bytes)
     codec_ms: float | None = None
     if chosen is not None:  # before inference; never falls back to the original audio
@@ -87,12 +88,21 @@ def _score(
         except codec_sim.CodecSimulationError:
             raise HTTPException(500, "Codec simulation failed") from None
         codec_ms = (time.perf_counter() - t0) * 1000.0
+    windows: list[WindowScore] | None = None
     try:
-        pred = det.predict(waveform, sample_rate)
+        if with_timeline:  # same windows and verdict, each window scored on its own
+            pred, windows = score_windows(det, waveform, sample_rate)
+        else:
+            pred = det.predict(waveform, sample_rate)
     except Exception:
         logger.exception("Detector failed")
         raise HTTPException(500, "Detector failed") from None
-    return pred, chosen, codec_ms
+    return pred, chosen, codec_ms, windows
+
+
+def _timeline_fields(windows: list[WindowScore], threshold: float) -> dict[str, object]:
+    points, first_flag_s = build_timeline(windows, threshold)
+    return {"timeline": points, "first_flag_s": first_flag_s}
 
 
 def configure_logging() -> None:
@@ -168,6 +178,7 @@ def create_app(
         caller_id: Annotated[str | None, Form(max_length=128)] = None,
         simulate_codec: Annotated[bool, Form()] = False,
         codec: Annotated[str | None, Form(max_length=32)] = None,
+        timeline: Annotated[bool, Form()] = False,
     ) -> AnalyzeResponse:
         # A `codec` field selects the codec and implies simulation; otherwise simulate_codec=true
         # uses the server default (VOXGUARD_SIMULATE_CODEC). Never substituted with another codec.
@@ -198,7 +209,9 @@ def create_app(
 
         try:
             # decode, simulation and inference hold the memory: bounded, on dedicated threads
-            pred, codec_applied, codec_ms = gate.run(_score, data, chosen, det, cfg)
+            pred, codec_applied, codec_ms, windows = gate.run(
+                _score, data, chosen, det, cfg, timeline
+            )
         except Busy:
             logger.warning("analysis refused: server busy (%d running)", gate.running)
             raise HTTPException(
@@ -247,6 +260,7 @@ def create_app(
             flagged=decision.flagged,
             codec_applied=codec_applied,
             codec_ms=codec_ms,
+            **(_timeline_fields(windows, decision.threshold) if windows is not None else {}),
         )
 
     @app.get("/v1/codecs", response_model=CodecsResponse)

@@ -132,6 +132,34 @@ def test_http_errors_map_to_distinct_kinds(status: int, kind: str) -> None:
     assert (exc.value.kind, exc.value.status, exc.value.detail) == (kind, status, "nope")
 
 
+def test_timeline_is_sent_only_when_asked() -> None:
+    body = {
+        "session_id": "s",
+        "label": "real",
+        "fake_score": 0.1,
+        "threshold": 0.5,
+        "latency_ms": 1.0,
+        "model_version": "m",
+        "flagged": False,
+        "timeline": [
+            {
+                "start_s": 0.0,
+                "end_s": 4.0,
+                "fake_score": 0.1,
+                "running_score": 0.1,
+                "flagged": False,
+            }
+        ],
+        "first_flag_s": None,
+    }
+    c, s = _client(_response(200, body))  # the same response for both calls
+    c.analyze(b"RIFF")
+    result = c.analyze(b"RIFF", timeline=True)
+    assert "timeline" not in (s.calls[0].get("data") or {})
+    assert s.calls[1]["data"]["timeline"] == "true"
+    assert result.timeline and result.timeline[0].end_s == 4.0 and result.first_flag_s is None
+
+
 def test_503_with_retry_after_means_busy() -> None:
     """The API's analysis queue is full: temporary, unlike a missing codec or decoder."""
     r = _response(503, {"detail": "Server busy"})

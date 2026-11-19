@@ -39,6 +39,7 @@ class FakeClient:
         )
         self.calls: list[tuple] = []
         self.codecs_sent: list[str | None] = []  # the codec field of each analyze request
+        self.timeline_sent: list[bool] = []  # the timeline field of each analyze request
 
     def _check(self) -> None:
         if self.down:
@@ -50,10 +51,17 @@ class FakeClient:
         return self.health_response
 
     def analyze(
-        self, audio, filename="audio.wav", caller_id=None, simulate_codec=False, codec=None
+        self,
+        audio,
+        filename="audio.wav",
+        caller_id=None,
+        simulate_codec=False,
+        codec=None,
+        timeline=False,
     ):
         self.calls.append(("analyze", audio, filename, caller_id, simulate_codec))
         self.codecs_sent.append(codec)
+        self.timeline_sent.append(timeline)
         response = self.analyze_response
         if callable(response):  # lets a test answer per request (e.g. clean vs simulated)
             response = response(simulate_codec)
@@ -254,8 +262,9 @@ def test_no_result_or_scores_before_analysis() -> None:
 
 def test_phone_line_toggle_is_enabled_off_by_default_and_explained() -> None:
     at = _run(FakeClient())
-    (toggle,) = at.toggle
+    toggle, timeline_toggle = at.toggle
     assert toggle.label == t("simulate_label", "en") and not toggle.disabled and not toggle.value
+    assert timeline_toggle.label == t("timeline_label", "en") and not timeline_toggle.value
     assert t("simulate_off", "en") in _text(at)
     toggle.set_value(True).run()
     assert t("simulate_on", "en") in _text(at)
@@ -696,3 +705,102 @@ def test_caution_follows_each_result_side_by_side() -> None:
     assert not at.exception
     warnings = [w.value for w in at.warning]
     assert warnings.count(t("caution_near_threshold", "en")) == 1  # only the phone-line result
+
+
+# --- live-monitoring timeline ---------------------------------------------------------------
+
+
+def _timeline_result(first_flag_s: float | None) -> AnalyzeResponse:
+    from voxguard.schemas import TimelinePoint
+
+    points = [
+        TimelinePoint(start_s=0.0, end_s=4.0, fake_score=0.2, running_score=0.2, flagged=False),
+        TimelinePoint(start_s=4.0, end_s=8.0, fake_score=0.9, running_score=0.55, flagged=True),
+    ]
+    return _result(True, 0.55).model_copy(update={"timeline": points, "first_flag_s": first_flag_s})
+
+
+def _chart_count(at: AppTest) -> int:
+    return len(at.get("vega_lite_chart"))
+
+
+def test_timeline_is_requested_only_when_the_toggle_is_on() -> None:
+    client = FakeClient()
+    client.analyze_response = _result(False, 0.1)
+    _analyze(client)
+    at = _run(client)
+    next(x for x in at.toggle if x.label == t("timeline_label", "en")).set_value(True).run()
+    at.file_uploader[0].set_value(("clip.wav", b"RIFFfake", "audio/wav")).run()
+    _click_analyze(at)
+    assert client.timeline_sent == [False, True]
+
+
+@pytest.mark.parametrize("lang", ["en", "hi"])
+def test_timeline_shows_the_chart_and_when_it_would_have_flagged(lang: str) -> None:
+    client = FakeClient()
+    client.analyze_response = _timeline_result(8.0)
+    at = _analyze(client, lang=lang)
+    text = _text(at)
+    assert t("timeline_header", lang) in text
+    assert t("timeline_flagged_at", lang, seconds="8.0") in text
+    assert t("timeline_note", lang) in text
+    assert _chart_count(at) == 1
+
+
+def test_timeline_that_never_reaches_the_threshold_says_so() -> None:
+    client = FakeClient()
+    client.analyze_response = _timeline_result(None)
+    text = _text(_analyze(client))
+    assert (
+        t("timeline_never", "en") in text
+        and t("timeline_flagged_at", "en", seconds="8.0") not in text
+    )
+
+
+def test_an_early_alert_the_full_recording_does_not_support_is_explained() -> None:
+    """Seen on the real model: a genuine recording's first window was just over the threshold,
+    the full recording was not. Do not say it "would have flagged this call"."""
+    client = FakeClient()
+    client.analyze_response = _timeline_result(4.0).model_copy(
+        update={"flagged": False, "label": "real", "fake_score": 0.4}
+    )
+    text = _text(_analyze(client))
+    assert t("timeline_flagged_briefly", "en", seconds="4.0") in text
+    assert t("timeline_flagged_at", "en", seconds="4.0") not in text
+
+
+def test_no_timeline_section_without_timeline_data() -> None:
+    client = FakeClient()
+    client.analyze_response = _result(True)
+    at = _analyze(client)
+    assert t("timeline_header", "en") not in _text(at) and _chart_count(at) == 0
+
+
+def test_replay_redraws_the_chart_and_keeps_the_result() -> None:
+    client = FakeClient()
+    client.analyze_response = _timeline_result(8.0)
+    at = _analyze(client)
+    replay = next(b for b in at.button if b.label == t("timeline_replay", "en"))
+    at = replay.click().run()
+    assert not at.exception and _chart_count(at) == 1
+    assert t("timeline_flagged_at", "en", seconds="8.0") in _text(at)
+    assert len(_analyze_calls(client)) == 1  # replay does not analyze again
+
+
+def test_timeline_chart_is_log_scale_with_threshold_and_flag_marker() -> None:
+    from voxguard.ui.app import timeline_spec
+
+    result = _timeline_result(8.0)
+    spec = timeline_spec(result, "en")
+    line, threshold, flag = spec["layer"]
+    assert line["encoding"]["y"]["scale"]["type"] == "log"
+    lo, hi = line["encoding"]["y"]["scale"]["domain"]
+    assert lo < 0.2 and hi > 0.9  # every point and the threshold fit
+    assert threshold["data"]["values"][0][t("m_score", "en")] == result.threshold
+    assert flag["data"]["values"] == [{t("timeline_x", "en"): 8.0}]
+    first = timeline_spec(result, "en", upto=1)  # replay: before the flagged point
+    assert len(first["layer"]) == 2 and first["layer"][0]["encoding"]["y"]["scale"]["domain"] == [
+        lo,
+        hi,
+    ]
+    assert len(first["layer"][0]["data"]["values"]) == 2  # one point, two series
