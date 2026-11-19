@@ -1,6 +1,6 @@
 # Demo script
 
-How to present VoxGuard live (about 8 minutes) and record the demo video (about 3 minutes). It
+How to present LineTrue live (about 8 minutes) and record the demo video (about 3 minutes). It
 uses the local Docker Compose deployment with the real detector
 ([M2 demo runbook](deployment.md#m2-demo-runbook-real-model-in-compose)).
 

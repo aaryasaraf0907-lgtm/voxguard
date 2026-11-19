@@ -1,4 +1,4 @@
-# VoxGuard Streamlit UI. Talks to the API at VOXGUARD_API_URL; no ffmpeg or ML stack needed.
+# LineTrue Streamlit UI. Talks to the API at VOXGUARD_API_URL; no ffmpeg or ML stack needed.
 FROM python:3.11-slim-bookworm
 
 ENV PYTHONDONTWRITEBYTECODE=1 \

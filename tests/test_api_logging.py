@@ -1,4 +1,4 @@
-"""configure_logging: VoxGuard's startup INFO lines are visible when served by uvicorn."""
+"""configure_logging: LineTrue's startup INFO lines are visible when served by uvicorn."""
 
 import logging
 

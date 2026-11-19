@@ -1,4 +1,4 @@
-# VoxGuard API: FastAPI + SQLite + ffmpeg (codec simulation).
+# LineTrue API: FastAPI + SQLite + ffmpeg (codec simulation).
 # Default: StubDetector only. Build with --build-arg INSTALL_ML=1 to add the `ml` extra
 # (torch etc.) needed for VOXGUARD_DETECTOR=real, with a CPU-only torch (docker/ml_cpu.sh).
 FROM python:3.11-slim-bookworm

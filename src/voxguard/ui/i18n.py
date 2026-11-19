@@ -19,7 +19,7 @@ class TranslationError(KeyError):
 
 
 EN: dict[str, str] = {
-    "app_title": "VoxGuard",
+    "app_title": "LineTrue",
     "app_subtitle": (
         "Check whether a voice recording may be AI-generated, and review flagged calls."
     ),
@@ -156,7 +156,7 @@ EN: dict[str, str] = {
     "timeline_replay": "Replay",
     "monitor_link": "Open the live call monitor",
     "monitor_link_help": "Listens while a call is going on and warns during the call.",
-    "monitor_title": "VoxGuard live call monitor",
+    "monitor_title": "LineTrue live call monitor",
     "monitor_intro": "Listens while the call is going on and updates the risk every 2 seconds.",
     "monitor_note": (
         "Listens through this computer's microphone, or plays a recording; it is not connected"
@@ -238,7 +238,7 @@ EN: dict[str, str] = {
 }
 
 HI: dict[str, str] = {
-    "app_title": "VoxGuard",
+    "app_title": "LineTrue",
     "app_subtitle": ("जाँचें कि कोई आवाज़ रिकॉर्डिंग AI से बनी हो सकती है या नहीं, और चिह्नित कॉल देखें।"),
     "language": "Language / भाषा",
     "api_section": "API",
@@ -360,7 +360,7 @@ HI: dict[str, str] = {
     "timeline_replay": "दोबारा चलाएँ",
     "monitor_link": "लाइव कॉल मॉनिटर खोलें",
     "monitor_link_help": "कॉल चलते समय सुनता है और कॉल के दौरान ही चेतावनी देता है।",
-    "monitor_title": "VoxGuard लाइव कॉल मॉनिटर",
+    "monitor_title": "LineTrue लाइव कॉल मॉनिटर",
     "monitor_intro": "कॉल चलते समय सुनता है और हर 2 सेकंड में जोखिम अपडेट करता है।",
     "monitor_note": (
         "इस कंप्यूटर के माइक्रोफ़ोन से सुनता है, या रिकॉर्डिंग चलाता है; यह फ़ोन लाइन से जुड़ा"
