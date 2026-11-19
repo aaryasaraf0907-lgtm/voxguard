@@ -524,6 +524,79 @@ def _out_of_domain_table(res: dict[str, Any], cond_name: str) -> list[str]:
     return lines
 
 
+RULE_LABELS = {
+    "fixed": "Fixed: phone threshold, from 2 windows (the API's live monitor)",
+    "sequential_same_fa": "Sequential, same dev false-alarm rate as the fixed rule",
+    "sequential_1pct": "Sequential, at most 1% of dev genuine calls",
+}
+
+
+def _analysis_tables(res: dict[str, Any]) -> list[str]:
+    """Tables from ``voxguard.analysis`` (``res["analysis"]``); nothing if it was not run."""
+    an = res.get("analysis") or {}
+    trains = [t for t in TRAIN_CONDITIONS if t in an]
+    if not trains:
+        return []
+    lines: list[str] = []
+    cols = [(t, test) for t in trains for test in MATRIX_TESTS]
+    attacks = sorted({a for t, test in cols for a in an[t]["per_attack"].get(test, {})})
+    if attacks:
+        lines += ["", "### EER (%) per attack (ASVspoof 2019 LA eval, A07-A19)", ""]
+        lines += [
+            "Each attack's fakes against every bona fide clip. Most eval attacks use generation"
+            " methods that are not in the training set, so this is how the model does on"
+            " unseen methods."
+        ]
+        head = [f"{TRAIN_LABELS[t]}: {'clean' if s == 'clean' else 'phone'}" for t, s in cols]
+        lines += ["", "| Attack | " + " | ".join(head) + " |", "|---" * (len(cols) + 1) + "|"]
+        for a in attacks:
+            cells = [_pct(an[t]["per_attack"].get(s, {}).get(a, {}).get("eer")) for t, s in cols]
+            lines.append(f"| {a} | " + " | ".join(cells) + " |")
+    cal = [(t, an[t]["calibration"]) for t in trains if "calibration" in an[t]]
+    if cal:
+        lines += [
+            "",
+            "### Score calibration (Platt, fitted on dev phone, checked on eval phone)",
+            "",
+        ]
+        lines += [
+            "Calibrated P(fake) = sigmoid(a * logit(score) + b), with bona fide and fake weighted"
+            " equally. It is monotonic, so no decision changes; ECE and Brier are class-balanced"
+            " (lower is better)."
+        ]
+        lines += ["", "| Train | a | b | ECE before -> after | Brier before -> after |"
+                  " Phone threshold -> calibrated |", "|---|---|---|---|---|---|"]  # fmt: skip
+        for t, c in cal:
+            lines.append(
+                f"| {TRAIN_LABELS[t]} | {c['a']:.3f} | {c['b']:.3f} | {c['before']['ece']:.3f} ->"
+                f" {c['after']['ece']:.3f} | {c['before']['brier']:.3f} ->"
+                f" {c['after']['brier']:.3f}"
+                f" | {c['threshold']:.4g} -> {c['threshold_calibrated']:.3f} |"
+            )
+    seq = [(t, an[t]["sequential"]) for t in trains if "sequential" in an[t]]
+    for t, s in seq:
+        lines += ["", f"### Live alert rules, {TRAIN_LABELS[t]} (simulated phone calls)", ""]
+        lines += [
+            f"{s['n_calls']} calls of {s['call_windows']} windows per kind, each from one speaker"
+            " on one codec (one clip per ~4 s window; the live monitor's windows overlap, which"
+            " this does not model). Thresholds are chosen on dev calls, numbers are on eval calls."
+            f" Mixed calls are genuine for {s['switch']} windows, then fake. The fixed rule's dev"
+            f" false-alarm rate is {_pct(s['fixed_dev_false_alarm_calls'])} %."
+        ]
+        lines += ["", "| Rule | Genuine calls alerted (%) | Fake calls detected (%) |"
+                  " Windows to alert (median) | Mixed: early false alert (%) |"
+                  " Mixed: detected (%) | Mixed: windows after switch (median) |",
+                  "|---|---|---|---|---|---|---|"]  # fmt: skip
+        for name, r in s["rules"].items():
+            lines.append(
+                f"| {RULE_LABELS.get(name, name)} | {_pct(r['false_alarm_calls'])} |"
+                f" {_pct(r['fake_detected'])} | {r['fake_median_windows']:.1f} |"
+                f" {_pct(r['mixed_early_alert'])} | {_pct(r['mixed_detected'])} |"
+                f" {r['mixed_median_windows_after_switch']:.1f} |"
+            )
+    return lines
+
+
 def render_family(res: dict[str, Any], figures: list[tuple[str, str]] | None = None) -> str:
     lines = [f"## {res['family']}", "", "### 2x2 matrix: EER (%)", ""]
     lines += ["| Train \\ Test | Clean | Phone-degraded (pooled) |", "|---|---|---|"]
@@ -557,6 +630,7 @@ def render_family(res: dict[str, Any], figures: list[tuple[str, str]] | None = N
     lines += _low_far_table(res)
     for cond_name in OUT_OF_DOMAIN:
         lines += _out_of_domain_table(res, cond_name)
+    lines += _analysis_tables(res)
 
     if res.get("latency"):
         lines += ["", "### Latency per ~4 s clip (ms, batch 1)", ""]
@@ -605,6 +679,34 @@ def load_results(out_dir: Path) -> dict[str, dict[str, Any]]:
     }
 
 
+DEV_SCORES = "dev_scores.npz"  # next to thresholds.json; local only (publish.py does not upload it)
+
+
+def save_dev_scores(
+    path: Path,
+    clean: tuple[np.ndarray, np.ndarray],
+    phone: tuple[np.ndarray, np.ndarray, list[str]],
+    dev_clean: list[Path],
+    dev_phone: list[Path],
+    cfg: EvalConfig,
+) -> None:
+    """The dev scores thresholds were chosen from, with each row's file, for voxguard.analysis
+    (calibration and the sequential alert rule are fitted on dev, never on eval)."""
+    from voxguard.data.datasets import load_rows
+
+    clean_rows = load_rows(dev_clean, None, cfg.max_samples, cfg.seed)
+    phone_rows = [r for r in load_rows(dev_phone, None, cfg.max_samples, cfg.seed)
+                  if r.codec != "clean"]  # fmt: skip
+    if len(clean_rows) != len(clean[0]) or len(phone_rows) != len(phone[0]):
+        raise ValueError("dev scores do not line up with the dev manifest rows")
+    np.savez_compressed(
+        path, clean_scores=clean[0], clean_labels=clean[1],
+        clean_files=np.array([r.path for r in clean_rows]),
+        phone_scores=phone[0], phone_labels=phone[1], phone_codecs=np.array(phone[2]),
+        phone_files=np.array([r.path for r in phone_rows]),
+    )  # fmt: skip
+
+
 def write_thresholds(
     checkpoint: Path, dev_clean: list[Path], dev_phone: list[Path], cfg: EvalConfig
 ) -> Path:
@@ -620,6 +722,7 @@ def write_thresholds(
     data = select_thresholds(clean, phone, version)
     out = checkpoint.parent / "thresholds.json"
     out.write_text(json.dumps(data, indent=2) + "\n")
+    save_dev_scores(checkpoint.parent / DEV_SCORES, clean, phone, dev_clean, dev_phone, cfg)
     logger.info(
         "%s: clean %.4g (dev EER %.2f%%), phone %.4g (dev EER %.2f%%) -> %s", version,
         data["clean"], 100 * data["dev_eer"]["clean"], data["phone"],
