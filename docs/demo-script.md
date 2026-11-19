@@ -19,6 +19,7 @@ and pick only clips that behave as the script needs.
 | **G2, genuine (backup)** | An ASVspoof 2019 or 2021 LA eval bona fide file | As G1, with a wider margin |
 | **F1, F2, fake** | ASVspoof 2019 LA eval spoofs (the model's training domain; ODC-By, cite Todisco et al., Interspeech 2019) | Flagged, far above the threshold (no caution), both as uploaded and through G.711 |
 | **N1, near the threshold** | A consented genuine recording that the model flags with the caution | Flagged, below 1.5× the threshold, so the yellow caution shows |
+| **M, mixed call (timeline)** | Constructed privately: G1 (or another consented genuine recording) followed by F1, joined into one 16 kHz file | Timeline flags it only after the fake part starts, and the genuine part stays below the threshold |
 
 **Getting candidates.** Any ASVspoof 2019 LA eval file can be fetched on its own from the official
 `LA.zip` (it supports HTTP range requests), so a handful of clips is a few MB instead of the 7.6 GB
@@ -31,6 +32,10 @@ whose decision is the same in both conditions and far from the threshold (for ex
 several times the threshold, genuine clips clearly below it). Scores are deterministic for the same
 file and model, so a clip chosen this way behaves the same on the day. Choose again whenever the
 model or the threshold changes.
+
+M is constructed: say so when showing it ("a genuine recording followed by an AI-generated
+segment, joined for the demo"). It shows when the running average crosses the threshold, not a
+measured detection delay.
 
 N1 is a genuine voice wrongly flagged. Present it as exactly that: the honest limit of the model
 on off-domain speech, and the reason for the caution.
@@ -59,11 +64,12 @@ on off-domain speech, and the reason for the caution.
 | 2 | 0:45 | **Analyze audio** → **Upload a file** → G1 → **Analyze** | A genuine recording: **Not flagged**. Point at the fake score, the threshold and the detector latency. |
 | 3 | 1:45 | F1 → **Analyze** | An AI-generated voice: **Flagged**, red banner. The score is far above the threshold. |
 | 4 | 2:30 | Turn on **Simulate phone line**, codec **G.711 µ-law** → **Analyze** F1 again | The same clip after a real telephone codec. Both results appear side by side; the decision holds on the phone line. This is the point of the codec-aware training. |
-| 5 | 3:30 | Show `docs/results.md`, the 2×2 matrix | The measured result: trained on clean audio vs codec-augmented, tested clean vs phone-degraded. Read the two phone-degraded cells. |
-| 6 | 4:30 | Enter a **Caller ID** (e.g. `+91-DEMO-0001`) → F2 → **Analyze**; open **Flagged sessions**, **Blocklist**, **Alerts** | Prevention: a flagged call is stored, an alert is raised, and the caller is added to the blocklist with a hit counter. Analyze F2 once more with the same ID to show the counter go up. |
-| 7 | 5:45 | N1 → **Analyze** | A genuine voice, flagged, but with the yellow caution "Close to the decision threshold". Flags just above the threshold are hints, not verdicts. Off-domain speech (unusual microphones, rooms, languages) is the model's main weakness; we report it rather than hide it. |
-| 8 | 6:45 | Sidebar → **हिन्दी** | The interface in Hindi. Detection was trained and evaluated in English; Hindi detection is only an evaluated generalisation test, not a supported feature. |
-| 9 | 7:30 | Back to English; summarise | The detector, the phone-line evaluation, the prevention layer, the latency on CPU. Questions. |
+| 5 | 3:15 | Turn on **Show live-monitoring timeline**, phone line off → M → **Analyze**; press **Replay** | What a live call monitor would have shown: each 4 s window and the running average against the threshold. The genuine part stays below it; the alert comes a few seconds after the fake voice starts. Same verdict as without the timeline. |
+| 6 | 3:50 | Show `docs/results.md`, the 2×2 matrix | The measured result: trained on clean audio vs codec-augmented, tested clean vs phone-degraded. Read the two phone-degraded cells. |
+| 7 | 4:40 | Enter a **Caller ID** (e.g. `+91-DEMO-0001`) → F2 → **Analyze**; open **Flagged sessions**, **Blocklist**, **Alerts** | Prevention: a flagged call is stored, an alert is raised, and the caller is added to the blocklist with a hit counter. Analyze F2 once more with the same ID to show the counter go up. |
+| 8 | 5:50 | N1 → **Analyze** | A genuine voice, flagged, but with the yellow caution "Close to the decision threshold". Flags just above the threshold are hints, not verdicts. Off-domain speech (unusual microphones, rooms, languages) is the model's main weakness; we report it rather than hide it. |
+| 9 | 6:50 | Sidebar → **हिन्दी** | The interface in Hindi. Detection was trained and evaluated in English; Hindi detection is only an evaluated generalisation test, not a supported feature. |
+| 10 | 7:30 | Back to English; summarise | The detector, the phone-line evaluation, the prevention layer, the latency on CPU. Questions. |
 
 Uploaded audio is never stored: only each session's score, threshold, label, flag, codec, model
 version, latency and optional caller ID.
@@ -91,7 +97,10 @@ The demo runs offline once the model is in the volume; no network is needed.
   `docs/results.md`, and to N1. Do not quote a rate that is not in the results.
 - **Does it work in Hindi?** Claim only what `docs/results.md` reports for the Hindi test set.
 - **Is it real time?** Show the detector latency in the result and the latency table in
-  `docs/results.md`.
+  `docs/results.md`: each 4 s window is scored faster than it plays, on a laptop CPU. The
+  timeline shows when a live monitor would have flagged the call; the demo scores a recording,
+  it is not connected to a phone line. Capacity under load is in `docs/deployment.md`,
+  "Load test".
 - **What would deployment need?** A telephony integration, an operator review step for flagged
   calls (unblocking false alarms), and monitoring. None of these are in this prototype.
 
@@ -104,6 +113,7 @@ Record the screen at 1080p with the presenter's voice; no other people's voices 
 | 1 | 20 s | The problem, over the architecture diagram |
 | 2 | 30 s | G1 not flagged, then F1 flagged |
 | 3 | 30 s | F1 on the simulated phone line, side by side |
+| 3b | 20 s | M with the timeline and Replay: the alert after the fake part starts |
 | 4 | 30 s | The 2×2 matrix in `docs/results.md` |
 | 5 | 35 s | Prevention: caller ID, flagged sessions, blocklist, alerts |
 | 6 | 20 s | N1 with the caution: the honest limitation |
