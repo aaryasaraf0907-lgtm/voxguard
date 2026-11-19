@@ -1,5 +1,9 @@
 # Weekly update PRs to dev, grouped so each ecosystem opens at most one PR for minor and patch
 # updates; major updates come as separate PRs. Every PR goes through CI and a normal merge.
+#
+# PAUSED until 26 Nov 2026: no version-update PRs during the submission week (project due
+# 25 Nov). On 26 Nov set every open-pull-requests-limit back to 3. Security updates are a
+# separate GitHub setting and are not affected by this limit.
 version: 2
 updates:
   - package-ecosystem: github-actions
@@ -7,7 +11,7 @@ updates:
     target-branch: dev
     schedule:
       interval: weekly
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 0  # paused, see the top of this file (normally 3)
     groups:
       actions-minor-patch:
         update-types: [minor, patch]
@@ -16,7 +20,7 @@ updates:
     target-branch: dev
     schedule:
       interval: weekly
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 0  # paused, see the top of this file (normally 3)
     groups:
       python-minor-patch:
         update-types: [minor, patch]
@@ -25,4 +29,4 @@ updates:
     target-branch: dev
     schedule:
       interval: weekly
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 0  # paused, see the top of this file (normally 3)
