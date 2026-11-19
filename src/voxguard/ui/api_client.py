@@ -134,9 +134,11 @@ class VoxGuardClient:
         caller_id: str | None = None,
         simulate_codec: bool = False,
         codec: str | None = None,
+        timeline: bool = False,
     ) -> AnalyzeResponse:
         """POST /v1/analyze. Fields are only sent when set: ``codec`` picks the codec (and implies
-        simulation); ``simulate_codec`` alone uses the server's default codec."""
+        simulation); ``simulate_codec`` alone uses the server's default codec; ``timeline`` asks
+        for the per-window live-monitoring timeline."""
         data: dict[str, str] = {}
         if caller_id:
             data["caller_id"] = caller_id
@@ -144,6 +146,8 @@ class VoxGuardClient:
             data["simulate_codec"] = "true"
         if codec:
             data["codec"] = codec
+        if timeline:
+            data["timeline"] = "true"
         payload = self._request(
             "POST",
             "/v1/analyze",

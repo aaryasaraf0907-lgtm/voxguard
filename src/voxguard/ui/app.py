@@ -27,6 +27,7 @@ ALERTS_LIMIT = 100
 # Near-threshold caution (agreed with Aarya, 16 Nov): one-sided, only for flagged results that
 # scored less than CAUTION_FACTOR x the threshold. Results under the threshold get no caution.
 CAUTION_FACTOR = 1.5
+REPLAY_STEP_S = 0.4  # per window when replaying the timeline (tests set 0)
 CODEC_NAMES = {  # proper names, the same in every language
     "g711_mulaw": "G.711 µ-law",
     "g711_alaw": "G.711 A-law",
@@ -140,6 +141,98 @@ def render_result(result: AnalyzeResponse, lang: str, header_key: str = "result_
         else t("none_value", lang),
     )
     st.caption(t("m_session", lang, session_id=result.session_id))
+    if result.timeline:
+        render_timeline(result, lang, header_key)
+
+
+SCORE_FLOOR = 1e-4  # log-scale chart: a score of 0 is drawn here
+
+
+def timeline_spec(result: AnalyzeResponse, lang: str, upto: int | None = None) -> dict:
+    """Vega-Lite spec: window scores and the running average (log scale, so a threshold near
+    0.01 and scores far above or below it are all readable), the threshold as a dashed line and
+    the first moment the running average reached it. Points sit at each window's end time
+    ("after N s of audio"). ``upto`` limits the points drawn (replay)."""
+    assert result.timeline is not None
+    x, y, series = t("timeline_x", lang), t("m_score", lang), t("timeline_series", lang)
+    window, running = t("timeline_window", lang), t("timeline_running", lang)
+    points = result.timeline[:upto]
+    values = [
+        {x: p.end_s, series: name, y: max(score, SCORE_FLOOR)}
+        for p in points
+        for name, score in ((window, p.fake_score), (running, p.running_score))
+    ]
+    # fixed to the whole recording, so replay does not rescale as points arrive
+    every = [s for p in result.timeline for s in (p.fake_score, p.running_score)]
+    y_domain = [
+        max(min(*every, result.threshold), SCORE_FLOOR) / 1.5,
+        min(max(*every, result.threshold) * 1.5, 1.0),
+    ]
+    x_axis = {
+        "field": x,
+        "type": "quantitative",
+        "scale": {"domain": [0, result.timeline[-1].end_s]},
+    }
+    layers: list[dict] = [
+        {
+            "data": {"values": values},
+            "mark": {"type": "line", "point": True},
+            "encoding": {
+                "x": x_axis,
+                "y": {
+                    "field": y,
+                    "type": "quantitative",
+                    "scale": {"type": "log", "domain": y_domain},
+                },
+                "color": {"field": series, "type": "nominal", "sort": [window, running]},
+            },
+        },
+        {
+            "data": {"values": [{y: result.threshold, "label": t("timeline_threshold", lang)}]},
+            "mark": {"type": "rule", "strokeDash": [6, 4], "color": "#888"},
+            "encoding": {
+                "y": {"field": y, "type": "quantitative"},
+                "tooltip": [{"field": "label"}],
+            },
+        },
+    ]
+    if result.first_flag_s is not None and (upto is None or upto >= _flag_index(result)):
+        layers.append(
+            {
+                "data": {"values": [{x: result.first_flag_s}]},
+                "mark": {"type": "rule", "color": "#d62728", "strokeDash": [2, 2]},
+                "encoding": {"x": {"field": x, "type": "quantitative"}},
+            }
+        )
+    return {"layer": layers, "height": 260}
+
+
+def _flag_index(result: AnalyzeResponse) -> int:
+    """Number of points up to and including the first flagged one."""
+    assert result.timeline is not None
+    return next(i for i, p in enumerate(result.timeline, start=1) if p.flagged)
+
+
+def render_timeline(result: AnalyzeResponse, lang: str, key: str) -> None:
+    """Window scores and the running average against the threshold, and when a live monitor
+    using the same rule would have flagged the call. Replay draws it window by window."""
+    assert result.timeline is not None
+    st.markdown(f"**{t('timeline_header', lang)}**")
+    seconds = f"{result.first_flag_s:.1f}" if result.first_flag_s is not None else ""
+    if result.first_flag_s is None:
+        st.info(t("timeline_never", lang))
+    elif result.flagged:
+        st.warning(t("timeline_flagged_at", lang, seconds=seconds))
+    else:  # an early alert the rest of the recording did not support
+        st.info(t("timeline_flagged_briefly", lang, seconds=seconds))
+    st.caption(t("timeline_note", lang))
+    chart = st.empty()
+    if st.button(t("timeline_replay", lang), key=f"replay_{key}"):
+        for n in range(1, len(result.timeline) + 1):
+            chart.vega_lite_chart(spec=timeline_spec(result, lang, n), width="stretch")
+            time.sleep(REPLAY_STEP_S)
+    else:
+        chart.vega_lite_chart(spec=timeline_spec(result, lang), width="stretch")
 
 
 def current_results(digest: str | None) -> dict[str, AnalyzeResponse]:
@@ -187,6 +280,9 @@ def render_analyze(client: Any, lang: str) -> None:
     )
     st.caption(t("simulate_on" if simulate else "simulate_off", lang))
     codec = pick_codec(client, lang) if simulate else None
+    show_timeline = st.toggle(
+        t("timeline_label", lang), value=False, help=t("timeline_help", lang), key="timeline"
+    )
 
     source = st.radio(
         t("source_label", lang),
@@ -223,6 +319,7 @@ def render_analyze(client: Any, lang: str) -> None:
                         caller_id=caller_id.strip() or None,
                         simulate_codec=simulate,
                         codec=codec,
+                        timeline=show_timeline,
                     )
                 invalidate("sessions", "blocklist", "alerts")
             except ApiError as err:
