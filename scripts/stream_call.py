@@ -127,19 +127,17 @@ def describe(m: dict) -> str:
     return json.dumps(m)
 
 
-def run(args: argparse.Namespace) -> dict:
+def stream_samples(
+    url: str, x: np.ndarray, rate: int, speed: float = 1.0, quiet: bool = False
+) -> dict:
+    """Stream mono float32 ``x`` to a ready-made /v1/stream URL. Returns the measurements: every
+    score (window score, running average, detector time, how long after its audio it arrived),
+    the alert and the ``final`` message. Shared with scripts/live_eval.py."""
     from websockets.sync.client import connect
 
-    x, rate = load_audio(args.file)
     chunks = frames(x, rate)
-    url = stream_url(check_url(args.url, args.allow_remote), rate, args.codec, args.caller_id)
     sent_at: list[tuple[float, float]] = []  # (seconds of audio sent so far, wall time)
-    report: dict = {
-        "file": args.file.name,
-        "duration_s": len(x) / rate,
-        "scores": [],
-        "alert": None,
-    }
+    report: dict = {"duration_s": len(x) / rate, "scores": [], "alert": None, "final": None}
     t0 = time.monotonic()
 
     def sent_time(t_s: float) -> float | None:
@@ -152,7 +150,8 @@ def run(args: argparse.Namespace) -> dict:
             for raw in ws:
                 m = json.loads(raw)
                 now = time.monotonic()
-                print(describe(m), flush=True)
+                if not quiet:
+                    print(describe(m), flush=True)
                 if m["type"] in ("score", "alert"):
                     sent = sent_time(m["t_s"])
                     delay = None if sent is None else round((now - sent) * 1000.0, 1)
@@ -160,13 +159,20 @@ def run(args: argparse.Namespace) -> dict:
                         report["scores"].append(
                             {
                                 "t_s": m["t_s"],
+                                "window": m["window_score"],
                                 "running": m["running_score"],
                                 "detector_ms": m["latency_ms"],
                                 "arrived_after_ms": delay,
                             }
                         )
                     else:
-                        report["alert"] = {"t_s": m["t_s"], "arrived_after_ms": delay}
+                        report["alert"] = {
+                            "t_s": m["t_s"],
+                            "level": m.get("level"),
+                            "arrived_after_ms": delay,
+                        }
+                if m["type"] == "ready":
+                    report["ready"] = m
                 if m["type"] in ("final", "error"):
                     report["final"] = m
                     return
@@ -178,11 +184,17 @@ def run(args: argparse.Namespace) -> dict:
             ws.send(np.ascontiguousarray(chunk, dtype="<f4").tobytes())
             audio_s += len(chunk) / rate
             sent_at.append((audio_s, time.monotonic()))
-            if args.speed > 0:  # pace to (a multiple of) real time
-                time.sleep(max(0.0, t0 + audio_s / args.speed - time.monotonic()))
+            if speed > 0:  # pace to (a multiple of) real time
+                time.sleep(max(0.0, t0 + audio_s / speed - time.monotonic()))
         ws.send(json.dumps({"type": "end"}))
         reader.join(timeout=120)
     return report
+
+
+def run(args: argparse.Namespace) -> dict:
+    x, rate = load_audio(args.file)
+    url = stream_url(check_url(args.url, args.allow_remote), rate, args.codec, args.caller_id)
+    return {"file": args.file.name, **stream_samples(url, x, rate, args.speed)}
 
 
 def main(argv: list[str] | None = None) -> int:
