@@ -228,6 +228,24 @@ What it shows, honestly:
 
 20 calls per kind is a small set: these are counts, not error rates. Re-run on the final model.
 
+### Alert level (20 Nov)
+
+The genuine calls' caution alerts above came from the running average sitting just over the
+threshold, not from one early window: waiting for more windows barely changed them. The live
+alert now fires at 1.5 x the threshold (`ALERT_FACTOR`, the existing caution/high boundary, not a
+value fitted to these calls); the stored verdict still uses the threshold. Run 1's recorded
+window scores, replayed under each rule (same calls, same windows; counts of calls):
+
+| Alert when the running average (at least 2 windows) reaches | Genuine calls alerted | Fake calls alerted (median time) | Mixed: alerted before the switch | Mixed: after the switch, median / missed |
+|---|---|---|---|---|
+| the threshold (before) | 35 of 100 | 100 of 100 (6.25 s) | 28 of 100 | 2.63 s / 0 |
+| the threshold, at least 4 windows | 30 of 100 | 100 of 100 (10.25 s) | 23 of 100 | 2.63 s / 0 |
+| 1.25 x the threshold | 7 of 100 | 100 of 100 (6.25 s) | 7 of 100 | 2.63 s / 0 |
+| **1.5 x the threshold (now)** | **2 of 100** | **100 of 100 (6.25 s)** | **4 of 100** | **3.29 s / 0** |
+
+These are evaluation-set calls, so they check the change rather than choose it; the final
+model's operating point is chosen on dev.
+
 ## 5. Same-speaker voice-clone test
 
 Can the model tell a person from a clone of that same person? One team member's own voice
@@ -289,6 +307,21 @@ genuine part.
 - **Live, sentence-by-sentence speech raised caution alerts on the genuine voice,** so in this
   test the transfer gate held a genuine caller as well as the clone. It errs towards holding
   money, which is the safe side, but it does not tell this caller from their clone.
+
+### Re-run after #103 and the alert level (20 Nov)
+
+#103 scores a 4.0–5.05 s clip on its first and last 4 s, averaged. The same files, same model:
+
+| Condition | Genuine flagged, before → after | Clones flagged, before → after | Clones above every genuine score, before → after |
+|---|---|---|---|
+| As uploaded | 6 → **1** of 20 | 15 → 15 of 20 | 13 → 15 of 20 |
+| `codec=g711_mulaw` | 6 → **2** of 20 | 15 → 16 of 20 | 10 → 13 of 20 |
+
+The live calls of this test, replayed with the alert at 1.5 x the threshold: the genuine calls
+alerted in 2 of 4 (4 of 4 before), all 4 cloned calls still alerted (median 6.25 s); of the 4
+genuine-then-cloned calls, 2 still alerted during the genuine part and 1 no longer alerted at all. For this speaker and these
+clones the live scores of the two overlap, so no alert level separates them: that is for the
+model to improve, not the rule.
 
 One speaker, one microphone, one cloning tool and 20 sentences: counts, not rates. The clone pair
 is not in the demo with this model. Re-run on the final model after 22 Nov.

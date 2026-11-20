@@ -229,10 +229,15 @@ HTML and JavaScript, no framework, nothing from the network) is its browser clie
    within one step is skipped and reported as `busy`. If scoring falls behind, only the newest
    window is scored.
 3. Each `score` message carries the window score and the running average. An `alert` is sent
-   the first time the running average of **at least two windows** reaches the threshold: on the
-   real model, a genuine recording's first window sat just over it (0.012836 against 0.012676).
-   The page grades it: just over the threshold (under 1.5 x, the UI's caution band) it asks to
-   verify the caller another way; well over it, to hang up and call back. Once an alert is
+   the first time the running average of **at least two windows** reaches **1.5 x the
+   threshold** (`ALERT_FACTOR`, `api/risk.py`): on the real model, a genuine recording's first
+   window sat just over the threshold (0.012836 against 0.012676), and in 300 streamed ASVspoof
+   calls 35 of 100 genuine calls ran just over it, against 2 of 100 at 1.5 x, with every fake
+   call still alerted at 6.25 s (`docs/real-audio-testing.md`, section 4). Between the threshold
+   and the alert level the page says the risk is elevated and to keep listening, without an
+   alert. The stored verdict still uses the threshold itself (the prevention rule). After an
+   alert, the page grades it: if the running average falls back under 1.5 x, it asks to verify
+   the caller another way; above it, to hang up and call back. Once an alert is
    raised the page lists what to do (call back on a known number, ask something only the real
    person knows, report at 1930, India's National Cyber Crime Helpline, or cybercrime.gov.in). A
    consent notice asks the user to tell the other party that the call is being checked.
