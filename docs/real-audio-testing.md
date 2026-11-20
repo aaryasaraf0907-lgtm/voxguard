@@ -280,7 +280,8 @@ genuine part.
   sentences cross it. No threshold separates the two sets completely. A threshold just above
   the highest genuine score would have caught 13 of 20 clones as uploaded.
 - **Why genuine short clips cross:** a 4.0–5.05 s clip is scored on its first 4 s only (the
-  shorter leftover is dropped; `inference.to_windows`). On these recordings the first 4 s scored
+  shorter leftover is dropped; `inference.to_windows`; since #103 the last 4 s is scored too and
+  the two averaged, so re-run this on the new scoring). On these recordings the first 4 s scored
   higher than the last 4 s in 23 of 23 clips, and only clips scored on that one window were
   flagged (6 of 11, against 0 of 12 longer clips). The audio format made no difference (the
   same audio as 16 kHz WAV scored the same). A continuous 50 s genuine recording was not

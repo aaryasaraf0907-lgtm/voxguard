@@ -20,7 +20,6 @@ import numpy as np
 
 from voxguard.api.prevention import is_flagged
 from voxguard.inference import (
-    MIN_TAIL,
     NUM_SAMPLES,
     TARGET_SR,
     Detector,
@@ -31,6 +30,7 @@ from voxguard.inference import (
     to_mono,
     to_windows,
     torch_resample,
+    window_starts,
 )
 from voxguard.schemas import TimelinePoint
 
@@ -44,15 +44,11 @@ class WindowScore:
 
 def window_bounds(n_samples: int) -> list[tuple[int, int]]:
     """(start, end) in samples of each window ``to_windows`` makes from a 16 kHz signal of
-    ``n_samples``: full windows, then an overlapping last one for a tail of at least MIN_TAIL. A
-    clip shorter than one window is one window covering the whole clip (repeat-padded inside)."""
+    ``n_samples`` (``inference.window_starts``). A clip shorter than one window is one window
+    covering the whole clip (repeat-padded inside)."""
     if n_samples < NUM_SAMPLES:
         return [(0, n_samples)]
-    n_full, tail = divmod(n_samples, NUM_SAMPLES)
-    bounds = [(i * NUM_SAMPLES, (i + 1) * NUM_SAMPLES) for i in range(n_full)]
-    if tail >= MIN_TAIL:
-        bounds.append((n_samples - NUM_SAMPLES, n_samples))
-    return bounds
+    return [(s, s + NUM_SAMPLES) for s in window_starts(n_samples)]
 
 
 def _resampler_for(detector: Detector) -> Resampler:
