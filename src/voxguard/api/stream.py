@@ -6,7 +6,8 @@ the detector's window (64,600 samples at 16 kHz, about 4 s) has arrived, the lat
 scored every HOP_S seconds of audio, exactly as ``POST /v1/analyze`` would score that 4 s clip:
 phone-line codec first if ``?codec=`` is given, then ``Detector.predict`` (which resamples to
 16 kHz itself). Each score is pushed back at once with the running average of the window scores,
-and an ``alert`` is sent the first time that average reaches the threshold (the prevention rule).
+and an ``alert`` is sent the first time that average reaches ALERT_FACTOR x the threshold
+(``api/risk.py``); the stored verdict still uses the threshold itself (the prevention rule).
 
 When the client sends ``{"type": "end"}`` or disconnects, one session is stored through the usual
 prevention layer (alert and blocklist when flagged). Its score is the running average of the live
@@ -41,7 +42,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from voxguard.api import codec_sim, evidence, prevention
 from voxguard.api.deps import Settings
 from voxguard.api.gate import AnalysisGate, Busy
-from voxguard.api.risk import CAUTION_FACTOR, MIN_ALERT_WINDOWS
+from voxguard.api.risk import ALERT_FACTOR, CAUTION_FACTOR, MIN_ALERT_WINDOWS
 from voxguard.data.codecs import CODECS
 from voxguard.inference import NUM_SAMPLES, TARGET_SR, Detector, Prediction
 
@@ -115,7 +116,7 @@ class LiveCall:
 
     def add(self, score: float, latency_ms: float, model_version: str, t_s: float) -> bool:
         """Record a window score. True if this one first brought the running average to the
-        threshold (the moment to alert)."""
+        alert level, ALERT_FACTOR x the threshold (the moment to alert)."""
         self.scores.append(score)
         self.latencies.append(latency_ms)
         self.points.append((t_s, score, self.running))
@@ -123,7 +124,7 @@ class LiveCall:
         if (
             self.first_flag_s is None
             and len(self.scores) >= MIN_ALERT_WINDOWS
-            and prevention.is_flagged(self.running, self.threshold)
+            and prevention.is_flagged(self.running, ALERT_FACTOR * self.threshold)
         ):
             self.first_flag_s = t_s
             return True
@@ -265,6 +266,7 @@ async def _serve(
             "model_version": det.model_version,
             "min_alert_windows": MIN_ALERT_WINDOWS,
             "caution_factor": CAUTION_FACTOR,
+            "alert_factor": ALERT_FACTOR,
         }
     )
     connected = True

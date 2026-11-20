@@ -178,7 +178,7 @@ function t(key, vars) {
 
 const state = { ws: null, ctx: null, media: null, source: null, pending: [], pendingN: 0,
                 points: [], threshold: null, flagAt: null, alerted: false, last: null,
-                minWindows: 2, caution: 1.5,
+                minWindows: 2, caution: 1.5, alertFactor: 1.5,
                 banner: ["", "monitor_status_idle", null], final: null, seconds: 0 };
 
 function applyLanguage() {
@@ -299,6 +299,7 @@ function onMessage(m) {
   if (m.type === "ready") {
     state.sessionId = m.session_id; $("approve").disabled = false;
     state.threshold = m.threshold; state.minWindows = m.min_alert_windows; state.caution = m.caution_factor;
+    state.alertFactor = m.alert_factor;
     $("threshold").textContent = m.threshold.toFixed(6);
     showBanner("info", "monitor_status_listening", null);
   } else if (m.type === "score") {
@@ -322,10 +323,12 @@ function onMessage(m) {
 }
 
 function showRisk(m) {
-  // graded: "checking" until enough windows, then caution (just over the threshold) or alert
+  // graded: "checking" until enough windows; "elevated" over the threshold but below the alert
+  // level (no alert: genuine calls often sit here); after an alert, caution or alert
   const over = m.running_score >= state.threshold;
   if (!state.alerted) {
     if (over && m.windows < state.minWindows) showBanner("info", "monitor_checking", null);
+    else if (over) showBanner("info", "monitor_elevated", null);
     else showBanner("safe", "monitor_safe", null);
   } else if (!over) {
     showBanner("info", "monitor_caution", { key: "monitor_alert_cleared", vars: { seconds: state.flagAt.toFixed(1) } });

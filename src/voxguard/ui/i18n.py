@@ -289,6 +289,10 @@ EN: dict[str, str] = {
     "monitor_safe": "Below the threshold so far.",
     "monitor_checking": "Checking: one window is over the threshold; waiting for more audio.",
     "monitor_caution": "Caution: the risk is just over the threshold.",
+    "monitor_elevated": (
+        "Slightly above the threshold, not yet at the alert level: keep listening. Genuine calls"
+        " often sit here."
+    ),
     "monitor_caution_advice": (
         "Verify the caller another way before acting on this call: call back on a number you"
         " already trust."
@@ -299,8 +303,8 @@ EN: dict[str, str] = {
         " you already trust."
     ),
     "monitor_alert_cleared": (
-        "The risk reached the threshold at {seconds} s and is below it now. Verify the caller"
-        " before acting."
+        "The risk reached the alert level at {seconds} s and is below the threshold now. Verify"
+        " the caller before acting."
     ),
     "monitor_elapsed": "Audio",
     "monitor_window": "Window score",
@@ -317,7 +321,8 @@ EN: dict[str, str] = {
     ),
     "monitor_final_none": "The call ended before any audio could be scored.",
     "monitor_final_no_live_alert": (
-        "It was flagged on the whole call; the call was too short for a live alert."
+        "It was flagged on the whole call, but never reached the live alert level (or was too"
+        " short for one)."
     ),
     "monitor_error": "Error: {detail}",
     "monitor_mic_denied": (
@@ -582,6 +587,9 @@ HI: dict[str, str] = {
     "monitor_safe": "अब तक सीमा से नीचे।",
     "monitor_checking": "जाँच जारी: एक विंडो सीमा से ऊपर है; और ऑडियो की प्रतीक्षा है।",
     "monitor_caution": "सावधानी: जोखिम सीमा से थोड़ा ऊपर है।",
+    "monitor_elevated": (
+        "सीमा से थोड़ा ऊपर, पर अभी चेतावनी के स्तर तक नहीं: सुनते रहें। असली कॉल अक्सर यहीं रहती हैं।"
+    ),
     "monitor_caution_advice": (
         "इस कॉल पर कुछ भी करने से पहले कॉलर की किसी और तरीके से पुष्टि करें: किसी भरोसेमंद नंबर पर वापस कॉल करें।"
     ),
@@ -591,7 +599,8 @@ HI: dict[str, str] = {
         " नंबर पर वापस कॉल करें।"
     ),
     "monitor_alert_cleared": (
-        "जोखिम {seconds} सेकंड पर सीमा तक पहुँचा था और अभी उससे नीचे है। कुछ भी करने से पहले कॉलर की पुष्टि करें।"
+        "जोखिम {seconds} सेकंड पर चेतावनी के स्तर तक पहुँचा था और अभी सीमा से नीचे है। कुछ भी करने से पहले"
+        " कॉलर की पुष्टि करें।"
     ),
     "monitor_elapsed": "ऑडियो",
     "monitor_window": "विंडो स्कोर",
@@ -606,7 +615,9 @@ HI: dict[str, str] = {
         "कॉल समाप्त: चिह्नित नहीं (स्कोर {score} < सीमा {threshold})। सत्र {session} के रूप में सहेजा गया।"
     ),
     "monitor_final_none": "किसी भी ऑडियो का स्कोर बनने से पहले कॉल समाप्त हो गई।",
-    "monitor_final_no_live_alert": ("पूरी कॉल पर यह चिह्नित हुई; लाइव चेतावनी के लिए कॉल बहुत छोटी थी।"),
+    "monitor_final_no_live_alert": (
+        "पूरी कॉल पर यह चिह्नित हुई, पर लाइव चेतावनी के स्तर तक कभी नहीं पहुँची (या उसके लिए बहुत छोटी थी)।"
+    ),
     "monitor_error": "त्रुटि: {detail}",
     "monitor_mic_denied": (
         "माइक्रोफ़ोन की अनुमति रोकी गई। ब्राउज़र के पता बार में अनुमति दें और फिर कोशिश करें।"

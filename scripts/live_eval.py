@@ -486,9 +486,11 @@ def main(argv: list[str] | None = None) -> int:
     with ThreadPoolExecutor(max_workers=args.parallel) as pool:
         results = list(pool.map(one, jobs))
     ready = next((r["ready"] for r in results if r.get("ready")), {})
+    factor = ready.get("alert_factor") or 1  # servers before 20 Nov alerted at the threshold
     rule = (
         f"an alert once the running average of at least {ready.get('min_alert_windows')} windows "
-        f"reaches the threshold; caution below {ready.get('caution_factor')} x it"
+        + ("reaches the threshold" if factor == 1 else f"reaches {factor} x the threshold")
+        + f"; caution below {ready.get('caution_factor')} x it"
     )
     report = {
         "run": {
