@@ -34,6 +34,8 @@ class ScriptedDetector:
         1,
         NUM_SAMPLES - 1,
         NUM_SAMPLES,
+        NUM_SAMPLES + 1,
+        NUM_SAMPLES + MIN_TAIL - 1,
         2 * NUM_SAMPLES + MIN_TAIL - 1,
         2 * NUM_SAMPLES + MIN_TAIL,
         5 * NUM_SAMPLES + 123,

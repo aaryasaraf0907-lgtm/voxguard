@@ -68,17 +68,33 @@ def linear_resample(x: np.ndarray, sr_in: int, sr_out: int) -> np.ndarray:
     return np.interp(grid, np.arange(len(x)), x).astype(np.float32)
 
 
+def window_starts(n_samples: int) -> list[int]:
+    """Start sample of each 64,600-sample window scored from a 16 kHz clip of ``n_samples``.
+
+    Non-overlapping full windows, then the clip's last 64,600 samples (overlapping the previous
+    window) when there is a leftover of at least ``MIN_TAIL``: a repeat-padded 1-3 s tail repeats
+    itself (or its silence) and scored well above the clip's other windows on real speech
+    (15 Nov). A shorter leftover is dropped, except in a clip of one to 1.25 windows (4.0-5.05
+    s): there the last window is scored too, so the score is not the first 4 s alone, which
+    scored higher than the last 4 s on real speech (20 Nov). A clip shorter than one window is
+    one window from 0 (repeat-padded by ``to_windows``).
+    """
+    if n_samples <= NUM_SAMPLES:
+        return [0]
+    n_full, tail = divmod(n_samples, NUM_SAMPLES)
+    starts = [i * NUM_SAMPLES for i in range(n_full)]
+    if tail >= MIN_TAIL or (n_full == 1 and tail > 0):
+        starts.append(n_samples - NUM_SAMPLES)
+    return starts
+
+
 def to_windows(
     waveform: np.ndarray, sample_rate: int, resampler: Resampler = linear_resample
 ) -> list[np.ndarray]:
     """Resample to 16 kHz mono float32 and split into 64,600-sample windows.
 
     A clip shorter than one window is repeat-padded, as in training (see
-    ``voxguard.data.datasets.fix_length``). Longer clips are split into non-overlapping full
-    windows; a trailing leftover of at least ``MIN_TAIL`` samples is scored as the clip's last
-    64,600 samples (overlapping the previous window) instead of being repeat-padded, since a
-    padded 1-3 s tail repeats itself (or its silence) and scored well above the clip's other
-    windows on real speech (15 Nov). A shorter leftover is dropped.
+    ``voxguard.data.datasets.fix_length``). Longer clips are split as ``window_starts`` says.
     """
     x = to_mono(waveform)
     if sample_rate != TARGET_SR and len(x):
@@ -87,11 +103,10 @@ def to_windows(
         return [np.zeros(NUM_SAMPLES, dtype=np.float32)]
     if len(x) < NUM_SAMPLES:
         x = np.tile(x, int(np.ceil(NUM_SAMPLES / len(x))))[:NUM_SAMPLES]
-    n_full, tail = divmod(len(x), NUM_SAMPLES)
-    starts = [i * NUM_SAMPLES for i in range(n_full)]
-    if tail >= MIN_TAIL:
-        starts.append(len(x) - NUM_SAMPLES)
-    return [np.ascontiguousarray(x[s : s + NUM_SAMPLES], dtype=np.float32) for s in starts]
+    return [
+        np.ascontiguousarray(x[s : s + NUM_SAMPLES], dtype=np.float32)
+        for s in window_starts(len(x))
+    ]
 
 
 class StubDetector:

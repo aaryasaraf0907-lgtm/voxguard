@@ -3,6 +3,7 @@ import pytest
 
 from voxguard.inference import (
     MAX_RESAMPLE_ELEMENTS,
+    MIN_TAIL,
     NUM_SAMPLES,
     Prediction,
     RealDetector,
@@ -11,6 +12,7 @@ from voxguard.inference import (
     resample_elements,
     to_windows,
     torch_resample,
+    window_starts,
 )
 
 
@@ -70,6 +72,17 @@ def test_windowing_pad_crop_and_split() -> None:
     assert np.array_equal(wins[2], long[-NUM_SAMPLES:])
     # exactly one window: no tail window at all
     assert len(to_windows(_wave(NUM_SAMPLES), 16_000)) == 1
+    # 4.0-5.05 s: the last 4 s is scored too, whatever the leftover, not the first 4 s alone
+    for n in (NUM_SAMPLES + 1, NUM_SAMPLES + MIN_TAIL - 1):
+        clip = _wave(n)
+        first, last = to_windows(clip, 16_000)
+        assert np.array_equal(first, clip[:NUM_SAMPLES]) and np.array_equal(
+            last, clip[-NUM_SAMPLES:]
+        )
+    # from two windows on, a leftover under MIN_TAIL is still dropped
+    assert window_starts(2 * NUM_SAMPLES + MIN_TAIL - 1) == [0, NUM_SAMPLES]
+    assert window_starts(NUM_SAMPLES + MIN_TAIL) == [0, MIN_TAIL]
+    assert window_starts(1) == window_starts(NUM_SAMPLES) == [0]
     assert len(to_windows(np.zeros(0, dtype=np.float32), 16_000)) == 1
 
 
