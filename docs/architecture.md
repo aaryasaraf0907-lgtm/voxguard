@@ -282,9 +282,22 @@ call is decided from the call's risk.
   verdict, the timeline as a chart and a table, every transfer decision and step, the 1930 /
   cybercrime.gov.in guidance and a no-audio statement. Self-contained HTML, every value escaped.
   Linked from the monitor page and the Alerts and Transactions tabs.
+- **Tamper-evident evidence trail** (`api/evidence.py`): every stored session, a live call's
+  per-window scores, each transfer decision and each verification step add one entry to
+  `evidence_log` in the same transaction: the SHA-256 of the record's canonical fields, the
+  previous entry's hash and its own hash over both. Writers hold the write lock, so the chain is
+  strictly ordered. `GET /v1/evidence/verify[?session_id=]` walks the chain and recomputes it
+  from the records as they are now: an edited or deleted record, an edited or removed entry, or a
+  broken link is reported. The chain head is printed on the incident report and sent with every
+  webhook event, so a copy outside the database anchors it. It makes tampering detectable; it
+  does not prevent it, and it is not a claim of legal admissibility.
+- **A hold needs two people:** its second approver and call-back must be recorded under
+  different names (not authenticated: a prototype has no logins).
 - **Signed webhook** (`api/webhook.py`): with `VOXGUARD_ALERT_WEBHOOK_URL`, events are POSTed
   as JSON with `X-VoxGuard-Signature: sha256=<HMAC of the body>` from one background thread;
-  failures are logged by type only and never slow a request.
+  failures are logged by type only and never slow a request. Redirects are not followed (a
+  redirect is a failed delivery), and at most 100 deliveries wait; beyond that new events are
+  dropped and logged.
 
 Measured on the real model (private clips, browser, a ₹75,000 transfer during a genuine-then-fake
 call): at 3.5 s (no window yet) *verify first*; at 9.6 s (genuine part, risk low) *allowed*; at

@@ -25,7 +25,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from voxguard.api import policy
+from voxguard.api import evidence, policy
 from voxguard.api.db import (
     BlocklistRow,
     CallWindowRow,
@@ -106,6 +106,7 @@ def check_transaction(
     db: Annotated[Session, Depends(get_db)],
     cfg: Annotated[Settings, Depends(get_settings)],
 ) -> TransactionDecision:
+    begin_write(db)  # serialised with every other writer: the evidence chain stays in order
     score, threshold, windows, caller, live, flagged = _call_risk(request, db, body.session_id)
     base = policy.tier_for(score if score is not None else 0.0, threshold, windows)
     before = _flagged_before(db, caller, flagged)
@@ -126,13 +127,18 @@ def check_transaction(
     )  # fmt: skip
     db.add(row)
     db.flush()
-    db.add(TransactionEventRow(decision_id=row.decision_id, created_at=now, kind="decided"))
+    decided = TransactionEventRow(decision_id=row.decision_id, created_at=now, kind="decided")
+    db.add(decided)
+    db.flush()
+    evidence.append(db, "decision", row.decision_id, row.session_id, evidence.decision_payload(row))
+    evidence.append(db, "event", str(decided.id), row.session_id, evidence.event_payload(decided))
     _commit(db)
     if action != "allow":
         request.app.state.notifier.send(
             "transaction_held" if action == "hold" else "transaction_step_up",
             {"decision_id": row.decision_id, "session_id": row.session_id, "caller_id": caller,
-             "amount_inr": row.amount_inr, "tier": tier, "action": action, "live": live},
+             "amount_inr": row.amount_inr, "tier": tier, "action": action, "live": live,
+             "evidence_head": evidence.head(db)},
         )  # fmt: skip
     return _decision(db, row)
 
@@ -152,11 +158,26 @@ def verify_transaction(
         raise HTTPException(409, f"Nothing to verify: the transfer is already {row.status}")
     if body.method not in json.loads(row.required_steps):
         raise HTTPException(422, f"{body.method} is not one of this decision's steps")
+    name = body.verified_by.strip()
+    earlier = db.scalars(
+        select(TransactionEventRow).where(
+            TransactionEventRow.decision_id == decision_id,
+            TransactionEventRow.kind == "verified",
+        )
+    ).all()
+    if row.action == "hold" and any(
+        e.verified_by and e.verified_by.casefold() == name.casefold() and e.method != body.method
+        for e in earlier
+    ):  # the point of a second approver is a second person (names are not authenticated)
+        raise HTTPException(422, "A hold needs two different people: the second approver and the "
+                                 "call-back must be recorded by different names")  # fmt: skip
     now = datetime.now(UTC)
-    db.add(TransactionEventRow(decision_id=decision_id, created_at=now, kind="verified",
-                               method=body.method, verified_by=body.verified_by.strip(),
-                               note=(body.note or "").strip() or None))  # fmt: skip
+    step = TransactionEventRow(decision_id=decision_id, created_at=now, kind="verified",
+                               method=body.method, verified_by=name,
+                               note=(body.note or "").strip() or None)  # fmt: skip
+    db.add(step)
     db.flush()
+    evidence.append(db, "event", str(step.id), row.session_id, evidence.event_payload(step))
     done = set(
         db.scalars(
             select(TransactionEventRow.method).where(
@@ -167,12 +188,20 @@ def verify_transaction(
     )
     if policy.released(row.action, done):  # type: ignore[arg-type]
         row.status = "released"
-        db.add(TransactionEventRow(decision_id=decision_id, created_at=now, kind="released"))
+        rel = TransactionEventRow(decision_id=decision_id, created_at=now, kind="released")
+        db.add(rel)
+        db.flush()
+        evidence.append(db, "event", str(rel.id), row.session_id, evidence.event_payload(rel))
     _commit(db)
     if row.status == "released":
         request.app.state.notifier.send(
             "transaction_released",
-            {"decision_id": decision_id, "session_id": row.session_id, "methods": sorted(done)},
+            {
+                "decision_id": decision_id,
+                "session_id": row.session_id,
+                "methods": sorted(done),
+                "evidence_head": evidence.head(db),
+            },
         )
     return _decision(db, row)
 
@@ -208,6 +237,17 @@ def session_timeline(session_id: str, db: Annotated[Session, Depends(get_db)]) -
     return _windows(db, session_id)
 
 
+@router.get("/v1/evidence/verify")
+def verify_evidence(db: Annotated[Session, Depends(get_db)], session_id: str | None = None) -> dict:
+    """Re-check the whole evidence chain against the records as they are now."""
+    known = session_id is None or db.get(SessionRow, session_id) is not None
+    if not known and not db.scalar(
+        select(TransactionRow.decision_id).where(TransactionRow.session_id == session_id)
+    ):  # a live call's session is stored only at its end, but its transfers are chained
+        raise HTTPException(404, "Unknown session_id")
+    return evidence.verify(db, session_id)
+
+
 @router.get("/v1/sessions/{session_id}/report", response_class=HTMLResponse)
 def session_report(
     session_id: str,
@@ -219,5 +259,6 @@ def session_report(
         raise HTTPException(404, "Unknown session_id")
     stmt = select(TransactionRow).where(TransactionRow.session_id == session_id)
     decisions = [_decision(db, r) for r in db.scalars(stmt.order_by(TransactionRow.created_at))]
-    html = render_report(row, _windows(db, session_id), decisions, lang)
+    html = render_report(row, _windows(db, session_id), decisions, lang,
+                         evidence.verify(db, session_id))  # fmt: skip
     return HTMLResponse(html, headers={"Cache-Control": "no-store"})

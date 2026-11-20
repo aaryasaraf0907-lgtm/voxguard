@@ -8,6 +8,9 @@ so. Two subcommands (see docs/real-audio-testing.md):
     run    Validate the labels CSV, consent, paths and files, then score each file through
            GET /health and POST /v1/analyze only, and write a JSON + Markdown report.
            make sanity SANITY_URL=http://127.0.0.1:8100 LABELS=… AUDIO=… OUT=…
+    advise Read a `run` report of a deployment's own consented recordings and recommend a local
+           operating point (scripts/operating_point.py): false alarms at the current threshold
+           with a 95 % upper bound, and the threshold for a target rate. Changes nothing.
 
 Boundaries (agreed with Aarya, 16 Nov): public API only, no detector internals, no per-window
 output, ground truth only from the CSV. Uploads are never retried: after a timeout the session
@@ -613,14 +616,50 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--allow-remote", action="store_true", help="allow a non-loopback API URL")
     r.add_argument("--allow-file", action="append", default=[], help="include an excluded name")
     r.add_argument("--timeout", type=float, default=ANALYZE_TIMEOUT_S, help="per upload, seconds")
+
+    a = sub.add_parser("advise", help="recommend a local operating point from a `run` report")
+    a.add_argument("--report", required=True, help="a sanity-*.json from `run`")
+    a.add_argument("--out", required=True, help="existing private folder for the advice")
+    a.add_argument(
+        "--target",
+        type=float,
+        action="append",
+        default=[],
+        help="target false-alarm rate, e.g. 0.01 (repeatable; default 0.01 and 0.05)",
+    )
     return parser
+
+
+def cmd_advise(args: argparse.Namespace) -> int:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import operating_point as op
+
+    out_dir = Path(args.out).expanduser()
+    if not out_dir.is_dir() or inside_git_tree(out_dir):
+        raise UsageError("--out must be an existing folder outside any git tree")
+    targets = tuple(args.target) or op.DEFAULT_TARGETS
+    if not all(0 < t < 1 for t in targets):
+        raise UsageError("--target must be between 0 and 1")
+    try:
+        advice = op.advise(op.load_report(Path(args.report).expanduser()), targets)
+    except (OSError, ValueError, KeyError) as exc:
+        raise UsageError(f"cannot read the report: {exc}") from None
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    with _private_new_file(out_dir / f"advice-{stamp}.json") as f:
+        json.dump(advice, f, indent=2)
+    md = op.render_markdown(advice)
+    with _private_new_file(out_dir / f"advice-{stamp}.md") as f:
+        f.write(md)
+    print(md)
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     args = build_parser().parse_args(argv)
     try:
-        return cmd_serve(args) if args.command == "serve" else cmd_run(args)
+        commands = {"serve": cmd_serve, "run": cmd_run, "advise": cmd_advise}
+        return commands[args.command](args)
     except UsageError as exc:
         logger.error("%s", exc)
         return 2

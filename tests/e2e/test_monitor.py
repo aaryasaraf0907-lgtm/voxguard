@@ -127,10 +127,10 @@ def test_a_transfer_is_checked_against_the_call_and_verified(monitor: Page, stac
     monitor.get_by_role("button", name=EN["monitor_tx_approve"]).click()
     decision = monitor.locator("#decision")
     expect(decision).to_have_class(re.compile(r"pending|held"))  # the e2e policy: never allowed
-    for _ in range(3):  # at most two steps (a hold), then released
+    for n in range(3):  # at most two steps (a hold, by two different people), then released
         if re.search(r"allowed|released", decision.get_attribute("class") or ""):
             break
-        monitor.locator("#verifier").fill("E2E Tester")  # shown only when steps are needed
+        monitor.locator("#verifier").fill(f"E2E Tester {n}")  # shown only when steps are needed
         monitor.locator("#step-buttons button:enabled").first.click()
         monitor.wait_for_timeout(300)
     expect(decision).to_have_class("released")

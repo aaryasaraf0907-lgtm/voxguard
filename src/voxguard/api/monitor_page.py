@@ -154,6 +154,7 @@ PAGE = r"""<!doctype html>
       <div id="decision-steps" hidden>
         <label><span data-t="monitor_tx_verifier"></span><input id="verifier" maxlength="64" autocomplete="off"></label>
         <div id="step-buttons" class="row"></div>
+        <p id="decision-error" hidden></p>
         <p class="muted" data-t="monitor_tx_note"></p>
       </div>
     </div>
@@ -368,7 +369,12 @@ async function postDecision(url, body) {
     const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" },
                                  body: JSON.stringify(body) });
     const d = await r.json();
-    if (!r.ok) { showDecisionError(typeof d.detail === "string" ? d.detail : JSON.stringify(d.detail)); return; }
+    const detail = typeof d.detail === "string" ? d.detail : JSON.stringify(d.detail);
+    if (!r.ok && state.decision && !state.decision.error && url.endsWith("/verify")) {
+      $("decision-error").textContent = t("monitor_error", { detail }); $("decision-error").hidden = false;
+      return;  // a refused step (e.g. the same person twice): keep the decision on screen
+    }
+    if (!r.ok) { showDecisionError(detail); return; }
     state.decision = d; renderDecision();
   } catch (e) { showDecisionError(String(e && e.message || e)); }
 }
@@ -381,6 +387,7 @@ function renderDecision() {
   const d = state.decision, box = $("decision");
   box.hidden = !d;
   if (!d) return;
+  $("decision-error").hidden = true;
   const reasons = $("decision-reasons"); reasons.replaceChildren();
   const buttons = $("step-buttons"); buttons.replaceChildren();
   if (d.error) {
