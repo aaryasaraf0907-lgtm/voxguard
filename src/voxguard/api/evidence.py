@@ -14,7 +14,9 @@ ordered. ``verify`` walks the chain and recomputes everything from the records a
 an edited record, a deleted one, an edited or removed log entry, or a re-ordered chain is
 reported. Alone, a chain shows that the log is internally consistent; someone able to rewrite the
 whole database could rebuild it. So the chain head is also sent out with every webhook event and
-printed on each incident report: a copy held elsewhere anchors it.
+printed on each incident report: a copy held elsewhere anchors it. A webhook's head is read just
+after the event is committed, so it is the head at or after the event (a write landing at the
+same moment can make it a later one); either way it covers the event.
 
 What it is not: no audio (there is none to keep), no signatures from a trusted third party, and
 no claim of legal admissibility. It makes tampering detectable, it does not prevent it.

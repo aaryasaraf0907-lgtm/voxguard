@@ -227,3 +227,67 @@ What it shows, honestly:
 - Scores arrived about 0.7–0.8 s after their window ended, on CPU with two calls at once.
 
 20 calls per kind is a small set: these are counts, not error rates. Re-run on the final model.
+
+## 5. Same-speaker voice-clone test
+
+Can the model tell a person from a clone of that same person? One team member's own voice
+(consented; the recordings and clones are private, never committed, and deleted at the end of
+the project). Counts only.
+
+- **Genuine:** 20 sentences of 4.3–6.2 s (10 scam-style, 10 everyday) read on a laptop's
+  built-in microphone in Windows Sound Recorder (AAC, 48 kHz, 192 kbps), plus a 50 s reference
+  passage; 3 Hindi sentences as extra genuine clips.
+- **Clones:** the same 20 sentences, made with **OpenVoice V2** (MIT; commit `74a1d14`,
+  converter checkpoint from Hugging Face `myshell-ai/OpenVoiceV2`, 131 MB) on top of **MeloTTS**
+  English, `EN_INDIA` voice (MIT; commit `2091453`, `myshell-ai/MeloTTS-English`, 208 MB). The
+  speaker embedding comes from the 50 s reference. Watermarking off, as an attacker's would be.
+  Each clone is loudness-matched to its genuine twin (integrated LUFS) and encoded exactly like
+  the recordings. MeloTTS has no Hindi voice, so the Hindi sentences were not cloned.
+- **Model:** the current demo model (`ssl-aasist-codec-aug-v2`, epoch 11), phone threshold
+  0.012676. Measured 20 Nov 2026 with `real_audio_sanity.py`, `live_eval.py` and a scripted
+  `/monitor`-style call.
+
+### Upload and G.711
+
+| Condition | Clones flagged | Genuine flagged | Clone above its own genuine twin | Clones above every genuine score |
+|---|---|---|---|---|
+| As uploaded | 15 of 20 | 6 of 20 | 18 of 20 | 13 of 20 |
+| `codec=g711_mulaw` | 15 of 20 | 6 of 20 | 17 of 20 | 10 of 20 |
+
+The clones are shorter (3.3–4.3 s; no pauses), so most are repeat-padded to one 4 s window.
+Like for like, against the genuine recordings with their silence trimmed (also under 4 s and
+padded): 3 of 20 genuine flagged, and 16 of 20 clones above their twin.
+
+### Live calls
+
+`live_eval.py --labels` (one speaker; sentences joined with 0.25 s pauses; 2 calls of each kind
+per codec, real time): every cloned call alerted at 6.25 s, the earliest the two-window rule
+allows; **every genuine call also raised a caution alert** (2 of 2 per codec); in
+genuine-then-cloned calls, 1 of 2 alerted before the switch and the alert followed the switch by
+6.1 s (clean) and 2.1 s (G.711).
+
+A scripted call (3 genuine sentences, then 3 clones, switch at 16.5 s) with a ₹75,000 transfer
+attempted late in the genuine part and again in the cloned part: the transfer was **held both
+times**, clean and over G.711, because the call had already alerted at 6.25 s, during the
+genuine part.
+
+### What it shows
+
+- **The model does separate many clones from the real voice:** most clones score above their
+  own genuine twin, and the strongest score up to about 60 times the threshold.
+- **But the two overlap.** 5 clones of 20 stay under the threshold, while the genuine voice
+  itself sits around it: genuine scores were 0.0095–0.0174, so a quarter of the genuine
+  sentences cross it. No threshold separates the two sets completely. A threshold just above
+  the highest genuine score would have caught 13 of 20 clones as uploaded.
+- **Why genuine short clips cross:** a 4.0–5.05 s clip is scored on its first 4 s only (the
+  shorter leftover is dropped; `inference.to_windows`). On these recordings the first 4 s scored
+  higher than the last 4 s in 23 of 23 clips, and only clips scored on that one window were
+  flagged (6 of 11, against 0 of 12 longer clips). The audio format made no difference (the
+  same audio as 16 kHz WAV scored the same). A continuous 50 s genuine recording was not
+  flagged (1 of its 13 windows crossed).
+- **Live, sentence-by-sentence speech raised caution alerts on the genuine voice,** so in this
+  test the transfer gate held a genuine caller as well as the clone. It errs towards holding
+  money, which is the safe side, but it does not tell this caller from their clone.
+
+One speaker, one microphone, one cloning tool and 20 sentences: counts, not rates. The clone pair
+is not in the demo with this model. Re-run on the final model after 22 Nov.
