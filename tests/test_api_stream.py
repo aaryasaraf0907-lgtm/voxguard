@@ -99,7 +99,7 @@ def test_cutter_scores_only_the_newest_window_when_audio_arrives_in_a_burst() ->
 
 
 def test_scores_alert_once_and_store_the_verdict() -> None:
-    det = ScriptedDetector([0.1, 0.9, 0.9, 0.1])
+    det = ScriptedDetector([0.9, 0.7, 0.9, 0.1])
     with _client(det) as c:
         msgs = _call(c, "sample_rate=48000&caller_id=%2B91-1", _audio(11, 48_000), 48_000)
         rows, alerts, blocked = _rows(c, SessionRow), _rows(c, AlertRow), _rows(c, BlocklistRow)
@@ -107,13 +107,13 @@ def test_scores_alert_once_and_store_the_verdict() -> None:
     assert ready["type"] == "ready" and ready["threshold"] == 0.5 and ready["hop_s"] == HOP_S
     scores = [m for m in rest if m["type"] == "score"]
     assert [round(m["t_s"], 2) for m in scores] == [4.25, 6.25, 8.25, 10.25]
-    assert [m["running_score"] for m in scores] == pytest.approx([0.1, 0.5, 0.6333333, 0.5])
+    assert [m["running_score"] for m in scores] == pytest.approx([0.9, 0.8, 0.8333333, 0.65])
     alerts_sent = [m for m in rest if m["type"] == "alert"]
     assert len(alerts_sent) == 1 and alerts_sent[0]["t_s"] == pytest.approx(6.25)  # >= rule
-    assert alerts_sent[0]["level"] == "caution"  # 0.5 is under 1.5 x the threshold
+    assert alerts_sent[0]["level"] == "high"  # 0.8 is over 1.5 x the threshold (the alert level)
     final = rest[-1]
     assert final["type"] == "final" and final["stored"] and final["flagged"]
-    assert final["fake_score"] == pytest.approx(0.5) and final["first_flag_s"] == pytest.approx(
+    assert final["fake_score"] == pytest.approx(0.65) and final["first_flag_s"] == pytest.approx(
         6.25
     )
     assert det.rates[0] == (int(np.ceil(NUM_SAMPLES * 48_000 / TARGET_SR)), 48_000)  # native rate
@@ -316,6 +316,19 @@ def test_one_window_over_the_threshold_is_not_an_alert_yet() -> None:
     assert [m["type"] for m in msgs].count("alert") == 0
     assert msgs[1]["type"] == "score" and msgs[1]["flagged"]  # the raw state is still reported
     assert msgs[-1]["first_flag_s"] is None
+
+
+def test_just_over_the_threshold_is_not_a_live_alert_but_still_flags_the_call() -> None:
+    """Genuine calls often run just over the threshold (35 of 100 streamed ASVspoof genuine calls
+    did, 20 Nov): the live alert waits for ALERT_FACTOR x it, the stored verdict does not."""
+    with _client(ScriptedDetector([0.6, 0.6, 0.6])) as c:  # threshold 0.5, alert level 0.75
+        msgs = _call(c, "sample_rate=16000", _audio(9, 16_000), 16_000)
+        alerts, rows = _rows(c, AlertRow), _rows(c, SessionRow)
+    assert msgs[0]["alert_factor"] == 1.5
+    assert [m["type"] for m in msgs].count("alert") == 0
+    assert all(m["flagged"] for m in msgs if m["type"] == "score")  # raw state still reported
+    assert msgs[-1]["flagged"] and msgs[-1]["first_flag_s"] is None
+    assert rows[0].flagged and len(alerts) == 1  # the prevention rule is unchanged
 
 
 def test_alert_level_is_high_well_over_the_threshold() -> None:
