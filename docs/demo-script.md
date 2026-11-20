@@ -19,7 +19,7 @@ and pick only clips that behave as the script needs.
 | **G2, genuine (backup)** | An ASVspoof 2019 or 2021 LA eval bona fide file | As G1, with a wider margin |
 | **F1, F2, fake** | ASVspoof 2019 LA eval spoofs (the model's training domain; ODC-By, cite Todisco et al., Interspeech 2019) | Flagged, far above the threshold (no caution), both as uploaded and through G.711 |
 | **N1, near the threshold** | A consented genuine recording that the model flags with the caution | Flagged, below 1.5× the threshold, so the yellow caution shows |
-| **M, mixed call (timeline)** | Constructed privately: G1 (or another consented genuine recording) followed by F1, joined into one 16 kHz file | Timeline flags it only after the fake part starts, and the genuine part stays below the threshold |
+| **M, mixed call (timeline and live)** | Constructed privately: G1 (or another consented genuine recording) followed by F1, joined into one 16 kHz file | Timeline flags it only after the fake part starts, and the genuine part stays below the threshold. **Also check it live** (`python scripts/stream_call.py M.wav` against the demo stack): no alert and no "elevated" during the genuine part, the alert a few seconds after the switch. A transfer checked during the genuine part must come back **allow** |
 
 **Getting candidates.** Any ASVspoof 2019 LA eval file can be fetched on its own from the official
 `LA.zip` (it supports HTTP range requests), so a handful of clips is a few MB instead of the 7.6 GB
@@ -31,7 +31,8 @@ score near or below the threshold. Pick from 2019 for F1 and F2.
 whose decision is the same in both conditions and far from the threshold (for example, fakes at
 several times the threshold, genuine clips clearly below it). Scores are deterministic for the same
 file and model, so a clip chosen this way behaves the same on the day. Choose again whenever the
-model or the threshold changes.
+model, the threshold or the scoring changes (for example #103, which now scores 4–5 s clips on
+two windows: re-check N1 and any clip of that length).
 
 M is constructed: say so when showing it ("a genuine recording followed by an AI-generated
 segment, joined for the demo"). It shows when the running average crosses the threshold, not a
@@ -39,6 +40,10 @@ measured detection delay.
 
 N1 is a genuine voice wrongly flagged. Present it as exactly that: the honest limit of the model
 on off-domain speech, and the reason for the caution.
+
+**No same-speaker clone pair** (a presenter's recording next to an AI clone of the same voice)
+unless the final model catches the clone: on the current model it did not separate them reliably
+(`docs/real-audio-testing.md`, section 5). Re-check after the final model.
 
 ## Before the demo (T−30 min)
 
@@ -66,7 +71,7 @@ on off-domain speech, and the reason for the caution.
 | 4 | 2:30 | Turn on **Simulate phone line**, codec **G.711 µ-law** → **Analyze** F1 again | The same clip after a real telephone codec. Both results appear side by side; the decision holds on the phone line. This is the point of the codec-aware training. |
 | 5 | 3:15 | Turn on **Show live-monitoring timeline**, phone line off → M → **Analyze**; press **Replay** | What a live call monitor would have shown: each 4 s window and the running average against the threshold. The genuine part stays below it; the alert comes a few seconds after the fake voice starts. Same verdict as without the timeline. |
 | 6 | 3:40 | Sidebar → **Open the live call monitor** → choose M → **Play and monitor** (or **Start listening** and play M from a phone next to the laptop) | The same mixed call, live: the score updates every 2 s while it plays. The genuine part stays below the threshold; a few seconds after the fake voice starts, the banner turns red: *do not approve payments, hang up and call back on a number you trust*, with what to do next (ask something only the real person knows; report at 1930 or cybercrime.gov.in). Point at the consent notice: the other party is told the call is checked. A single window is never enough to warn: it waits for two, and for the call's risk to reach 1.5 x the threshold; just over the threshold the page only says the risk is elevated (genuine calls often sit there). Its stored score is the average of overlapping live windows, so it will not equal the score of the same clip uploaded in step 5: do not compare the two on stage. Backup: `python scripts/stream_call.py M.wav` in a terminal. |
-| 7 | 4:20 | Still on the monitor, while M plays: **Approve transfer** (₹75,000) once during the genuine part, again after the warning; record the two steps; open the incident report | During the genuine part the transfer is allowed. A few seconds into the fake voice the same transfer is **held**: it needs a second approver and a call-back on a known number, the standard bank defence against voice fraud. Each decision and step is logged, and the report keeps scores and decisions, never audio. |
+| 7 | 4:20 | Still on the monitor, while M plays: **Approve transfer** (₹75,000) once during the genuine part, again after the warning; record the two steps under **two different names** (e.g. the presenter for the call-back, a teammate as second approver); open the incident report and scroll to **Evidence trail** | During the genuine part the transfer is allowed. A few seconds into the fake voice the same transfer is **held**: it needs a call-back on a known number and a second approver, and the two must be different people (the same name twice is refused), the standard bank defence against voice fraud. Each decision and step is logged; the report keeps scores and decisions, never audio, and its evidence trail says **Intact**: every record is hash-chained, so an edit afterwards would show. |
 | 8 | 5:00 | Show `docs/results.md`, the 2×2 matrix | The measured result: trained on clean audio vs codec-augmented, tested clean vs phone-degraded. Read the two phone-degraded cells. |
 | 9 | 5:30 | Enter a **Caller ID** (e.g. `+91-DEMO-0001`) → F2 → **Analyze**; open **Flagged sessions**, **Blocklist**, **Alerts** | Prevention: a flagged call is stored, an alert is raised, and the caller is added to the blocklist with a hit counter. Analyze F2 once more with the same ID to show the counter go up. |
 | 10 | 6:20 | N1 → **Analyze** | A genuine voice, flagged, but with the yellow caution "Close to the decision threshold". Flags just above the threshold are hints, not verdicts. Off-domain speech (unusual microphones, rooms, languages) is the model's main weakness; we report it rather than hide it. |
@@ -97,7 +102,8 @@ The demo runs offline once the model is in the volume; no network is needed.
   separately for clean and phone audio. The model's scores for real speech sit in a narrow low
   band, so the operating point is low; only the comparison with the threshold matters.
 - **How often does it flag real people?** Point to the out-of-domain evaluation in
-  `docs/results.md`, and to N1. Do not quote a rate that is not in the results.
+  `docs/results.md`, the live and same-speaker counts in `docs/real-audio-testing.md`
+  (sections 4 and 5), and to N1. They are counts on small sets: do not quote them as rates.
 - **Does it work in Hindi?** Claim only what `docs/results.md` reports for the Hindi test set.
 - **Is it real time?** Show the detector latency in the result and the latency table in
   `docs/results.md`: each 4 s window is scored faster than it plays, on a laptop CPU. The
@@ -111,6 +117,19 @@ The demo runs offline once the model is in the volume; no network is needed.
   operator could do it in the network under a legal framework, and approved bots can do it on
   meeting platforms. The demo listens through a microphone or plays a file; it does not tap
   anyone's calls.
+- **Can the records be changed afterwards?** Not without it showing. Every stored session, a
+  live call's window scores, each transfer decision and each verification step are chained by
+  SHA-256; `/v1/evidence/verify` recomputes the chain from the records, and the chain head goes
+  out with every webhook, so a copy is held elsewhere. Tamper-evident, not tamper-proof, and no
+  claim of legal admissibility.
+- **Would it catch a clone of my own voice?** Not reliably yet. We tested it on a team member's
+  own voice and an open cloning tool (`docs/real-audio-testing.md`, section 5): most clones scored
+  above the genuine recordings, but some overlapped them, live especially. Say that this is the
+  hardest case and what the final model was trained to improve; quote only the counts in that
+  section.
+- **Why did it say "elevated" and not alert?** Genuine speech often runs just over the
+  threshold, so the live alert waits until the call's risk reaches 1.5 x it
+  (`docs/real-audio-testing.md`, section 4). The stored verdict still uses the threshold.
 - **What would deployment need?** That telephony integration, logins for the operators who
   record verification steps, and the alert webhook connected to the bank's own SMS, e-mail or
   security systems. Real OTP sending and core-banking holds are outside this prototype.
@@ -126,10 +145,10 @@ Record the screen at 1080p with the presenter's voice; no other people's voices 
 | 3 | 30 s | F1 on the simulated phone line, side by side |
 | 3b | 20 s | M with the timeline and Replay: the alert after the fake part starts |
 | 3c | 25 s | M on the live call monitor: below the threshold, then the red warning while it plays |
-| 3d | 20 s | The transfer approved during the genuine part, then held after the warning |
+| 3d | 25 s | The transfer approved during the genuine part, then held after the warning; two different people release it; the report's evidence trail says Intact |
 | 4 | 30 s | The 2×2 matrix in `docs/results.md` |
 | 5 | 35 s | Prevention: caller ID, flagged sessions, blocklist, alerts |
-| 6 | 20 s | N1 with the caution: the honest limitation |
+| 6 | 15 s | N1 with the caution: the honest limitation |
 | 7 | 15 s | Hindi interface |
 | 8 | 20 s | Summary and limitations |
 
