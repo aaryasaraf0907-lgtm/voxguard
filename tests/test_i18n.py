@@ -34,6 +34,7 @@ def _transaction_keys() -> set[str]:
         f"tx_reason_risk_{x}" for x in policy.TIERS
     }
     keys |= {f"tx_reason_{x}" for x in ("not_enough_audio", "caller_flagged_before", "high_value")}
+    keys |= {f"report_kind_{x}" for x in ("session", "windows", "decision", "event")}
     return keys
 
 

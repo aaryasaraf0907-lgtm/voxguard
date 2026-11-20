@@ -57,8 +57,40 @@ def _chart(windows: list[CallWindow], threshold: float) -> str:
     )
 
 
+def _evidence(check: dict, session_id: str, lang: str) -> str:
+    e = escape
+    if check["ok"]:
+        status = f'<p class="ok">{e(t("report_evidence_ok", lang, entries=check["entries"]))}</p>'
+    else:
+        items = "".join(
+            f"<li>#{p['seq']} {e(p['kind'])} {e(p['ref'][:12])}: {e(p['problem'])}</li>"
+            for p in check["problems"]
+        )
+        status = f'<p class="bad">{e(t("report_evidence_problem", lang))}</p><ul>{items}</ul>'
+    rows = "".join(
+        f"<tr><td>{x['seq']}</td><td>{e(t('report_kind_' + x['kind'], lang))}</td>"
+        f"<td>{e(_fmt_time(x['created_at']))}</td><td><code>{e(x['hash'][:16])}…</code></td></tr>"
+        for x in check.get("session_entries", [])
+    )
+    table = (
+        f"<table><tr><th>#</th><th>{e(t('report_kind', lang))}</th><th>{e(t('col_time', lang))}</th>"
+        f"<th>{e(t('report_hash', lang))}</th></tr>{rows}</table>"
+        if rows
+        else ""
+    )
+    verify = f"/v1/evidence/verify?session_id={session_id}"
+    return (
+        f"{status}{table}<p>{e(t('report_evidence_head', lang))}: <code>{e(check['head'])}</code></p>"
+        f'<p class="muted">{e(t("report_evidence_note", lang, url=verify))}</p>'
+    )
+
+
 def render_report(
-    row: SessionRow, windows: list[CallWindow], decisions: list[TransactionDecision], lang: str
+    row: SessionRow,
+    windows: list[CallWindow],
+    decisions: list[TransactionDecision],
+    lang: str,
+    check: dict | None = None,
 ) -> str:
     e = escape
     verdict = t("report_flagged" if row.flagged else "report_not_flagged", lang)
@@ -146,6 +178,8 @@ def render_report(
   th, td {{ border: 1px solid #e5e7eb; padding: 4px 8px; text-align: left; vertical-align: top; }}
   th {{ background: #f6f7f9; }}
   .muted {{ color: #6b7280; font-size: .88rem; }}
+  .ok {{ color: #14532d; font-weight: 600; }} .bad {{ color: #7f1d1d; font-weight: 600; }}
+  code {{ font-size: .85rem; word-break: break-all; }}
   @media print {{ main {{ padding: 0; }} }}
 </style>
 </head>
@@ -160,6 +194,8 @@ def render_report(
 {transfers}
 <h2>{e(t("monitor_guidance_title", lang))}</h2>
 <ul>{guidance}</ul>
+<h2>{e(t("report_evidence", lang))}</h2>
+{_evidence(check, row.session_id, lang) if check else ""}
 <p class="muted">{e(t("report_privacy", lang))}</p>
 <p class="muted">{e(t("report_disclaimer", lang))}</p>
 </main></body>

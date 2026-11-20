@@ -16,7 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
-from voxguard.api import codec_sim, prevention
+from voxguard.api import codec_sim, evidence, prevention
 from voxguard.api.audio import decode_audio
 from voxguard.api.db import (
     AlertRow,
@@ -254,6 +254,7 @@ def create_app(
                     "fake_score": row.fake_score,
                     "threshold": row.threshold,
                     "model_version": row.model_version,
+                    "evidence_head": evidence.head(db),
                 },
             )
 

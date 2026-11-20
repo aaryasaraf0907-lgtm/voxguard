@@ -13,6 +13,7 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from voxguard.api import evidence
 from voxguard.api.db import AlertRow, BlocklistRow, CallWindowRow, SessionRow, begin_write
 from voxguard.api.deps import Settings
 from voxguard.api.thresholds import ThresholdSet
@@ -128,11 +129,17 @@ def store_session(
             latency_ms=pred.latency_ms,
         )
         db.add(row)
+        db.flush()  # the session row must exist before the rows that reference it
+        evidence.append(db, "session", session_id, session_id, evidence.session_payload(row))
         if windows:
-            db.flush()  # the session row must exist before the rows that reference it
-            db.add_all(
+            window_rows = [
                 CallWindowRow(session_id=session_id, t_s=t, window_score=w, running_score=r)
                 for t, w, r in windows
+            ]
+            db.add_all(window_rows)
+            db.flush()
+            evidence.append(
+                db, "windows", session_id, session_id, evidence.windows_payload(window_rows)
             )
         if row.flagged:
             record_flag(db, row)

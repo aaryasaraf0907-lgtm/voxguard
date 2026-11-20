@@ -155,6 +155,25 @@ EN: dict[str, str] = {
     "timeline_threshold": "Threshold",
     "timeline_replay": "Replay",
     "report_title": "LineTrue incident report",
+    "report_evidence": "Evidence trail",
+    "report_evidence_ok": (
+        "Intact: all {entries} entries of the tamper-evident log check out against the records."
+    ),
+    "report_evidence_problem": (
+        "Problem: the tamper-evident log does not match the records. Treat this report with care."
+    ),
+    "report_evidence_head": "Chain head now",
+    "report_evidence_note": (
+        "Each record is chained by SHA-256 to the one before it. Keep this head, or the one in"
+        " the alert webhook, to compare later; re-check at {url}. Tamper-evident, not proof of"
+        " who did what."
+    ),
+    "report_kind": "Record",
+    "report_kind_session": "Session (verdict)",
+    "report_kind_windows": "Per-window scores",
+    "report_kind_decision": "Transfer decision",
+    "report_kind_event": "Transfer step",
+    "report_hash": "Hash",
     "report_generated": "Generated {time}. Times are UTC.",
     "report_flagged": "Flagged: the call scored at or above the threshold.",
     "report_not_flagged": "Not flagged: the call scored below the threshold.",
@@ -222,7 +241,7 @@ EN: dict[str, str] = {
         "Held: this transfer needs a second approver and a call-back on a known number."
     ),
     "monitor_tx_released": "Released after verification.",
-    "monitor_tx_verifier": "Your name (who did the check)",
+    "monitor_tx_verifier": "Your name (who did the check; a hold needs two different people)",
     "monitor_tx_mark": "Mark done",
     "monitor_tx_note": (
         "Steps are recorded as done by the person named; this demo sends no OTP and places no call."
@@ -441,6 +460,25 @@ HI: dict[str, str] = {
     "timeline_threshold": "सीमा",
     "timeline_replay": "दोबारा चलाएँ",
     "report_title": "LineTrue घटना रिपोर्ट",
+    "report_evidence": "साक्ष्य रिकॉर्ड",
+    "report_evidence_ok": (
+        "सुरक्षित: छेड़छाड़-पहचान लॉग की सभी {entries} प्रविष्टियाँ रिकॉर्ड से मेल खाती हैं।"
+    ),
+    "report_evidence_problem": (
+        "समस्या: छेड़छाड़-पहचान लॉग रिकॉर्ड से मेल नहीं खाता। इस रिपोर्ट को सावधानी से देखें।"
+    ),
+    "report_evidence_head": "अभी की श्रृंखला का शीर्ष",
+    "report_evidence_note": (
+        "हर रिकॉर्ड SHA-256 से पिछले रिकॉर्ड से जुड़ा है। बाद में मिलान के लिए यह शीर्ष, या अलर्ट"
+        " वेबहुक वाला शीर्ष, रखें; {url} पर दोबारा जाँचें। यह छेड़छाड़ पकड़ता है, यह सबूत नहीं कि"
+        " किसने क्या किया।"
+    ),
+    "report_kind": "रिकॉर्ड",
+    "report_kind_session": "सत्र (निर्णय)",
+    "report_kind_windows": "विंडो-वार स्कोर",
+    "report_kind_decision": "ट्रांसफ़र निर्णय",
+    "report_kind_event": "ट्रांसफ़र कदम",
+    "report_hash": "हैश",
     "report_generated": "{time} पर बनी। समय UTC में हैं।",
     "report_flagged": "चिह्नित: कॉल का स्कोर सीमा के बराबर या उससे अधिक रहा।",
     "report_not_flagged": "चिह्नित नहीं: कॉल का स्कोर सीमा से कम रहा।",
@@ -499,7 +537,7 @@ HI: dict[str, str] = {
     "monitor_tx_step_up": "पहले पुष्टि करें: ट्रांसफ़र से पहले नीचे का कोई एक कदम पूरा करें।",
     "monitor_tx_held": ("रोका गया: इस ट्रांसफ़र के लिए दूसरा अनुमोदक और ज्ञात नंबर पर वापस कॉल चाहिए।"),
     "monitor_tx_released": "पुष्टि के बाद जारी।",
-    "monitor_tx_verifier": "आपका नाम (जाँच किसने की)",
+    "monitor_tx_verifier": "आपका नाम (जाँच किसने की; रोके गए ट्रांसफ़र के लिए दो अलग व्यक्ति चाहिए)",
     "monitor_tx_mark": "पूरा हुआ चिह्नित करें",
     "monitor_tx_note": ("कदम नामित व्यक्ति द्वारा पूरे दर्ज होते हैं; यह डेमो न OTP भेजता है न कॉल करता है।"),
     "monitor_report": "घटना रिपोर्ट खोलें",

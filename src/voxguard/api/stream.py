@@ -38,7 +38,7 @@ from anyio import to_thread
 from fastapi import WebSocket, WebSocketDisconnect
 from sqlalchemy.exc import SQLAlchemyError
 
-from voxguard.api import codec_sim, prevention
+from voxguard.api import codec_sim, evidence, prevention
 from voxguard.api.deps import Settings
 from voxguard.api.gate import AnalysisGate, Busy
 from voxguard.api.risk import CAUTION_FACTOR, MIN_ALERT_WINDOWS
@@ -403,7 +403,8 @@ async def _finish(
     channel = prevention.channel_for(known_clean=False, codec_applied=codec)
     decision = prevention.decide(clip, cfg, state.thresholds, channel)  # type: ignore[attr-defined]
 
-    def store() -> bool:
+    def store() -> str | None:
+        """The evidence chain head after storing, or None if the call could not be stored."""
         with state.session_factory() as db:  # type: ignore[attr-defined]
             try:
                 prevention.store_session(
@@ -411,10 +412,11 @@ async def _finish(
                 )
             except SQLAlchemyError:
                 logger.exception("live stream: could not store session")
-                return False
-        return True
+                return None
+            return evidence.head(db)
 
-    stored = await to_thread.run_sync(store)
+    head = await to_thread.run_sync(store)
+    stored = head is not None
     if stored and decision.flagged:
         state.notifier.send(  # type: ignore[attr-defined]
             "call_flagged",
@@ -425,6 +427,7 @@ async def _finish(
                 "fake_score": clip.fake_score,
                 "threshold": decision.threshold,
                 "model_version": clip.model_version,
+                "evidence_head": head,
             },
         )
     return {

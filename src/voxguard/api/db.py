@@ -121,6 +121,21 @@ class TransactionEventRow(Base):
     note: Mapped[str | None]
 
 
+class EvidenceRow(Base):
+    """Append-only, hash-chained log of stored records (api/evidence.py)."""
+
+    __tablename__ = "evidence_log"
+
+    seq: Mapped[int] = mapped_column(primary_key=True)  # 1, 2, 3, ... (no gaps when intact)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    kind: Mapped[str]  # session | windows | decision | event
+    ref: Mapped[str]  # session_id, decision_id or event id
+    session_id: Mapped[str] = mapped_column(index=True)
+    record_digest: Mapped[str]
+    prev_hash: Mapped[str]
+    hash: Mapped[str] = mapped_column(unique=True)
+
+
 def require_sqlite_url(url: str) -> URL:
     """The blocklist upsert uses SQLite's ON CONFLICT, so only SQLite URLs are supported.
 
