@@ -28,16 +28,19 @@ A18 worse). This experiment is built around those two findings.
   AMR-WB. GSM stays the unseen codec. Then a seeded random 4 s crop and the realistic recording
   effects of `data/realistic.py` on **bona fide and spoof alike** (the realistic fine-tune's
   policy), so they carry no label information. No OpenVoice and no clones of anyone: the clone
-  test stays a test on an unseen tool. Svarah (CC BY 4.0) is not used yet: its terms must be
-  accepted on the Hugging Face account first.
+  test stays a test on an unseen tool. **Svarah** (AI4Bharat, CC BY 4.0; amended 21 Nov, still
+  before any training, once its terms were accepted): 4,880 clips of 2 s or more of genuine
+  Indian-accented English, 2 copies each through the same codec and realistic pipeline, as
+  bona fide only. Risk: with no Indian-accented fakes allowed, the head could learn "Indian
+  accent = genuine", so every setting is trained **with and without Svarah**.
 - **Loss:** class-weighted cross-entropy with p3's rule (weights = the inverse class frequency;
   p3's 0.9 / 0.1 is that for its data; here it is computed on the copies above) **plus distillation
   to p3** (KL divergence to p3's own back-end on the same features, temperature 2), so the head
   keeps p3's decisions where nothing pushes it away: the guard against losing eval attacks that
   dev cannot show.
-- **Candidates:** A = the trained head (λ ∈ {0.5, 2}, lr ∈ {1e-4, 3e-4}, up to 8 epochs, best
-  epoch on the dev gate below); B = the average of p3's and A's fake scores. At most 4 training
-  runs. Choosing among them uses the dev gate and the In-the-Wild gate part only.
+- **Candidates:** A = the trained head (λ ∈ {0.5, 2}, lr ∈ {1e-4, 3e-4}, with and without
+  Svarah, up to 8 epochs, best epoch on the dev gate below); B = the average of p3's and A's
+  fake scores. 8 training runs. Choosing among them uses the dev gate and the In-the-Wild gate part only.
 
 ## Gate (all must hold, against p3 on the same cached features)
 
@@ -56,7 +59,9 @@ watched): EER, missed fakes at 1 % false alarms and at the dev threshold. In-the
 (the other 27 speakers). Then, only for a candidate that passed the gate: the same-speaker clone
 test, Set C and the ASVspoof 2021 LA calls (`live_eval.py`), all test-only. **Stop rule:** if a
 watched attack's missed fakes at 1 % false alarms rise by more than 5 percentage points over p3,
-the candidate is reported as not to adopt, whatever the gate said.
+the candidate is reported as not to adopt, whatever the gate said. The same holds if it catches
+fewer of the same-speaker clones (as uploaded or over G.711) than p3: the check for the accent
+shortcut above.
 
 ## Not used anywhere here
 

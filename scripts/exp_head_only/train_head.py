@@ -29,6 +29,7 @@ def main() -> None:
     ap.add_argument("--epochs", type=int, default=8)
     ap.add_argument("--bs", type=int, default=64)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--no-svarah", action="store_true", help="leave the Svarah rows out")
     a = ap.parse_args()
     torch.manual_seed(a.seed)
     rng = np.random.default_rng(a.seed)
@@ -37,6 +38,7 @@ def main() -> None:
     teacher_head = Head(p3)
     tr_f, tr_m = load_set("train")
     y = np.array([int(m["label"]) for m in tr_m])
+    rows = np.array([i for i, m in enumerate(tr_m) if not (a.no_svarah and m["group"] == "svarah")])
     tpath = FEATS / "train" / "teacher.npy"
     if not tpath.exists():
         np.save(tpath, logits(teacher_head, tr_f))
@@ -45,7 +47,7 @@ def main() -> None:
     dev_y = np.array([int(m["label"]) for m in dev_m])
     ph = phone_mask(dev_m)
 
-    freq = np.bincount(y, minlength=2) / len(y)
+    freq = np.bincount(y[rows], minlength=2) / len(rows)
     weight = torch.tensor((1 / freq) / (1 / freq).sum(), dtype=torch.float32, device="cuda")
 
     head = Head(p3).cuda()
@@ -69,7 +71,7 @@ def main() -> None:
     hist.append(gate(0))  # epoch 0 = p3 itself
     for epoch in range(1, a.epochs + 1):
         head.train()
-        order = rng.permutation(len(y))
+        order = rng.permutation(rows)
         t0, total = time.time(), 0.0
         for i in range(0, len(order), a.bs):
             idx = np.sort(order[i : i + a.bs])
@@ -86,14 +88,15 @@ def main() -> None:
             opt.step()
             total += float(loss) * len(idx)
         rec = gate(epoch)
-        rec["train_loss"], rec["seconds"] = total / len(y), time.time() - t0
+        rec["train_loss"], rec["seconds"] = total / len(rows), time.time() - t0
         hist.append(rec)
         key = (rec["phone"]["miss_at_1far"], rec["phone"]["eer"])
         if best is None or key < best[0]:
             best = (key, epoch)
             torch.save(head.state_dict(), out / "best_head.pt")
     (out / "history.json").write_text(json.dumps(
-        {"args": vars(a), "class_weight": weight.tolist(), "best_epoch": best[1], "history": hist},
+        {"args": vars(a), "rows": len(rows), "class_weight": weight.tolist(), "best_epoch": best[1],
+         "history": hist},
         indent=2))  # fmt: skip
     print(f"best epoch {best[1]}", flush=True)
 

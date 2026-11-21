@@ -41,7 +41,7 @@ SEED = 20261121
 N, FRAMES, DIM = 64_600, 201, 1024
 EVAL_CONDITIONS = ("clean", "g711_mulaw", "g711_alaw", "opus")
 TRAIN_CODECS = ("g711_mulaw", "g711_alaw", "amr_nb", "amr_wb", "opus")
-COPIES = {"bonafide": 4, "spoof": 2}  # copy 0 is without a codec; the rest get one
+COPIES = {"bonafide": 4, "spoof": 2, "svarah": 2}  # copy 0 has no codec; the rest get one
 REALISTIC = RealisticPolicy(probability=0.5, reverb_probability=0.5, rt60_s=(0.15, 0.8),
                             eq_probability=0.5, eq_max_db=8.0, noise_probability=0.5,
                             snr_db=(10.0, 35.0), gain_db=(-6.0, 6.0))  # fmt: skip
@@ -67,6 +67,10 @@ def jobs(name: str) -> list[dict]:
             else:
                 for cond in EVAL_CONDITIONS:
                     out.append(dict(path=path, label=label, group=group, cond=cond, copy=0))
+        if name == "train":  # Svarah (CC BY 4.0): genuine Indian-accented English, clips >= 2 s
+            for path in sorted((X / "data/svarah/wav").glob("*.wav")):
+                for copy in range(COPIES["svarah"]):
+                    out.append(dict(path=path, label=0, group="svarah", cond="train", copy=copy))
     else:
         for line in (SPLITS / f"{name}.txt").read_text().split("\n"):
             if line:
