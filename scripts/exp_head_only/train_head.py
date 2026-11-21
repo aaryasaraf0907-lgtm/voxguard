@@ -16,7 +16,7 @@ import time
 import numpy as np
 import torch
 import torch.nn.functional as F
-from head_lib import FEATS, X, Head, fake_prob, load_p3, load_set, logits, phone_mask, summary
+from head_lib import FEATS, Head, X, fake_prob, load_p3, load_set, logits, phone_mask, summary
 
 T = 2.0
 
@@ -58,10 +58,12 @@ def main() -> None:
         s = fake_prob(logits(head, dev_f))
         rec = {"epoch": epoch, "phone": summary(s[ph], dev_y[ph]),
                "clean": summary(s[~ph], dev_y[~ph])}  # fmt: skip
-        print(json.dumps({"epoch": epoch, "phone_eer": round(rec["phone"]["eer"] * 100, 3),
-                          "phone_miss1": round(rec["phone"]["miss_at_1far"] * 100, 2),
-                          "phone_thr": round(rec["phone"]["eer_thr"], 5),
-                          "clean_eer": round(rec["clean"]["eer"] * 100, 3)}), flush=True)  # fmt: skip
+        ph_, cl = rec["phone"], rec["clean"]
+        line = {"epoch": epoch, "phone_eer": round(ph_["eer"] * 100, 3),
+                "phone_miss1": round(ph_["miss_at_1far"] * 100, 2),
+                "phone_thr": round(ph_["eer_thr"], 5),
+                "clean_eer": round(cl["eer"] * 100, 3)}  # fmt: skip
+        print(json.dumps(line), flush=True)
         return rec
 
     hist.append(gate(0))  # epoch 0 = p3 itself
