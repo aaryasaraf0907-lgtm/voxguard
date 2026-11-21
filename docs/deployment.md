@@ -585,6 +585,21 @@ no 5xx, no time-out, no restart, exact blocklist and alert counts, nothing left 
 - **Burst:** 104 analysed, 15,598 answered at once with 503 "busy" and `Retry-After: 5`
   (p95 190 ms), memory 2.3 GiB, `/health` and the lists still answering (p95 under 0.25 s).
 
+### Re-run (21 Nov 2026, the final demo model)
+
+Mix A, levels 1, 2 and 4, at least 60 s and 30 requests each, with `--container` and `--poll`,
+against a scratch compose project on `dev` @ `5014cfc` (#103's scoring and the 1.5 x live
+alert; neither changes a 4 s clip's analysis). Same laptop CPU.
+
+| Level | Requests | Statuses | Client p50 / p95 ms | Detector p50 / p95 ms | Peak memory | Checks |
+|---|---|---|---|---|---|---|
+| 1 | 108 | 200: 108 | 550 / 590 | 540 / 579 | 1.82 GiB | pass |
+| 2 | 168 | 200: 168 | 715 / 750 | 703 / 739 | 1.83 GiB | pass |
+| 4 | 164 | 200: 164 | 1477 / 1590 | 730 / 801 | 1.82 GiB | pass |
+
+Both goals are still met (section 10: detector p95 579 ms; demo: 750 ms with two at once, no
+failures), and throughput is the same, about 2.8 analyses per second.
+
 ### What the load test found and changed
 
 Before these changes, at the same settings:

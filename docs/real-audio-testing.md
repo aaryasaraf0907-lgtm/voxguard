@@ -246,6 +246,40 @@ window scores, replayed under each rule (same calls, same windows; counts of cal
 These are evaluation-set calls, so they check the change rather than choose it; the final
 model's operating point is chosen on dev.
 
+### Run 2 (21 Nov 2026, the final demo model, alert at 1.5 x, #103's scoring)
+
+Aarya confirmed on 21 Nov that the demo model stays (SSL-AASIST codec-aug, epoch 11, phone
+threshold 0.012676). Same command, seed and calls as run 1, against `dev` @ `5014cfc`; copied
+from the generated report (kept privately):
+
+| Codec | Kind | Calls | Live alerts (high) | First window alone over | Flagged verdicts | Fake: time to alert | Mixed: alerts before the switch | Mixed: after the switch, median / max | Score arrival, median |
+|---|---|---|---|---|---|---|---|---|---|
+| none | genuine | 20 | 0 (0) | 0 | 2 | – | – | – | 706.4 ms |
+| none | fake | 20 | 20 (20) | 19 | 20 | 6.25 s | – | – | 695.15 ms |
+| none | mixed | 20 | 20 (20) | 0 | 20 | – | 0 | 3.33 s / 9.2 s | 641.2 ms |
+| g711_mulaw | genuine | 20 | 0 (0) | 1 | 1 | – | – | – | 798.0 ms |
+| g711_mulaw | fake | 20 | 20 (20) | 19 | 20 | 6.25 s | – | – | 753.7 ms |
+| g711_mulaw | mixed | 20 | 20 (20) | 2 | 20 | – | 0 | 3.25 s / 9.2 s | 811.55 ms |
+| g711_alaw | genuine | 20 | 0 (0) | 1 | 0 | – | – | – | 794.65 ms |
+| g711_alaw | fake | 20 | 20 (20) | 19 | 20 | 6.25 s | – | – | 822.1 ms |
+| g711_alaw | mixed | 20 | 20 (20) | 1 | 20 | – | 0 | 3.45 s / 9.2 s | 739.45 ms |
+| gsm | genuine | 20 | 0 (0) | 4 | 2 | – | – | – | 856.85 ms |
+| gsm | fake | 20 | 20 (20) | 20 | 20 | 6.25 s | – | – | 827.3 ms |
+| gsm | mixed | 20 | 20 (20) | 3 | 20 | – | 2 | 3.25 s / 9.2 s | 845.4 ms |
+| opus | genuine | 20 | 2 (2) | 2 | 7 | – | – | – | 891.4 ms |
+| opus | fake | 20 | 20 (20) | 20 | 20 | 6.25 s | – | – | 851.25 ms |
+| opus | mixed | 20 | 20 (20) | 3 | 20 | – | 2 | 3.31 s / 9.2 s | 826.7 ms |
+
+- **Live alerts on genuine calls: 2 of 100** (both over Opus, both high), against 35 of 100 in
+  run 1. The replay above predicted exactly this.
+- **Fakes unchanged:** all 100 fake calls alerted at 6.25 s, and all 100 genuine-then-fake calls
+  alerted, a median 3.25–3.45 s after the switch (9.2 s at most); 4 of them alerted before the
+  switch (28 in run 1).
+- **The stored verdict did not change**, because it still uses the threshold: genuine calls ending
+  flagged are 2, 1, 0, 2 and **7 of 20 over Opus**, as in run 1. Opus genuine speech is the
+  weakest condition for the model itself, not for the alert rule.
+- AMR-NB is still not measured (no AMR encoder in the image's ffmpeg).
+
 ## 5. Same-speaker voice-clone test
 
 Can the model tell a person from a clone of that same person? One team member's own voice
@@ -317,11 +351,17 @@ genuine part.
 | As uploaded | 6 → **1** of 20 | 15 → 15 of 20 | 13 → 15 of 20 |
 | `codec=g711_mulaw` | 6 → **2** of 20 | 15 → 16 of 20 | 10 → 13 of 20 |
 
-The live calls of this test, replayed with the alert at 1.5 x the threshold: the genuine calls
-alerted in 2 of 4 (4 of 4 before), all 4 cloned calls still alerted (median 6.25 s); of the 4
-genuine-then-cloned calls, 2 still alerted during the genuine part and 1 no longer alerted at all. For this speaker and these
-clones the live scores of the two overlap, so no alert level separates them: that is for the
-model to improve, not the rule.
+The live calls of this test at the 1.5 x alert, streamed again on 21 Nov (the earlier replay
+predicted the same): the genuine calls alerted in 2 of 4 (4 of 4 before); all 4 cloned calls
+alerted (6.25–7.25 s); of the 4 genuine-then-cloned calls, 2 alerted during the genuine part and
+1 never alerted. The scripted call with a ₹75,000 transfer is unchanged: the call alerted during
+the genuine part (6.25 s clean, 8.25 s over G.711) and the transfer was held in both parts. For
+this speaker and these clones the live scores overlap, so no alert level separates them: that
+is for the model to improve, not the rule.
 
-One speaker, one microphone, one cloning tool and 20 sentences: counts, not rates. The clone pair
-is not in the demo with this model. Re-run on the final model after 22 Nov.
+The team member's other consented recordings (Set C: 12 files, as uploaded and over G.711):
+2 flagged before #103, 0 after. The two were the same 4.8 s recording in two formats, now at
+0.85–0.88 x the threshold; every other score is identical.
+
+One speaker, one microphone, one cloning tool and 20 sentences: counts, not rates. This is the
+final demo model (21 Nov), so the clone pair is not in the demo.
