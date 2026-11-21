@@ -41,9 +41,9 @@ measured detection delay.
 N1 is a genuine voice wrongly flagged. Present it as exactly that: the honest limit of the model
 on off-domain speech, and the reason for the caution.
 
-**No same-speaker clone pair** (a presenter's recording next to an AI clone of the same voice)
-unless the final model catches the clone: on the current model it did not separate them reliably
-(`docs/real-audio-testing.md`, section 5). Re-check after the final model.
+**No same-speaker clone pair** (a presenter's recording next to an AI clone of the same voice):
+the demo model is final (SSL-AASIST codec-aug, phone threshold unchanged) and does not separate
+them reliably (`docs/real-audio-testing.md`, section 5), so the pair is not shown.
 
 ## Before the demo (T−30 min)
 
@@ -122,11 +122,13 @@ The demo runs offline once the model is in the volume; no network is needed.
   SHA-256; `/v1/evidence/verify` recomputes the chain from the records, and the chain head goes
   out with every webhook, so a copy is held elsewhere. Tamper-evident, not tamper-proof, and no
   claim of legal admissibility.
-- **Would it catch a clone of my own voice?** Not reliably yet. We tested it on a team member's
-  own voice and an open cloning tool (`docs/real-audio-testing.md`, section 5): most clones scored
-  above the genuine recordings, but some overlapped them, live especially. Say that this is the
-  hardest case and what the final model was trained to improve; quote only the counts in that
-  section.
+- **Would it catch a clone of my own voice?** Not reliably. We tested it on a team member's own
+  voice and an open cloning tool (`docs/real-audio-testing.md`, section 5): most clones scored
+  above the genuine recordings, but some overlapped them, live especially. Say plainly that this
+  is the hardest case and the main limitation of the submitted model, and that the transfer check
+  is there for exactly this: a large transfer is held whenever the call scores over the threshold,
+  until a call-back and a second person confirm it. Quote only the
+  counts in that section.
 - **Why did it say "elevated" and not alert?** Genuine speech often runs just over the
   threshold, so the live alert waits until the call's risk reaches 1.5 x it
   (`docs/real-audio-testing.md`, section 4). The stored verdict still uses the threshold.
