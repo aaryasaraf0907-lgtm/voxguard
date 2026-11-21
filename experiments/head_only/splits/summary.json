@@ -1,0 +1,18 @@
+{
+  "seed": 20261121,
+  "la_train": 25380,
+  "la_dev_gate": 8548,
+  "la_eval_report": 7200,
+  "itw": {
+    "gate": {
+      "speakers": 27,
+      "clips": 3000,
+      "bona-fide": 1500
+    },
+    "report": {
+      "speakers": 27,
+      "clips": 3000,
+      "bona-fide": 1500
+    }
+  }
+}
