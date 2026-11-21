@@ -331,6 +331,13 @@ def test_just_over_the_threshold_is_not_a_live_alert_but_still_flags_the_call() 
     assert rows[0].flagged and len(alerts) == 1  # the prevention rule is unchanged
 
 
+def test_an_alert_is_always_at_or_above_the_caution_boundary() -> None:
+    """An alert's level is always "high"; that is only true while ALERT_FACTOR >= CAUTION_FACTOR."""
+    from voxguard.api.risk import ALERT_FACTOR, CAUTION_FACTOR
+
+    assert ALERT_FACTOR >= CAUTION_FACTOR
+
+
 def test_alert_level_is_high_well_over_the_threshold() -> None:
     with _client(ScriptedDetector([0.9, 0.9])) as c:
         msgs = _call(c, "sample_rate=16000", _audio(7, 16_000), 16_000)

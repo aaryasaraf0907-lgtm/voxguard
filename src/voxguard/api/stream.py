@@ -341,7 +341,9 @@ async def _score_due(
         }
     )
     if alert:
-        level = "caution" if call.running < CAUTION_FACTOR * call.threshold else "high"
+        # The alert fires at ALERT_FACTOR x the threshold, which is at least the caution/high
+        # boundary, so an alert is always "high" (the field stays for clients and webhooks).
+        level = "high"
         await ws.send_json(
             {
                 "type": "alert",
