@@ -30,7 +30,8 @@ A18 worse). This experiment is built around those two findings.
   policy), so they carry no label information. No OpenVoice and no clones of anyone: the clone
   test stays a test on an unseen tool. Svarah (CC BY 4.0) is not used yet: its terms must be
   accepted on the Hugging Face account first.
-- **Loss:** p3's weighted cross-entropy (0.9 / 0.1, the inverse class ratio) **plus distillation
+- **Loss:** class-weighted cross-entropy with p3's rule (weights = the inverse class frequency;
+  p3's 0.9 / 0.1 is that for its data; here it is computed on the copies above) **plus distillation
   to p3** (KL divergence to p3's own back-end on the same features, temperature 2), so the head
   keeps p3's decisions where nothing pushes it away: the guard against losing eval attacks that
   dev cannot show.
