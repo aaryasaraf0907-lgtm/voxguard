@@ -34,7 +34,10 @@ SEED = 20261121
 N = 64_600
 P_CODEC = 0.6
 LAM, MU, TEMP = 2.0, 2.0, 2.0
-LR_FRONTEND, LR_HEAD = 1e-6, 1e-5
+LR_FRONTEND, LR_HEAD = 1e-6, 1e-5  # top XLS-R layer and back-end
+LLRD = 0.9  # each XLS-R layer below the top learns 0.9x as fast as the one above it
+WARMUP_STEPS, COSINE_EPOCHS, LR_FLOOR = 500, 9, 0.1  # then cosine to 10 % over 9 epochs
+CLIP_NORM, EMA_DECAY = 1.0, 0.999
 BATCH = 4 if SMOKE else 12
 OUT = Path("/kaggle/working") if Path("/kaggle/working").exists() else Path("runs/kaggle_full")
 
@@ -174,15 +177,42 @@ def main() -> None:
     for p in model.parameters():
         p.requires_grad = True
     model.frontend.model.gradient_checkpointing_enable()
-    for p in model.frontend.model.feature_extractor.parameters():  # CNN encoder stays p3's
-        p.requires_grad = False
-    front = [p for p in model.frontend.parameters() if p.requires_grad]
-    ids = {id(p) for p in front}
-    cnn = {id(p) for p in model.frontend.model.feature_extractor.parameters()}
-    rest = [p for p in model.parameters() if id(p) not in ids and id(p) not in cnn]
-    opt = torch.optim.Adam([{"params": front, "lr": LR_FRONTEND}, {"params": rest, "lr": LR_HEAD}],
-                           weight_decay=1e-4)  # fmt: skip
+    model.frontend.model.freeze_feature_encoder()  # CNN encoder stays p3's (no grads, no ckpt)
+    w2v = model.frontend.model
+    layers = list(w2v.encoder.layers)
+    top = len(layers) - 1
+    groups, seen = [], set()
+
+    def add(params, lr: float, name: str) -> None:
+        ps = [p for p in params if p.requires_grad and id(p) not in seen]
+        seen.update(id(p) for p in ps)
+        if ps:
+            groups.append({"params": ps, "lr": lr, "name": name})
+
+    add(w2v.encoder.layer_norm.parameters(), LR_FRONTEND, "xlsr_final_norm")
+    for i, layer in enumerate(layers):  # layer-wise lr decay: lower layers move less
+        add(layer.parameters(), LR_FRONTEND * LLRD ** (top - i), f"xlsr_layer{i}")
+    add(w2v.parameters(), LR_FRONTEND * LLRD**top, "xlsr_embeddings")  # projection, pos-conv
+    add(model.parameters(), LR_HEAD, "backend")  # everything left: AASIST back-end
+    for gr in groups:
+        gr["base_lr"] = gr["lr"]
+    opt = torch.optim.Adam(groups, weight_decay=1e-4)
+    trainable = [p for gr in groups for p in gr["params"]]
     scaler = torch.amp.GradScaler("cuda")
+    from torch.optim.swa_utils import AveragedModel, get_ema_multi_avg_fn
+
+    ema = AveragedModel(model, multi_avg_fn=get_ema_multi_avg_fn(EMA_DECAY), use_buffers=True)
+    step_global, skipped = 0, 0
+    log(event="optimiser", groups=len(groups), trainable=sum(p.numel() for p in trainable),
+        lr_bottom_layer=LR_FRONTEND * LLRD**top)  # fmt: skip
+
+    def lr_factor(step_n: int, steps_per_epoch: int) -> float:
+        if step_n < WARMUP_STEPS:
+            return (step_n + 1) / WARMUP_STEPS
+        horizon = max(COSINE_EPOCHS * steps_per_epoch - WARMUP_STEPS, 1)
+        prog = min((step_n - WARMUP_STEPS) / horizon, 1.0)
+        return LR_FLOOR + (1 - LR_FLOOR) * 0.5 * (1 + np.cos(np.pi * prog))
+
     data = Clips(rows, codecs)
     epochs = 1 if SMOKE else 99
     epoch_s = None
@@ -210,17 +240,34 @@ def main() -> None:
             if gen.any():
                 loss = loss + MU * F.mse_loss(s[gen, 1] - s[gen, 0], t[gen, 1] - t[gen, 0])
             opt.zero_grad(set_to_none=True)
+            if not torch.isfinite(loss):  # one bad fp16 batch must not ruin the run
+                skipped += 1
+                continue
+            for gr in opt.param_groups:
+                gr["lr"] = gr["base_lr"] * lr_factor(step_global, len(loader))
             scaler.scale(loss).backward()
+            scaler.unscale_(opt)
+            torch.nn.utils.clip_grad_norm_(trainable, CLIP_NORM)
             scaler.step(opt)
             scaler.update()
+            ema.update_parameters(model)
+            step_global += 1
             total, n = total + float(loss.detach()) * len(lab), n + len(lab)
             if step % 200 == 0:
-                log(event="step", epoch=epoch, step=step, of=len(loader), loss=round(total / n, 4))
+                log(event="step", epoch=epoch, step=step, of=len(loader),
+                    loss=round(total / max(n, 1), 4), skipped=skipped,
+                    lr_top=opt.param_groups[0]["lr"])  # fmt: skip
             if time.time() - T0 > BUDGET_S + 0.5 * 3600:  # hard stop: keep the finished epochs
                 log(event="stop", reason="hard limit mid-epoch", epoch=epoch)
                 return
-        state = {k: v.half() if v.is_floating_point() else v for k, v in model.state_dict().items()}
-        torch.save({"model": state, "epoch": epoch, "base": info}, OUT / f"epoch{epoch}.pt")
+
+        def half(sd: dict) -> dict:
+            return {k: v.half() if v.is_floating_point() else v for k, v in sd.items()}
+
+        torch.save({"model": half(model.state_dict()), "epoch": epoch, "base": info},
+                   OUT / f"epoch{epoch}.pt")  # fmt: skip
+        torch.save({"model": half(ema.module.state_dict()), "epoch": epoch, "base": info,
+                    "ema_decay": EMA_DECAY}, OUT / "ema_last.pt")  # candidate E  # fmt: skip
         epoch_s = time.time() - t_ep
         log(
             event="epoch",

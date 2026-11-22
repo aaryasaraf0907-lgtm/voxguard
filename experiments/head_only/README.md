@@ -199,3 +199,12 @@ measured failure of the realistic fine-tune or a known risk of a full fine-tune:
 - **Candidate D = the average of the last 3 saved epochs' weights**, scored and judged like A, B and C
   (weight averaging usually generalises and calibrates better than any one epoch; it is also the
   check on unseen attacks, where the realistic fine-tune lost A10, A11, A17 and A18).
+
+**Round 3 training safeguards (22 Nov ~16:25 UTC, still before any round-3 training).**
+- **Layer-wise learning rates:** the top XLS-R layer at 1e-6 (p3's rate), each layer below at 0.9x
+  the one above (bottom about 8e-8); the back-end at 1e-5. Lower layers carry general speech
+  knowledge and move least, against the forgetting behind the realistic fine-tune's lost attacks.
+- **Warm-up and cosine decay:** 500 steps of linear warm-up, then cosine to 10 % over 9 epochs.
+- **Gradient clipping** at norm 1.0, and a batch with a non-finite loss is skipped and counted.
+- **Candidate E = an exponential moving average of the weights** (decay 0.999), saved after every
+  epoch (`ema_last.pt`, the final one is the candidate); judged like A-D.
