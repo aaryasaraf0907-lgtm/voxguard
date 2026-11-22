@@ -163,3 +163,27 @@ checks unchanged.
 11 round-2 runs, instead of after all of them, so the front-end question is answered sooner. Every
 run, the gate, the choice rule and the report stay exactly as registered; all 26 runs are still judged
 together at the end.
+
+## Round 3 (amendment, 22 Nov 2026 ~16:10 UTC, before any round-3 training)
+
+**Why.** Five round-2 head-only runs all stay 3.7-16x off p3's threshold, and every round-1 head loses
+In-the-Wild EER: a head on a frozen front-end cannot learn new audio cues. Round 2d tries the top 2
+layers on the laptop; round 3 is the full version, which needs a 16 GB GPU.
+
+**What.** `scripts/exp_head_only/kaggle_full.py`: a **full fine-tune** of p3 (all of XLS-R + the
+head) on a free Kaggle GPU (the team member's own account; private datasets: the experiment code,
+p3's checkpoint, and the training audio, LA 2019 train + Svarah genuine; nothing else, no clones,
+no OpenVoice, no dev, In-the-Wild, eval or Hindi audio).
+- **Augmentation fresh every epoch** (seed = epoch and clip): a codec on the whole file with
+  probability 0.6 (the head-only policy: G.711 µ/A, AMR-NB/WB, Opus weighted 2, noise before the
+  codec on 30 %), a random 4 s crop, then `data/realistic.py` on both classes.
+- **Loss:** inverse-frequency weighted CE + 2 x KL(p3 || model) at T=2 + 2 x the genuine anchor;
+  p3 as a frozen fp16 teacher.
+- **Optimiser:** Adam, lr 1e-6 for XLS-R (p3's own), 1e-5 for the back-end; batch 12; fp16 autocast;
+  gradient checkpointing. Epochs: as many as fit a 10.5 h budget; every epoch saved.
+
+**Choice and judgement (unchanged rules).** Each saved epoch is scored locally with the same code and
+data as the gate (dev gate phone set, In-the-Wild gate part); the epoch is chosen by round 2's rule
+(within 1.5x of p3's dev phone threshold first, then fewest missed fakes at 1 % false alarms, then
+lowest EER), as A, B and C, and judged by the same five gate checks. Then the report, stop rules and
+test-only checks, as above. It joins the same final comparison as rounds 1-2d.
