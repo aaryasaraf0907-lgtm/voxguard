@@ -126,23 +126,35 @@ def main(name: str) -> None:
         todo = [j for j in todo if j["path"].exists()][:48]
     out = X / "features" / (f"_smoke_{name}" if smoke else name)
     out.mkdir(parents=True, exist_ok=True)
-    feats = np.lib.format.open_memmap(out / "feats.npy", mode="w+", dtype=np.float16,
-                                      shape=(len(todo), FRAMES, DIM))  # fmt: skip
+    # Resumable: rows below the count in progress.txt are already written. Bounded: at most
+    # WINDOW prepared clips wait for the GPU (an unbounded pool.map piled up 4.6 GB and the
+    # process was OOM-killed on a 7 GB machine, 21 Nov).
+    progress, start = out / "progress.txt", 0
+    if (out / "feats.npy").exists() and progress.exists():
+        start = int(progress.read_text())
+        feats = np.load(out / "feats.npy", mmap_mode="r+")
+    else:
+        feats = np.lib.format.open_memmap(out / "feats.npy", mode="w+", dtype=np.float16,
+                                          shape=(len(todo), FRAMES, DIM))  # fmt: skip
     model, _ = load_from_checkpoint(P3, "cuda")
     fe = model.frontend.eval()
-    batch, bs = [], 16
-    with ProcessPoolExecutor(max_workers=max(2, (os.cpu_count() or 4) - 2)) as pool:
-        for i, x in enumerate(pool.map(prepare, enumerate(todo), chunksize=8)):
-            batch.append(x)
-            if len(batch) == bs or i == len(todo) - 1:
-                w = torch.from_numpy(np.stack(batch)).cuda()
+    bs, window = 16, 256
+    with ProcessPoolExecutor(max_workers=10) as pool:
+        nxt = pool.map(prepare, enumerate(todo[start : start + window]), chunksize=4)
+        for lo in range(start, len(todo), window):
+            xs = list(nxt)  # this window's clips; prepare the next one while the GPU works
+            if lo + window < len(todo):
+                part = enumerate(todo[lo + window : lo + 2 * window], lo + window)
+                nxt = pool.map(prepare, part, chunksize=4)
+            for b in range(0, len(xs), bs):
+                w = torch.from_numpy(np.stack(xs[b : b + bs])).cuda()
                 with torch.no_grad(), torch.autocast("cuda", dtype=torch.float16):
                     f = fe(w)
-                feats[i - len(batch) + 1 : i + 1] = f.half().cpu().numpy()
-                batch = []
-            if i % 2000 == 0:
-                print(f"{name}: {i}/{len(todo)}", flush=True)
-    feats.flush()
+                feats[lo + b : lo + b + len(w)] = f.half().cpu().numpy()
+            feats.flush()
+            progress.write_text(str(lo + len(xs)))
+            if (lo // window) % 8 == 0:
+                print(f"{name}: {lo + len(xs)}/{len(todo)}", flush=True)
     with (out / "meta.csv").open("w", newline="") as fh:
         w = csv.writer(fh)
         w.writerow(["row", "file", "label", "group", "condition", "copy"])
