@@ -122,3 +122,14 @@ def test_resolve_checkpoint_local_and_hub(tmp_path: Path, monkeypatch: pytest.Mo
     monkeypatch.setattr(hub, "hf_hub_download", fake_download)
     assert resolve_checkpoint("someuser/voxguard-rawnet2", "last.pt") == f
     assert calls == {"repo_id": "someuser/voxguard-rawnet2", "filename": "last.pt"}
+
+
+def test_real_detector_score_does_not_depend_on_batch_size(tmp_path: Path) -> None:
+    pytest.importorskip("torchaudio")
+    from voxguard.inference import RealDetector
+
+    ckpt = str(_tiny_checkpoint(tmp_path / "best.pt"))
+    x = _wave(30.0)  # 7 windows: batches of 1, 4 (4 + 3) and 8 (one) split them differently
+    scores = [RealDetector(ckpt, batch_size=b).predict(x, 16_000).fake_score for b in (1, 4, 8)]
+    assert RealDetector(ckpt).batch_size == 4
+    assert scores == pytest.approx([scores[0]] * 3, abs=1e-5)
