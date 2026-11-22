@@ -138,6 +138,7 @@ PAGE = r"""<!doctype html>
     <span class="muted" data-t="monitor_seconds"></span>
   </div>
   <div id="final" class="muted"></div>
+  <p id="scorenote" class="muted" hidden data-t="monitor_score_note"></p>
   <p id="reportlinks" hidden><a id="report" href="#" target="_blank" rel="noopener" data-t="monitor_report"></a>
     · <a id="reportdl" href="#" download data-t="monitor_report_download"></a></p>
 
@@ -343,6 +344,7 @@ function showRisk(m) {
 function renderFinal() {
   const f = state.final;
   $("reportlinks").hidden = !(f && f.stored);
+  $("scorenote").hidden = !(f && f.stored);  // why an upload of the same file scores a little differently
   if (f && f.stored) {
     const url = `/v1/sessions/${encodeURIComponent(f.session_id)}/report?lang=${lang}`;
     $("report").href = url;
@@ -441,7 +443,7 @@ function reset() {
   Object.assign(state, { points: [], threshold: null, flagAt: null, alerted: false, last: null,
                          final: null, seconds: 0, pending: [], pendingN: 0, sessionId: null,
                          decision: null });
-  $("approve").disabled = true; renderDecision(); $("reportlinks").hidden = true;
+  $("approve").disabled = true; renderDecision(); $("reportlinks").hidden = true; $("scorenote").hidden = true;
   for (const id of ["elapsed", "window", "running", "threshold"]) $(id).textContent = "–";
   $("final").textContent = "";
   draw();
