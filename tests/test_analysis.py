@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 
 from voxguard import analysis as A
+from voxguard.api.risk import ALERT_FACTOR, MIN_ALERT_WINDOWS
 
 
 def test_file_id_handles_clean_and_degraded_paths() -> None:
@@ -96,14 +97,25 @@ def test_sequential_report_compares_rules_at_the_same_false_alarm_rate() -> None
     def split(n: int) -> dict[str, np.ndarray]:
         labels = rng.integers(0, 2, n)
         scores = np.where(labels == 1, rng.beta(5, 20, n), rng.beta(2, 60, n))
-        return {"scores": scores, "labels": labels, "groups": rng.choice(list("abcdefgh"), n)}
+        groups = [
+            f"{s}|{c}"
+            for s, c in zip(rng.choice(list("abcd"), n), rng.choice(["x", "y"], n), strict=True)
+        ]
+        return {"scores": scores, "labels": labels, "groups": np.array(groups)}
 
     rep = A.sequential_report(split(6000), split(6000), threshold=0.06)
     r = rep["rules"]
-    assert set(r) == {"fixed", "sequential_same_fa", "sequential_1pct"}
+    assert set(r) == {"fixed", "fixed_at_threshold", "sequential_same_fa", "sequential_1pct"}
+    assert rep["alert_factor"] == ALERT_FACTOR and rep["min_windows"] == MIN_ALERT_WINDOWS
+    # the API's rule alerts at ALERT_FACTOR x the threshold, never before MIN_ALERT_WINDOWS
+    assert r["fixed"]["thresholds"][MIN_ALERT_WINDOWS - 1] == pytest.approx(0.06 * ALERT_FACTOR)
+    assert r["fixed"]["false_alarm_calls"] <= r["fixed_at_threshold"]["false_alarm_calls"]
     assert r["sequential_1pct"]["false_alarm_calls"] <= 0.03
     for name in r:
         assert 0 <= r[name]["fake_detected"] <= 1 and len(r[name]["thresholds"]) == A.CALL_WINDOWS
+    assert set(rep["per_codec"]) == {"x", "y"}  # the codec is the group's last part
+    for c in rep["per_codec"].values():
+        assert c["genuine_clips"] > 0 and 0 <= c["false_alarm_calls"] <= 1
 
 
 def test_analyse_model_refuses_misaligned_cached_scores() -> None:
@@ -174,11 +186,14 @@ def test_results_markdown_renders_the_analysis_tables() -> None:
                             "threshold_calibrated": 0.41},
             "sequential": {"n_calls": 2000, "call_windows": 8, "switch": 4,
                            "fixed_dev_false_alarm_calls": 0.02,
-                           "rules": {"fixed": rule, "sequential_1pct": rule}},
+                           "rules": {"fixed": rule, "sequential_1pct": rule},
+                           "per_codec": {"opus": {**rule, "genuine_clips": 1066}}},
         }},
     }  # fmt: skip
     md = render_family(res)
     assert "| A10 | 3.20 | 3.60 |" in md
     assert "0.400 -> 0.020" in md and "0.0127 -> 0.410" in md
-    assert "Fixed: phone threshold, from 2 windows" in md and "| 1.00 | 97.00 | 2.0 |" in md
+    assert "Fixed: 1.5 x the phone threshold, from 2 windows" in md
+    assert "| 1.00 | 97.00 | 2.0 |" in md
+    assert "| opus | 1066 | 1.00 | 97.00 | 0.50 | 90.00 |" in md
     assert "EER (%) per attack" not in render_family({**res, "analysis": {}})
