@@ -164,7 +164,7 @@ checks unchanged.
 run, the gate, the choice rule and the report stay exactly as registered; all 26 runs are still judged
 together at the end.
 
-## Round 3 (amendment, 22 Nov 2026 ~16:10 UTC, before any round-3 training)
+## Round 3 (amendment, 22 Nov 2026 ~15:50 UTC, before any round-3 training)
 
 **Why.** Five round-2 head-only runs all stay 3.7-16x off p3's threshold, and every round-1 head loses
 In-the-Wild EER: a head on a frozen front-end cannot learn new audio cues. Round 2d tries the top 2
