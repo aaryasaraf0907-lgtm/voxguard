@@ -1,6 +1,6 @@
 # Demo script
 
-How to present LineTrue live (about 8 minutes) and record the demo video (about 3 minutes). It
+How to present LineTrue live (about 8 minutes). It
 uses the local Docker Compose deployment with the real detector
 ([M2 demo runbook](deployment.md#m2-demo-runbook-real-model-in-compose)).
 
@@ -59,7 +59,8 @@ them reliably (`docs/real-audio-testing.md`, section 5), so the pair is not show
 4. Open the UI (http://localhost:8501) in the browser you will present from. Check the sidebar
    says **Connected** and shows the model. Set the zoom so the result metrics are readable on the
    projector.
-5. Have the clips in one folder, a terminal with the runbook open, and the backup video ready.
+5. Have the clips in one folder, a terminal with the runbook open, and the slides and
+   `docs/results.md` open as the fallback.
 
 ## Live run (about 8 minutes)
 
@@ -89,7 +90,7 @@ version, latency and optional caller ID.
 | Sidebar shows **API unavailable** | `docker compose ps`; if the API is not running, `docker compose up -d --wait` (runbook step 5). Fill the wait by continuing with the slides. |
 | A request is slow | Wait: the first request after an idle period can take a few seconds, and the next one is back to normal. Say that the latency shown is the detector's time on a CPU laptop, and analyze the clip once more if it looks out of line. |
 | A result is not what the script expects | Say so: the model makes mistakes, and N1 already shows one. Move on with the next clip. |
-| Nothing works | Play the backup video. |
+| Nothing works | Switch to the slides: walk through the architecture diagram and show the results in `docs/results.md` (the 2×2 matrix, per codec). Say the live part could not run; don't show placeholder scores. |
 
 The demo runs offline once the model is in the volume; no network is needed.
 
@@ -137,23 +138,7 @@ The demo runs offline once the model is in the volume; no network is needed.
   record verification steps, and the alert webhook connected to the bank's own SMS, e-mail or
   security systems. Real OTP sending and core-banking holds are outside this prototype.
 
-## Video (about 3 minutes)
+## Privacy
 
-Record the screen at 1080p with the presenter's voice; no other people's voices or data.
-
-| Shot | Length | Content |
-|---|---|---|
-| 1 | 20 s | The problem, over the architecture diagram |
-| 2 | 30 s | G1 not flagged, then F1 flagged |
-| 3 | 30 s | F1 on the simulated phone line, side by side |
-| 3b | 20 s | M with the timeline and Replay: the alert after the fake part starts |
-| 3c | 25 s | M on the live call monitor: below the threshold, then the red warning while it plays |
-| 3d | 25 s | The transfer approved during the genuine part, then held after the warning; two different people release it; the report's evidence trail says Intact |
-| 4 | 30 s | The 2×2 matrix in `docs/results.md` |
-| 5 | 35 s | Prevention: caller ID, flagged sessions, blocklist, alerts |
-| 6 | 15 s | N1 with the caution: the honest limitation |
-| 7 | 15 s | Hindi interface |
-| 8 | 20 s | Summary and limitations |
-
-Keep the repository and video private until the IPR cell confirms the provisional filing
-(CLAUDE.md section 15).
+Keep the repository, the clips and any recording of the demo private until the IPR cell confirms
+the provisional filing (CLAUDE.md section 15).
