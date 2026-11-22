@@ -133,6 +133,8 @@ def main(name: str) -> None:
     if (out / "feats.npy").exists() and progress.exists():
         start = int(progress.read_text())
         feats = np.load(out / "feats.npy", mmap_mode="r+")
+        n = feats.shape[0]
+        assert n == len(todo), f"{out}/feats.npy has {n} rows, not {len(todo)}"
     else:
         feats = np.lib.format.open_memmap(out / "feats.npy", mode="w+", dtype=np.float16,
                                           shape=(len(todo), FRAMES, DIM))  # fmt: skip
