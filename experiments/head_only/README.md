@@ -235,3 +235,11 @@ missed fakes, threshold) to decide, never the In-the-Wild report part, the eval 
 test, Set C or the 2021 LA calls; those stay the honest check on how many adaptations were made.
 (`train_head.py --top --init <head-only run>` now starts the back-end from that run's head under
 p3's own top layers.)
+
+**fix-1-top-init-l2 (22 Nov ~17:40 UTC, before it trains).** *Failures it addresses:* every head-only
+run keeps its detection gain (dev phone missed fakes 0.03-0.09 %) but drifts 4-32x; the top-layer run
+`top-mu0.5` holds the threshold near p3's (1.56-1.83x) but loses the gain (best epoch 0.26 % vs p3's
+0.25 %). *Fix:* combine them: the back-end starts from round-1 head `l2-lr1e4` (the round-1 head with
+the least drift, 4.2x, and 0.03 % missed fakes), XLS-R's top 2 layers start from p3 and train with it
+(`--top --init l2-lr1e4`); λ 2, μ 2, lr 5e-5 (back-end) and 1e-5 (top layers), 3 epochs,
+`--select-drift`. Judged at the final gate like every run.
