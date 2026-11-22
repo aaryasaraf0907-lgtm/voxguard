@@ -3,7 +3,8 @@
 # Checkpoints: the Kaggle runs with the fixed class weights, downloaded with
 #   kaggle kernels output <user>/voxguard-<run> -p runs/kaggle/<run>
 # SSL-AASIST codec-aug: part 3 resumes parts 1-2 and carries best.pt across, so its best.pt is the
-# run's best epoch. Missing checkpoints are reported as "not run".
+# run's best epoch. RawNet2 codec-aug v2 stopped at Kaggle's 12 h cap after 7 of 12 epochs; its best.pt
+# is epoch 4 (dev EER 1.22%) and was not resumed. Missing checkpoints are reported as "not run".
 # Thresholds are not chosen here: run `evaluate --select-thresholds` on the dev sets per
 # checkpoint (thresholds.json); GSM (heldout) is never used to choose one.
 # Figures need the plots extra: uv run --extra ml --extra plots python -m voxguard.evaluate ...

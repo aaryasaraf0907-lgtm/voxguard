@@ -1,0 +1,832 @@
+{
+  "family": "ssl_aasist",
+  "matrix": {
+    "clean": {
+      "clean": {
+        "pooled": {
+          "eer": 0.023281844638459837,
+          "eer_threshold": 0.0006822992752574907,
+          "accuracy_at_eer": 0.9768,
+          "accuracy_at_0.5": 0.5296,
+          "confusion_at_eer": {
+            "tp": 8726,
+            "fp": 24,
+            "tn": 1042,
+            "fn": 208
+          },
+          "n": 10000
+        },
+        "per_codec": {
+          "clean": {
+            "eer": 0.023281844638459837,
+            "eer_threshold": 0.0006822992752574907,
+            "accuracy_at_eer": 0.9768,
+            "accuracy_at_0.5": 0.5296,
+            "confusion_at_eer": {
+              "tp": 8726,
+              "fp": 24,
+              "tn": 1042,
+              "fn": 208
+            },
+            "n": 10000
+          }
+        },
+        "at_dev_thresholds": {
+          "clean": {
+            "threshold": 0.0015891788588044378,
+            "fpr": 0.0009380863039399625,
+            "fnr": 0.22095366017461385,
+            "hter": 0.1109458732392769,
+            "accuracy": 0.8025
+          },
+          "phone": {
+            "threshold": 0.005211927618926299,
+            "fpr": 0.0,
+            "fnr": 0.34519811954331764,
+            "hter": 0.17259905977165882,
+            "accuracy": 0.6916
+          },
+          "low_far": {
+            "threshold": 0.0013224907452240586,
+            "fpr": 0.0009380863039399625,
+            "fnr": 0.18244907096485338,
+            "hter": 0.09169357863439667,
+            "accuracy": 0.8369
+          }
+        }
+      },
+      "degraded": {
+        "pooled": {
+          "eer": 0.05300187617260788,
+          "eer_threshold": 0.0010286477775755033,
+          "accuracy_at_eer": 0.946975,
+          "accuracy_at_0.5": 0.628175,
+          "confusion_at_eer": {
+            "tp": 33841,
+            "fp": 226,
+            "tn": 4038,
+            "fn": 1895
+          },
+          "n": 40000
+        },
+        "per_codec": {
+          "amr_nb": {
+            "eer": 0.0600375234521576,
+            "eer_threshold": 0.0014250025923729052,
+            "accuracy_at_eer": 0.9399,
+            "accuracy_at_0.5": 0.6298,
+            "confusion_at_eer": {
+              "tp": 8397,
+              "fp": 64,
+              "tn": 1002,
+              "fn": 537
+            },
+            "n": 10000
+          },
+          "g711_alaw": {
+            "eer": 0.01876172607879925,
+            "eer_threshold": 0.0007682574047326104,
+            "accuracy_at_eer": 0.9812,
+            "accuracy_at_0.5": 0.551,
+            "confusion_at_eer": {
+              "tp": 8766,
+              "fp": 20,
+              "tn": 1046,
+              "fn": 168
+            },
+            "n": 10000
+          },
+          "g711_mulaw": {
+            "eer": 0.01876172607879925,
+            "eer_threshold": 0.0007711224872566494,
+            "accuracy_at_eer": 0.9812,
+            "accuracy_at_0.5": 0.5625,
+            "confusion_at_eer": {
+              "tp": 8766,
+              "fp": 20,
+              "tn": 1046,
+              "fn": 168
+            },
+            "n": 10000
+          },
+          "opus": {
+            "eer": 0.038461538461538464,
+            "eer_threshold": 0.0014217440397120426,
+            "accuracy_at_eer": 0.9615,
+            "accuracy_at_0.5": 0.7694,
+            "confusion_at_eer": {
+              "tp": 8590,
+              "fp": 41,
+              "tn": 1025,
+              "fn": 344
+            },
+            "n": 10000
+          }
+        },
+        "at_dev_thresholds": {
+          "clean": {
+            "threshold": 0.0015891788588044378,
+            "fpr": 0.021341463414634148,
+            "fnr": 0.11937541974479517,
+            "hter": 0.07035844157971466,
+            "accuracy": 0.891075
+          },
+          "phone": {
+            "threshold": 0.005211927618926299,
+            "fpr": 0.006801125703564728,
+            "fnr": 0.2392545332437878,
+            "hter": 0.12302782947367626,
+            "accuracy": 0.785525
+          },
+          "low_far": {
+            "threshold": 0.0013224907452240586,
+            "fpr": 0.02931519699812383,
+            "fnr": 0.09150436534586971,
+            "hter": 0.060409781171996774,
+            "accuracy": 0.915125
+          }
+        }
+      },
+      "heldout": {
+        "pooled": {
+          "eer": 0.04784240150093809,
+          "eer_threshold": 0.0015023716954308203,
+          "accuracy_at_eer": 0.9521,
+          "accuracy_at_0.5": 0.7078,
+          "confusion_at_eer": {
+            "tp": 8506,
+            "fp": 51,
+            "tn": 1015,
+            "fn": 428
+          },
+          "n": 10000
+        },
+        "per_codec": {
+          "gsm": {
+            "eer": 0.04784240150093809,
+            "eer_threshold": 0.0015023716954308203,
+            "accuracy_at_eer": 0.9521,
+            "accuracy_at_0.5": 0.7078,
+            "confusion_at_eer": {
+              "tp": 8506,
+              "fp": 51,
+              "tn": 1015,
+              "fn": 428
+            },
+            "n": 10000
+          }
+        },
+        "at_dev_thresholds": {
+          "clean": {
+            "threshold": 0.0015891788588044378,
+            "fpr": 0.04596622889305816,
+            "fnr": 0.05383926572643832,
+            "hter": 0.04990274730974824,
+            "accuracy": 0.947
+          },
+          "phone": {
+            "threshold": 0.005211927618926299,
+            "fpr": 0.017823639774859287,
+            "fnr": 0.1480859637340497,
+            "hter": 0.0829548017544545,
+            "accuracy": 0.8658
+          },
+          "low_far": {
+            "threshold": 0.0013224907452240586,
+            "fpr": 0.06285178236397748,
+            "fnr": 0.035370494739198566,
+            "hter": 0.049111138551588024,
+            "accuracy": 0.9617
+          }
+        }
+      },
+      "in_the_wild": {
+        "pooled": {
+          "eer": 0.10133747432750588,
+          "eer_threshold": 0.0014809899211657837,
+          "accuracy_at_eer": 0.8986437584568425,
+          "accuracy_at_0.5": 0.8124547657257938,
+          "confusion_at_eer": {
+            "tp": 10618,
+            "fp": 2023,
+            "tn": 17940,
+            "fn": 1198
+          },
+          "n": 31779
+        },
+        "per_codec": {
+          "clean": {
+            "eer": 0.10133747432750588,
+            "eer_threshold": 0.0014809899211657837,
+            "accuracy_at_eer": 0.8986437584568425,
+            "accuracy_at_0.5": 0.8124547657257938,
+            "confusion_at_eer": {
+              "tp": 10618,
+              "fp": 2023,
+              "tn": 17940,
+              "fn": 1198
+            },
+            "n": 31779
+          }
+        },
+        "at_dev_thresholds": {
+          "clean": {
+            "threshold": 0.0015891788588044378,
+            "fpr": 0.0920703301107048,
+            "fnr": 0.11205145565335138,
+            "hter": 0.10206089288202809,
+            "accuracy": 0.9005003304068725
+          },
+          "phone": {
+            "threshold": 0.005211927618926299,
+            "fpr": 0.03776987426739468,
+            "fnr": 0.250677048070413,
+            "hter": 0.14422346116890386,
+            "accuracy": 0.8830674344693036
+          },
+          "low_far": {
+            "threshold": 0.0013224907452240586,
+            "fpr": 0.11856935330361168,
+            "fnr": 0.08403859174001355,
+            "hter": 0.10130397252181261,
+            "accuracy": 0.8942698008118569
+          }
+        },
+        "whole_clip": {
+          "pooled": {
+            "eer": 0.09517607574011921,
+            "eer_threshold": 0.001586970939557636,
+            "accuracy_at_eer": 0.9048113534094843,
+            "accuracy_at_0.5": 0.8160420403411057,
+            "confusion_at_eer": {
+              "tp": 10691,
+              "fp": 1900,
+              "tn": 18063,
+              "fn": 1125
+            },
+            "n": 31779
+          },
+          "at_phone": {
+            "threshold": 0.005211927618926299,
+            "fpr": 0.040374693182387414,
+            "fnr": 0.22029451591062965,
+            "hter": 0.13033460454650853,
+            "accuracy": 0.8927279020736965
+          }
+        }
+      },
+      "hindi": {
+        "pooled": {
+          "eer": 0.6459330143540669,
+          "eer_threshold": 0.0009957943111658096,
+          "accuracy_at_eer": 0.35406698564593303,
+          "accuracy_at_0.5": 0.5,
+          "confusion_at_eer": {
+            "tp": 148,
+            "fp": 270,
+            "tn": 148,
+            "fn": 270
+          },
+          "n": 836
+        },
+        "per_codec": {
+          "clean": {
+            "eer": 0.6459330143540669,
+            "eer_threshold": 0.0009957943111658096,
+            "accuracy_at_eer": 0.35406698564593303,
+            "accuracy_at_0.5": 0.5,
+            "confusion_at_eer": {
+              "tp": 148,
+              "fp": 270,
+              "tn": 148,
+              "fn": 270
+            },
+            "n": 836
+          }
+        },
+        "at_dev_thresholds": {
+          "clean": {
+            "threshold": 0.0015891788588044378,
+            "fpr": 0.2607655502392344,
+            "fnr": 0.868421052631579,
+            "hter": 0.5645933014354068,
+            "accuracy": 0.4354066985645933
+          },
+          "phone": {
+            "threshold": 0.005211927618926299,
+            "fpr": 0.011961722488038277,
+            "fnr": 0.9784688995215312,
+            "hter": 0.4952153110047847,
+            "accuracy": 0.5047846889952153
+          },
+          "low_far": {
+            "threshold": 0.0013224907452240586,
+            "fpr": 0.3923444976076555,
+            "fnr": 0.8157894736842105,
+            "hter": 0.604066985645933,
+            "accuracy": 0.39593301435406697
+          }
+        },
+        "whole_clip": {
+          "pooled": {
+            "eer": 0.4593301435406698,
+            "eer_threshold": 0.0009310104651376605,
+            "accuracy_at_eer": 0.5406698564593302,
+            "accuracy_at_0.5": 0.5,
+            "confusion_at_eer": {
+              "tp": 226,
+              "fp": 192,
+              "tn": 226,
+              "fn": 192
+            },
+            "n": 836
+          },
+          "at_phone": {
+            "threshold": 0.005211927618926299,
+            "fpr": 0.028708133971291867,
+            "fnr": 0.9784688995215312,
+            "hter": 0.5035885167464115,
+            "accuracy": 0.4964114832535885
+          }
+        }
+      }
+    },
+    "codec_aug": {
+      "clean": {
+        "pooled": {
+          "eer": 0.014071294559099437,
+          "eer_threshold": 0.009275286811391701,
+          "accuracy_at_eer": 0.9859,
+          "accuracy_at_0.5": 0.4381,
+          "confusion_at_eer": {
+            "tp": 8808,
+            "fp": 15,
+            "tn": 1051,
+            "fn": 126
+          },
+          "n": 10000
+        },
+        "per_codec": {
+          "clean": {
+            "eer": 0.014071294559099437,
+            "eer_threshold": 0.009275286811391701,
+            "accuracy_at_eer": 0.9859,
+            "accuracy_at_0.5": 0.4381,
+            "confusion_at_eer": {
+              "tp": 8808,
+              "fp": 15,
+              "tn": 1051,
+              "fn": 126
+            },
+            "n": 10000
+          }
+        },
+        "at_dev_thresholds": {
+          "clean": {
+            "threshold": 0.013778703247768647,
+            "fpr": 0.00375234521575985,
+            "fnr": 0.22240877546451757,
+            "hter": 0.1130805603401387,
+            "accuracy": 0.8009
+          },
+          "phone": {
+            "threshold": 0.012676023156691243,
+            "fpr": 0.004690431519699813,
+            "fnr": 0.17405417506156257,
+            "hter": 0.08937230329063119,
+            "accuracy": 0.844
+          },
+          "low_far": {
+            "threshold": 0.009300232864916325,
+            "fpr": 0.013133208255159476,
+            "fnr": 0.014663084844414595,
+            "hter": 0.013898146549787035,
+            "accuracy": 0.9855
+          }
+        }
+      },
+      "degraded": {
+        "pooled": {
+          "eer": 0.01936422655025749,
+          "eer_threshold": 0.00958989593357795,
+          "accuracy_at_eer": 0.98065,
+          "accuracy_at_0.5": 0.4342,
+          "confusion_at_eer": {
+            "tp": 35044,
+            "fp": 82,
+            "tn": 4182,
+            "fn": 692
+          },
+          "n": 40000
+        },
+        "per_codec": {
+          "amr_nb": {
+            "eer": 0.016885553470919325,
+            "eer_threshold": 0.009443506605461881,
+            "accuracy_at_eer": 0.9831,
+            "accuracy_at_0.5": 0.3447,
+            "confusion_at_eer": {
+              "tp": 8783,
+              "fp": 18,
+              "tn": 1048,
+              "fn": 151
+            },
+            "n": 10000
+          },
+          "g711_alaw": {
+            "eer": 0.013133208255159476,
+            "eer_threshold": 0.009187028528406069,
+            "accuracy_at_eer": 0.9868,
+            "accuracy_at_0.5": 0.438,
+            "confusion_at_eer": {
+              "tp": 8816,
+              "fp": 14,
+              "tn": 1052,
+              "fn": 118
+            },
+            "n": 10000
+          },
+          "g711_mulaw": {
+            "eer": 0.013133208255159476,
+            "eer_threshold": 0.009175360042035686,
+            "accuracy_at_eer": 0.9868,
+            "accuracy_at_0.5": 0.4445,
+            "confusion_at_eer": {
+              "tp": 8816,
+              "fp": 14,
+              "tn": 1052,
+              "fn": 118
+            },
+            "n": 10000
+          },
+          "opus": {
+            "eer": 0.024390243902439025,
+            "eer_threshold": 0.01058783909169639,
+            "accuracy_at_eer": 0.9756,
+            "accuracy_at_0.5": 0.5096,
+            "confusion_at_eer": {
+              "tp": 8716,
+              "fp": 26,
+              "tn": 1040,
+              "fn": 218
+            },
+            "n": 10000
+          }
+        },
+        "at_dev_thresholds": {
+          "clean": {
+            "threshold": 0.013778703247768647,
+            "fpr": 0.0023452157598499064,
+            "fnr": 0.21297850906648758,
+            "hter": 0.10766186241316875,
+            "accuracy": 0.809475
+          },
+          "phone": {
+            "threshold": 0.012676023156691243,
+            "fpr": 0.003283302063789869,
+            "fnr": 0.16434407880008955,
+            "hter": 0.08381369043193972,
+            "accuracy": 0.852825
+          },
+          "low_far": {
+            "threshold": 0.009300232864916325,
+            "fpr": 0.029080675422138838,
+            "fnr": 0.012620326841280501,
+            "hter": 0.02085050113170967,
+            "accuracy": 0.985625
+          }
+        }
+      },
+      "heldout": {
+        "pooled": {
+          "eer": 0.024289232146854745,
+          "eer_threshold": 0.010207777725916689,
+          "accuracy_at_eer": 0.9758,
+          "accuracy_at_0.5": 0.4447,
+          "confusion_at_eer": {
+            "tp": 8717,
+            "fp": 25,
+            "tn": 1041,
+            "fn": 217
+          },
+          "n": 10000
+        },
+        "per_codec": {
+          "gsm": {
+            "eer": 0.024289232146854745,
+            "eer_threshold": 0.010207777725916689,
+            "accuracy_at_eer": 0.9758,
+            "accuracy_at_0.5": 0.4447,
+            "confusion_at_eer": {
+              "tp": 8717,
+              "fp": 25,
+              "tn": 1041,
+              "fn": 217
+            },
+            "n": 10000
+          }
+        },
+        "at_dev_thresholds": {
+          "clean": {
+            "threshold": 0.013778703247768647,
+            "fpr": 0.005628517823639775,
+            "fnr": 0.18312066263711663,
+            "hter": 0.0943745902303782,
+            "accuracy": 0.8358
+          },
+          "phone": {
+            "threshold": 0.012676023156691243,
+            "fpr": 0.006566604127579738,
+            "fnr": 0.13734049697783748,
+            "hter": 0.0719535505527086,
+            "accuracy": 0.8766
+          },
+          "low_far": {
+            "threshold": 0.009300232864916325,
+            "fpr": 0.0375234521575985,
+            "fnr": 0.00682784866800985,
+            "hter": 0.022175650412804178,
+            "accuracy": 0.9899
+          }
+        }
+      },
+      "in_the_wild": {
+        "pooled": {
+          "eer": 0.14920446851726477,
+          "eer_threshold": 0.013558623066432735,
+          "accuracy_at_eer": 0.8508134302526826,
+          "accuracy_at_0.5": 0.7318354888448346,
+          "confusion_at_eer": {
+            "tp": 10053,
+            "fp": 2978,
+            "tn": 16985,
+            "fn": 1763
+          },
+          "n": 31779
+        },
+        "per_codec": {
+          "clean": {
+            "eer": 0.14920446851726477,
+            "eer_threshold": 0.013558623066432735,
+            "accuracy_at_eer": 0.8508134302526826,
+            "accuracy_at_0.5": 0.7318354888448346,
+            "confusion_at_eer": {
+              "tp": 10053,
+              "fp": 2978,
+              "tn": 16985,
+              "fn": 1763
+            },
+            "n": 31779
+          }
+        },
+        "at_dev_thresholds": {
+          "clean": {
+            "threshold": 0.013778703247768647,
+            "fpr": 0.1426639282672945,
+            "fnr": 0.15589031821259308,
+            "hter": 0.1492771232399438,
+            "accuracy": 0.8524182636332169
+          },
+          "phone": {
+            "threshold": 0.012676023156691243,
+            "fpr": 0.19055252216600713,
+            "fnr": 0.11492890995260663,
+            "hter": 0.1527407160593069,
+            "accuracy": 0.8375656880329777
+          },
+          "low_far": {
+            "threshold": 0.009300232864916325,
+            "fpr": 0.8900465861844412,
+            "fnr": 0.003215978334461747,
+            "hter": 0.4466312822594515,
+            "accuracy": 0.4396928789452154
+          }
+        },
+        "whole_clip": {
+          "pooled": {
+            "eer": 0.1378049391374042,
+            "eer_threshold": 0.01398784582014829,
+            "accuracy_at_eer": 0.8621731332011706,
+            "accuracy_at_0.5": 0.7342584725762296,
+            "confusion_at_eer": {
+              "tp": 10187,
+              "fp": 2751,
+              "tn": 17212,
+              "fn": 1629
+            },
+            "n": 31779
+          },
+          "at_phone": {
+            "threshold": 0.012676023156691243,
+            "fpr": 0.19110354155187095,
+            "fnr": 0.09461746784021666,
+            "hter": 0.1428605046960438,
+            "accuracy": 0.8447717045847887
+          }
+        }
+      },
+      "hindi": {
+        "pooled": {
+          "eer": 0.44258373205741625,
+          "eer_threshold": 0.012209111824631691,
+          "accuracy_at_eer": 0.5574162679425837,
+          "accuracy_at_0.5": 0.5011961722488039,
+          "confusion_at_eer": {
+            "tp": 233,
+            "fp": 185,
+            "tn": 233,
+            "fn": 185
+          },
+          "n": 836
+        },
+        "per_codec": {
+          "clean": {
+            "eer": 0.44258373205741625,
+            "eer_threshold": 0.012209111824631691,
+            "accuracy_at_eer": 0.5574162679425837,
+            "accuracy_at_0.5": 0.5011961722488039,
+            "confusion_at_eer": {
+              "tp": 233,
+              "fp": 185,
+              "tn": 233,
+              "fn": 185
+            },
+            "n": 836
+          }
+        },
+        "at_dev_thresholds": {
+          "clean": {
+            "threshold": 0.013778703247768647,
+            "fpr": 0.2607655502392344,
+            "fnr": 0.6770334928229665,
+            "hter": 0.4688995215311005,
+            "accuracy": 0.5311004784688995
+          },
+          "phone": {
+            "threshold": 0.012676023156691243,
+            "fpr": 0.3684210526315789,
+            "fnr": 0.5215311004784688,
+            "hter": 0.4449760765550239,
+            "accuracy": 0.5550239234449761
+          },
+          "low_far": {
+            "threshold": 0.009300232864916325,
+            "fpr": 0.9282296650717703,
+            "fnr": 0.028708133971291867,
+            "hter": 0.4784688995215311,
+            "accuracy": 0.5215311004784688
+          }
+        },
+        "whole_clip": {
+          "pooled": {
+            "eer": 0.2535885167464115,
+            "eer_threshold": 0.01197682786732912,
+            "accuracy_at_eer": 0.7464114832535885,
+            "accuracy_at_0.5": 0.5,
+            "confusion_at_eer": {
+              "tp": 312,
+              "fp": 106,
+              "tn": 312,
+              "fn": 106
+            },
+            "n": 836
+          },
+          "at_phone": {
+            "threshold": 0.012676023156691243,
+            "fpr": 0.14354066985645933,
+            "fnr": 0.3803827751196172,
+            "hter": 0.2619617224880383,
+            "accuracy": 0.7380382775119617
+          }
+        }
+      }
+    }
+  },
+  "models": {
+    "clean": {
+      "checkpoint": "runs/kaggle/ssl-aasist-clean-p2/runs/ssl-aasist-clean-p2/best.pt",
+      "name": "ssl_aasist",
+      "run": "ssl-aasist-clean",
+      "epoch": 7,
+      "finetune": "full",
+      "gradient_checkpointing": true,
+      "last_n": 4,
+      "pretrained": "facebook/wav2vec2-xls-r-300m",
+      "proj_dim": 128,
+      "dev_thresholds": {
+        "model_version": "ssl_aasist/ssl-aasist-clean:best.pt:epoch7",
+        "selected_on": "dev",
+        "clean": 0.0015891788588044378,
+        "phone": 0.005211927618926299,
+        "low_far": {
+          "clean": 0.0011452191974967718,
+          "phone": 0.0013224907452240586
+        },
+        "per_codec": {
+          "amr_nb": 0.010941322082382967,
+          "g711_alaw": 0.0017481606657977996,
+          "g711_mulaw": 0.001991807149554753,
+          "opus": 0.012783543543021495
+        },
+        "low_far_max_missed": 0.001,
+        "excluded_codecs": [
+          "gsm"
+        ],
+        "dev_eer": {
+          "clean": 0.002354788069073783,
+          "phone": 0.00971026193039115,
+          "per_codec": {
+            "amr_nb": 0.017088266953713682,
+            "g711_alaw": 0.003532182103610675,
+            "g711_mulaw": 0.003363832077502682,
+            "opus": 0.0043171114599686025
+          }
+        },
+        "dev_clips": {
+          "clean": 24844,
+          "phone": 99376
+        }
+      }
+    },
+    "codec_aug": {
+      "checkpoint": "runs/kaggle/ssl-aasist-codec-aug-v2-p3/runs/ssl-aasist-codec-aug-v2-p3/best.pt",
+      "name": "ssl_aasist",
+      "run": "ssl-aasist-codec-aug-v2",
+      "epoch": 11,
+      "finetune": "full",
+      "gradient_checkpointing": true,
+      "last_n": 4,
+      "pretrained": "facebook/wav2vec2-xls-r-300m",
+      "proj_dim": 128,
+      "dev_thresholds": {
+        "model_version": "ssl_aasist/ssl-aasist-codec-aug-v2:best.pt:epoch11",
+        "selected_on": "dev",
+        "clean": 0.013778703247768647,
+        "phone": 0.012676023156691243,
+        "low_far": {
+          "clean": 0.01101749762892723,
+          "phone": 0.009300232864916325
+        },
+        "per_codec": {
+          "amr_nb": 0.010735720031992704,
+          "g711_alaw": 0.014687627111837286,
+          "g711_mulaw": 0.014427043434694515,
+          "opus": 0.01739947276783513
+        },
+        "low_far_max_missed": 0.001,
+        "excluded_codecs": [
+          "gsm"
+        ],
+        "dev_eer": {
+          "clean": 0.002354788069073783,
+          "phone": 0.005965195550771463,
+          "per_codec": {
+            "amr_nb": 0.00902668759811617,
+            "g711_alaw": 0.0039020452099031155,
+            "g711_mulaw": 0.003532182103610675,
+            "opus": 0.0043171114599686025
+          }
+        },
+        "dev_clips": {
+          "clean": 24844,
+          "phone": 99376
+        }
+      }
+    }
+  },
+  "latency": {
+    "cpu": {
+      "n": 50,
+      "mean_ms": 215.37683915579692,
+      "p50_ms": 214.15620899642818,
+      "p95_ms": 225.47152339830063
+    },
+    "mps": {
+      "n": 50,
+      "mean_ms": 80.94220746075734,
+      "p50_ms": 80.92531250440516,
+      "p95_ms": 81.25636682088953
+    }
+  },
+  "meta": {
+    "generated_at": "2026-11-21T14:17:07+00:00",
+    "max_samples": null,
+    "test_sets": {
+      "clean": [
+        "data/processed/manifests/eval_subset10k.csv"
+      ],
+      "degraded": [
+        "data/processed/manifests/eval_subset10k_per_codec.csv"
+      ],
+      "heldout": [
+        "data/processed/manifests/eval_subset10k_heldout.csv"
+      ],
+      "in_the_wild": [
+        "data/processed/manifests/in_the_wild.csv"
+      ],
+      "hindi": [
+        "data/processed/manifests/hindi.csv"
+      ]
+    }
+  }
+}
