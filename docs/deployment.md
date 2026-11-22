@@ -146,10 +146,10 @@ The response's `codec_applied` names the codec. Behaviour and errors are in
 
 `voxguard-team/voxguard-ssl-aasist-codec-aug` (SSL-AASIST trained with codec augmentation) is
 the model for the demo; `voxguard-team/voxguard-ssl-aasist-clean` is the clean-trained
-comparison. Both have a `thresholds.json` chosen on the dev set. The two RawNet2 repos hold
-checkpoints trained with the class-weight bug (README, Status): use them only to check that the
-pipeline runs and how long it takes; they have no `thresholds.json`, so the API warns that it
-uses the 0.5 default.
+comparison. Both have a `thresholds.json` chosen on the dev set. RawNet2 is the baseline: both
+RawNet2 repos hold the retrained checkpoints used in `docs/results.md`, each with its
+`thresholds.json` (phone threshold 0.2161 for `voxguard-team/voxguard-rawnet2-codec-aug`, epoch 4;
+0.9978 for `voxguard-team/voxguard-rawnet2-clean`, epoch 12).
 
 **Verified with SSL-AASIST on amd64 (15 Nov 2026; same machine as below, Docker Desktop
 29.8.2):** `voxguard-team/voxguard-ssl-aasist-codec-aug` (HF revision `f376f4f`) in compose:
