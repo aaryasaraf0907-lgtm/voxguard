@@ -828,5 +828,499 @@
         "data/processed/manifests/hindi.csv"
       ]
     }
+  },
+  "analysis": {
+    "clean": {
+      "per_attack": {
+        "clean": {
+          "A07": {
+            "eer": 0.00375234521575985,
+            "n_fake": 693
+          },
+          "A08": {
+            "eer": 0.0028142589118198874,
+            "n_fake": 638
+          },
+          "A09": {
+            "eer": 0.0009380863039399625,
+            "n_fake": 628
+          },
+          "A10": {
+            "eer": 0.06660412757973734,
+            "n_fake": 701
+          },
+          "A11": {
+            "eer": 0.008344923504867818,
+            "n_fake": 719
+          },
+          "A12": {
+            "eer": 0.001876172607879925,
+            "n_fake": 684
+          },
+          "A13": {
+            "eer": 0.0,
+            "n_fake": 671
+          },
+          "A14": {
+            "eer": 0.006566604127579738,
+            "n_fake": 722
+          },
+          "A15": {
+            "eer": 0.04409005628517824,
+            "n_fake": 649
+          },
+          "A16": {
+            "eer": 0.00375234521575985,
+            "n_fake": 724
+          },
+          "A17": {
+            "eer": 0.0015105740181269312,
+            "n_fake": 662
+          },
+          "A18": {
+            "eer": 0.0009380863039399625,
+            "n_fake": 721
+          },
+          "A19": {
+            "eer": 0.0013850415512465242,
+            "n_fake": 722
+          }
+        },
+        "degraded": {
+          "A07": {
+            "eer": 0.024624765478424016,
+            "n_fake": 2772
+          },
+          "A08": {
+            "eer": 0.016457680250783646,
+            "n_fake": 2552
+          },
+          "A09": {
+            "eer": 0.0075046904315197,
+            "n_fake": 2512
+          },
+          "A10": {
+            "eer": 0.13320825515947468,
+            "n_fake": 2804
+          },
+          "A11": {
+            "eer": 0.06285178236397748,
+            "n_fake": 2876
+          },
+          "A12": {
+            "eer": 0.0325984990619137,
+            "n_fake": 2736
+          },
+          "A13": {
+            "eer": 0.0018628912071535497,
+            "n_fake": 2684
+          },
+          "A14": {
+            "eer": 0.04293628808864269,
+            "n_fake": 2888
+          },
+          "A15": {
+            "eer": 0.06510015408320491,
+            "n_fake": 2596
+          },
+          "A16": {
+            "eer": 0.013836772983114446,
+            "n_fake": 2896
+          },
+          "A17": {
+            "eer": 0.00773921200750469,
+            "n_fake": 2648
+          },
+          "A18": {
+            "eer": 0.01102251407129456,
+            "n_fake": 2884
+          },
+          "A19": {
+            "eer": 0.01125703564727955,
+            "n_fake": 2888
+          }
+        }
+      },
+      "calibration": {
+        "a": 1.5433862137592387,
+        "b": 6.859575550065992,
+        "before": {
+          "ece": 0.2267677863787152,
+          "brier": 0.19593024971865436
+        },
+        "after": {
+          "ece": 0.12528356484180952,
+          "brier": 0.11787538182848853
+        },
+        "threshold": 0.005211927618926299,
+        "threshold_calibrated": 0.2234556934616358
+      },
+      "sequential": {
+        "call_windows": 8,
+        "n_calls": 2000,
+        "switch": 4,
+        "alert_factor": 1.5,
+        "min_windows": 2,
+        "fixed_dev_false_alarm_calls": 0.0285,
+        "rules": {
+          "fixed": {
+            "thresholds": [
+              Infinity,
+              0.00781789142838945,
+              0.00781789142838945,
+              0.00781789142838945,
+              0.00781789142838945,
+              0.00781789142838945,
+              0.00781789142838945,
+              0.00781789142838945
+            ],
+            "false_alarm_calls": 0.014,
+            "fake_detected": 0.9995,
+            "fake_median_windows": 2.0,
+            "mixed_early_alert": 0.0085,
+            "mixed_detected": 0.978,
+            "mixed_median_windows_after_switch": 1.0
+          },
+          "fixed_at_threshold": {
+            "thresholds": [
+              Infinity,
+              0.005211927618926299,
+              0.005211927618926299,
+              0.005211927618926299,
+              0.005211927618926299,
+              0.005211927618926299,
+              0.005211927618926299,
+              0.005211927618926299
+            ],
+            "false_alarm_calls": 0.0185,
+            "fake_detected": 0.9995,
+            "fake_median_windows": 2.0,
+            "mixed_early_alert": 0.013,
+            "mixed_detected": 0.975,
+            "mixed_median_windows_after_switch": 1.0
+          },
+          "sequential_same_fa": {
+            "thresholds": [
+              0.003533969633281231,
+              0.005225578788667917,
+              0.009996234128872553,
+              0.031503353267908096,
+              0.061249333620071414,
+              0.08540224035580952,
+              0.07376595054353986,
+              0.08492027968168259
+            ],
+            "false_alarm_calls": 0.02,
+            "fake_detected": 1.0,
+            "fake_median_windows": 1.0,
+            "mixed_early_alert": 0.015,
+            "mixed_detected": 0.9575,
+            "mixed_median_windows_after_switch": 1.0
+          },
+          "sequential_1pct": {
+            "thresholds": [
+              0.10308477282524109,
+              0.130610853433609,
+              0.2636253237724304,
+              0.20443181693553925,
+              0.1639193892478943,
+              0.14824400345484415,
+              0.12713579620633805,
+              0.11142794787883759
+            ],
+            "false_alarm_calls": 0.0055,
+            "fake_detected": 0.9985,
+            "fake_median_windows": 1.0,
+            "mixed_early_alert": 0.0035,
+            "mixed_detected": 0.9495,
+            "mixed_median_windows_after_switch": 1.0
+          }
+        },
+        "per_codec": {
+          "amr_nb": {
+            "genuine_clips": 1066,
+            "false_alarm_calls": 0.037,
+            "fake_detected": 1.0,
+            "fake_median_windows": 2.0,
+            "mixed_early_alert": 0.0255,
+            "mixed_detected": 0.9645,
+            "mixed_median_windows_after_switch": 1.0
+          },
+          "g711_alaw": {
+            "genuine_clips": 1066,
+            "false_alarm_calls": 0.0125,
+            "fake_detected": 0.9995,
+            "fake_median_windows": 2.0,
+            "mixed_early_alert": 0.005,
+            "mixed_detected": 0.9625,
+            "mixed_median_windows_after_switch": 1.0
+          },
+          "g711_mulaw": {
+            "genuine_clips": 1066,
+            "false_alarm_calls": 0.0025,
+            "fake_detected": 0.9995,
+            "fake_median_windows": 2.0,
+            "mixed_early_alert": 0.0025,
+            "mixed_detected": 0.967,
+            "mixed_median_windows_after_switch": 1.0
+          },
+          "opus": {
+            "genuine_clips": 1066,
+            "false_alarm_calls": 0.013,
+            "fake_detected": 1.0,
+            "fake_median_windows": 2.0,
+            "mixed_early_alert": 0.0055,
+            "mixed_detected": 0.9935,
+            "mixed_median_windows_after_switch": 1.0
+          }
+        }
+      }
+    },
+    "codec_aug": {
+      "per_attack": {
+        "clean": {
+          "A07": {
+            "eer": 0.004690431519699813,
+            "n_fake": 693
+          },
+          "A08": {
+            "eer": 0.004690431519699813,
+            "n_fake": 638
+          },
+          "A09": {
+            "eer": 0.0028142589118198874,
+            "n_fake": 628
+          },
+          "A10": {
+            "eer": 0.03189493433395872,
+            "n_fake": 701
+          },
+          "A11": {
+            "eer": 0.008442776735459663,
+            "n_fake": 719
+          },
+          "A12": {
+            "eer": 0.004690431519699813,
+            "n_fake": 684
+          },
+          "A13": {
+            "eer": 0.0,
+            "n_fake": 671
+          },
+          "A14": {
+            "eer": 0.004690431519699813,
+            "n_fake": 722
+          },
+          "A15": {
+            "eer": 0.012326656394452962,
+            "n_fake": 649
+          },
+          "A16": {
+            "eer": 0.00375234521575985,
+            "n_fake": 724
+          },
+          "A17": {
+            "eer": 0.012084592145015116,
+            "n_fake": 662
+          },
+          "A18": {
+            "eer": 0.03189493433395872,
+            "n_fake": 721
+          },
+          "A19": {
+            "eer": 0.005628517823639775,
+            "n_fake": 722
+          }
+        },
+        "degraded": {
+          "A07": {
+            "eer": 0.005863039399624765,
+            "n_fake": 2772
+          },
+          "A08": {
+            "eer": 0.004690431519699813,
+            "n_fake": 2552
+          },
+          "A09": {
+            "eer": 0.003283302063789869,
+            "n_fake": 2512
+          },
+          "A10": {
+            "eer": 0.036350844277673544,
+            "n_fake": 2804
+          },
+          "A11": {
+            "eer": 0.018292682926829267,
+            "n_fake": 2876
+          },
+          "A12": {
+            "eer": 0.010084427767354597,
+            "n_fake": 2736
+          },
+          "A13": {
+            "eer": 0.0007035647279549719,
+            "n_fake": 2684
+          },
+          "A14": {
+            "eer": 0.007035647279549718,
+            "n_fake": 2888
+          },
+          "A15": {
+            "eer": 0.017354596622889306,
+            "n_fake": 2596
+          },
+          "A16": {
+            "eer": 0.005159474671669793,
+            "n_fake": 2896
+          },
+          "A17": {
+            "eer": 0.025679758308157052,
+            "n_fake": 2648
+          },
+          "A18": {
+            "eer": 0.04549718574108818,
+            "n_fake": 2884
+          },
+          "A19": {
+            "eer": 0.01731301939058172,
+            "n_fake": 2888
+          }
+        }
+      },
+      "calibration": {
+        "a": 3.677713853567051,
+        "b": 14.059118042672077,
+        "before": {
+          "ece": 0.3182251497512279,
+          "brier": 0.28831861310205575
+        },
+        "after": {
+          "ece": 0.15416423972523988,
+          "brier": 0.13228692977976667
+        },
+        "threshold": 0.012676023156691243,
+        "threshold_calibrated": 0.12364274959622057
+      },
+      "sequential": {
+        "call_windows": 8,
+        "n_calls": 2000,
+        "switch": 4,
+        "alert_factor": 1.5,
+        "min_windows": 2,
+        "fixed_dev_false_alarm_calls": 0.008,
+        "rules": {
+          "fixed": {
+            "thresholds": [
+              Infinity,
+              0.019014034735036864,
+              0.019014034735036864,
+              0.019014034735036864,
+              0.019014034735036864,
+              0.019014034735036864,
+              0.019014034735036864,
+              0.019014034735036864
+            ],
+            "false_alarm_calls": 0.0065,
+            "fake_detected": 0.995,
+            "fake_median_windows": 2.0,
+            "mixed_early_alert": 0.0045,
+            "mixed_detected": 0.9175,
+            "mixed_median_windows_after_switch": 1.0
+          },
+          "fixed_at_threshold": {
+            "thresholds": [
+              Infinity,
+              0.012676023156691243,
+              0.012676023156691243,
+              0.012676023156691243,
+              0.012676023156691243,
+              0.012676023156691243,
+              0.012676023156691243,
+              0.012676023156691243
+            ],
+            "false_alarm_calls": 0.0115,
+            "fake_detected": 0.9995,
+            "fake_median_windows": 2.0,
+            "mixed_early_alert": 0.0055,
+            "mixed_detected": 0.957,
+            "mixed_median_windows_after_switch": 1.0
+          },
+          "sequential_same_fa": {
+            "thresholds": [
+              0.014450549148023129,
+              0.017604101449251175,
+              0.20397873719533285,
+              0.15475217998027802,
+              0.1412222146987915,
+              0.11881357431411743,
+              0.10289079802376884,
+              0.09084044396877289
+            ],
+            "false_alarm_calls": 0.0025,
+            "fake_detected": 0.9905,
+            "fake_median_windows": 1.0,
+            "mixed_early_alert": 0.0025,
+            "mixed_detected": 0.8095,
+            "mixed_median_windows_after_switch": 2.0
+          },
+          "sequential_1pct": {
+            "thresholds": [
+              0.013385932892560959,
+              0.013317039236426353,
+              0.2028670310974121,
+              0.1537969708442688,
+              0.12464331388473511,
+              0.10576331615447998,
+              0.09173142058508736,
+              0.08104264736175537
+            ],
+            "false_alarm_calls": 0.005,
+            "fake_detected": 0.9945,
+            "fake_median_windows": 1.0,
+            "mixed_early_alert": 0.005,
+            "mixed_detected": 0.824,
+            "mixed_median_windows_after_switch": 2.0
+          }
+        },
+        "per_codec": {
+          "amr_nb": {
+            "genuine_clips": 1066,
+            "false_alarm_calls": 0.0125,
+            "fake_detected": 0.9915,
+            "fake_median_windows": 2.0,
+            "mixed_early_alert": 0.005,
+            "mixed_detected": 0.858,
+            "mixed_median_windows_after_switch": 2.0
+          },
+          "g711_alaw": {
+            "genuine_clips": 1066,
+            "false_alarm_calls": 0.004,
+            "fake_detected": 0.998,
+            "fake_median_windows": 2.0,
+            "mixed_early_alert": 0.004,
+            "mixed_detected": 0.925,
+            "mixed_median_windows_after_switch": 1.0
+          },
+          "g711_mulaw": {
+            "genuine_clips": 1066,
+            "false_alarm_calls": 0.0035,
+            "fake_detected": 0.9995,
+            "fake_median_windows": 2.0,
+            "mixed_early_alert": 0.0035,
+            "mixed_detected": 0.93,
+            "mixed_median_windows_after_switch": 1.0
+          },
+          "opus": {
+            "genuine_clips": 1066,
+            "false_alarm_calls": 0.007,
+            "fake_detected": 1.0,
+            "fake_median_windows": 2.0,
+            "mixed_early_alert": 0.005,
+            "mixed_detected": 0.9685,
+            "mixed_median_windows_after_switch": 1.0
+          }
+        }
+      }
+    }
   }
 }

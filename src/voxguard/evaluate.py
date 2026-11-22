@@ -525,7 +525,8 @@ def _out_of_domain_table(res: dict[str, Any], cond_name: str) -> list[str]:
 
 
 RULE_LABELS = {
-    "fixed": "Fixed: phone threshold, from 2 windows (the API's live monitor)",
+    "fixed": "Fixed: 1.5 x the phone threshold, from 2 windows (the API's live monitor)",
+    "fixed_at_threshold": "Fixed at the phone threshold itself, from 2 windows (before #104)",
     "sequential_same_fa": "Sequential, same dev false-alarm rate as the fixed rule",
     "sequential_1pct": "Sequential, at most 1% of dev genuine calls",
 }
@@ -594,6 +595,17 @@ def _analysis_tables(res: dict[str, Any]) -> list[str]:
                 f" {_pct(r['mixed_early_alert'])} | {_pct(r['mixed_detected'])} |"
                 f" {r['mixed_median_windows_after_switch']:.1f} |"
             )
+        if s.get("per_codec"):
+            lines += ["", f"The API's rule per codec ({TRAIN_LABELS[t]}; same simulation, calls of"
+                      " one codec only):", "", "| Codec | Genuine clips | Genuine calls alerted (%)"
+                      " | Fake calls detected (%) | Mixed: early false alert (%) |"
+                      " Mixed: detected (%) |", "|---|---|---|---|---|---|"]  # fmt: skip
+            for codec, r in s["per_codec"].items():
+                lines.append(
+                    f"| {codec} | {r['genuine_clips']} | {_pct(r['false_alarm_calls'])} |"
+                    f" {_pct(r['fake_detected'])} | {_pct(r['mixed_early_alert'])} |"
+                    f" {_pct(r['mixed_detected'])} |"
+                )
     return lines
 
 

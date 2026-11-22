@@ -18,8 +18,9 @@ It adds an ``analysis`` block to ``results/<family>.json`` and re-renders ``docs
    on one codec (ASVspoof clips are about 3-4 s, so each clip stands for one ~4 s window; the
    live monitor's windows overlap, which this does not model). A threshold per window count is
    chosen on dev so that at most ``alpha`` of whole genuine calls ever alert. It is compared on
-   eval calls with the fixed rule the API uses (phone threshold, at least two windows) at the
-   same dev false-alarm rate.
+   eval calls with the fixed rule the API uses (``ALERT_FACTOR`` x the phone threshold, at least
+   ``MIN_ALERT_WINDOWS`` windows; ``api/risk.py``) at the same dev false-alarm rate, and with the
+   same rule at the threshold itself. The API's rule is also broken down per codec.
 """
 
 from __future__ import annotations
@@ -32,6 +33,7 @@ from typing import Any
 
 import numpy as np
 
+from voxguard.api.risk import ALERT_FACTOR, MIN_ALERT_WINDOWS
 from voxguard.metrics import compute_eer
 
 logger = logging.getLogger(__name__)
@@ -39,7 +41,7 @@ logger = logging.getLogger(__name__)
 EPS = 1e-7
 CALL_WINDOWS = 8  # windows per simulated call (about 16 s of live audio at a 2 s hop)
 N_CALLS = 2000  # simulated calls per kind
-FIXED_MIN_WINDOWS = 2  # the live monitor's rule (api/risk.py MIN_ALERT_WINDOWS)
+FIXED_MIN_WINDOWS = MIN_ALERT_WINDOWS  # the live monitor's rule (api/risk.py)
 TARGET_ALPHA = 0.01  # call-level false-alarm target for the second sequential rule
 
 
@@ -249,25 +251,38 @@ def sequential_report(
         return simulate_calls(d["scores"][m], d["groups"][m], N_CALLS, CALL_WINDOWS, s)
 
     dg = running_mean(calls(dev, 0, seed))
-    fixed = fixed_rule(threshold, CALL_WINDOWS)
+    fixed = fixed_rule(ALERT_FACTOR * threshold, CALL_WINDOWS)
     fixed_dev_alpha = float((first_alert(dg, fixed) > 0).mean())
     rules = {
         "fixed": fixed,
+        "fixed_at_threshold": fixed_rule(threshold, CALL_WINDOWS),
         "sequential_same_fa": sequential_rule(dg, fixed_dev_alpha),
         "sequential_1pct": sequential_rule(dg, TARGET_ALPHA),
     }
     tg, tf = calls(test, 0, seed + 1), calls(test, 1, seed + 2)
     switch = CALL_WINDOWS // 2
     tm = _mixed(tg, calls(test, 1, seed + 3), switch)
+    per_codec = {}
+    codecs = np.array([g.rsplit("|", 1)[-1] for g in test["groups"]])
+    for codec in sorted(set(codecs)):  # the API's rule on calls of one codec
+        sub = {k: v[codecs == codec] for k, v in test.items()}
+        cg, cf = calls(sub, 0, seed + 1), calls(sub, 1, seed + 2)
+        per_codec[codec] = {
+            "genuine_clips": int((sub["labels"] == 0).sum()),
+            **rule_stats(fixed, cg, cf, _mixed(cg, calls(sub, 1, seed + 3), switch), switch),
+        }
     return {
         "call_windows": CALL_WINDOWS,
         "n_calls": N_CALLS,
         "switch": switch,
+        "alert_factor": ALERT_FACTOR,
+        "min_windows": FIXED_MIN_WINDOWS,
         "fixed_dev_false_alarm_calls": fixed_dev_alpha,
         "rules": {
             name: {"thresholds": [float(x) for x in t], **rule_stats(t, tg, tf, tm, switch)}
             for name, t in rules.items()
         },
+        "per_codec": per_codec,
     }
 
 
