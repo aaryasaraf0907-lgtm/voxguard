@@ -42,7 +42,7 @@ integration), plus a Hugging Face account in the private `voxguard-team` organis
    Write, not Fine-grained), any name.
 2. **Clone:**
    ```bash
-   git clone https://github.com/aaryasaraf0907-lgtm/voxguard.git && cd voxguard && git checkout dev
+   git clone https://github.com/aaryasaraf0907-lgtm/voxguard.git && cd voxguard
    cp .env.example .env
    ```
 3. **Edit `.env`:** change these six lines (they are all already in the file):
@@ -133,7 +133,6 @@ For development and the local run without Docker (the
 
 ```bash
 git clone https://github.com/aaryasaraf0907-lgtm/voxguard.git && cd voxguard
-git checkout dev                    # current work; main holds the last milestone
 make setup                          # uv sync
 uv sync --extra api --extra ui      # what the API and demo need
 uv sync --extra api --extra ui --extra ml   # add torch etc. for the real detector (several GB)
