@@ -14,7 +14,14 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from voxguard.api import evidence
-from voxguard.api.db import AlertRow, BlocklistRow, CallWindowRow, SessionRow, begin_write
+from voxguard.api.db import (
+    AlertRow,
+    BlocklistRow,
+    CallWindowRow,
+    SessionLanguageRow,
+    SessionRow,
+    begin_write,
+)
 from voxguard.api.deps import Settings
 from voxguard.api.thresholds import ThresholdSet
 from voxguard.inference import Prediction
@@ -28,7 +35,9 @@ class Decision:
 
     threshold: float
     flagged: bool
-    label: Literal["real", "fake"]
+    # "unsupported": the speech is clearly not English or Hindi (voxguard/language.py), so no
+    # real/fake verdict is given; never flagged, never safe (callers advise a call-back)
+    label: Literal["real", "fake", "unsupported"]
 
 
 def is_flagged(fake_score: float, threshold: float) -> bool:
@@ -74,6 +83,12 @@ def decide(
     return Decision(threshold=threshold, flagged=flagged, label="fake" if flagged else "real")
 
 
+def unsupported_language(decision: Decision) -> Decision:
+    """The decision for speech in an unsupported language: no verdict, not flagged, so no alert
+    and no blocklist entry. The score and threshold are still stored for the record."""
+    return Decision(threshold=decision.threshold, flagged=False, label="unsupported")
+
+
 def normalize_caller_id(raw: str | None) -> str | None:
     """Strip surrounding whitespace; empty means missing. No other rewriting."""
     if raw is None:
@@ -109,6 +124,7 @@ def store_session(
     decision: Decision,
     codec_applied: str | None,
     windows: list[tuple[float, float, float]] | None = None,
+    language: object | None = None,  # voxguard.language.LanguageResult, if the check ran
 ) -> SessionRow:
     """Store one analysed session, plus its alert and blocklist update when flagged, and a live
     call's per-window scores (``windows``: t_s, window score, running average), in one
@@ -140,6 +156,15 @@ def store_session(
             db.flush()
             evidence.append(
                 db, "windows", session_id, session_id, evidence.windows_payload(window_rows)
+            )
+        if language is not None:
+            db.add(
+                SessionLanguageRow(
+                    session_id=session_id,
+                    code=language.code,  # type: ignore[attr-defined]
+                    supported_share=language.supported_share,  # type: ignore[attr-defined]
+                    supported=language.supported,  # type: ignore[attr-defined]
+                )
             )
         if row.flagged:
             record_flag(db, row)

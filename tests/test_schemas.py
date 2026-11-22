@@ -27,9 +27,11 @@ def test_analyze_response_from_prediction() -> None:
     )
     assert resp.codec_applied is None and resp.codec_ms is None
     assert resp.timeline is None and resp.first_flag_s is None  # only with timeline=true
+    assert resp.language is None and resp.language_supported is None  # only with the check on
     assert set(resp.model_dump()) == {
         "session_id", "label", "fake_score", "threshold", "latency_ms",
         "model_version", "flagged", "codec_applied", "codec_ms", "timeline", "first_flag_s",
+        "language", "language_name", "language_supported",
     }  # fmt: skip
 
 

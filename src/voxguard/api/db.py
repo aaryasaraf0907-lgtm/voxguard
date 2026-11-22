@@ -52,6 +52,18 @@ class SessionRow(Base):
     latency_ms: Mapped[float]
 
 
+class SessionLanguageRow(Base):
+    """The spoken-language check of a session (VOXGUARD_LANGUAGE_CHECK; voxguard/language.py).
+    Its own table, so existing databases gain it on startup without a migration."""
+
+    __tablename__ = "session_languages"
+
+    session_id: Mapped[str] = mapped_column(ForeignKey("sessions.session_id"), primary_key=True)
+    code: Mapped[str]  # Whisper's most likely language, e.g. "en", "ta"
+    supported_share: Mapped[float]  # probability of English + Hindi + Urdu together
+    supported: Mapped[bool]
+
+
 class AlertRow(Base):
     __tablename__ = "alerts"
 

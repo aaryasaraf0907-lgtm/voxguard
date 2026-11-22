@@ -30,6 +30,7 @@ from voxguard.api.deps import (
     get_db,
     get_detector_dep,
     get_gate,
+    get_language_checker,
     get_settings,
     get_thresholds,
 )
@@ -69,14 +70,33 @@ def _codec_unavailable(codec: str) -> str:
     return f"Codec simulation for {codec} is unavailable on this server."
 
 
+def check_language(checker: object | None, waveform, sample_rate: int):  # noqa: ANN001
+    """The language check on the audio as received; None when off, too short or failed (the
+    normal verdict then applies: a failed check must never block an analysis)."""
+    if checker is None:
+        return None
+    try:
+        return checker.check(waveform, sample_rate)  # type: ignore[attr-defined]
+    except Exception:
+        logger.exception("language check failed; giving the normal verdict")
+        return None
+
+
 def _score(
-    data: bytes, chosen: str | None, det: Detector, cfg: Settings, with_timeline: bool = False
-) -> tuple[Prediction, str | None, float | None, list[WindowScore] | None]:
-    """Decode, simulate the phone line if ``chosen``, and run the detector.
+    data: bytes,
+    chosen: str | None,
+    det: Detector,
+    cfg: Settings,
+    with_timeline: bool = False,
+    checker: object | None = None,
+) -> tuple[Prediction, str | None, float | None, list[WindowScore] | None, object | None]:
+    """Decode, check the language, simulate the phone line if ``chosen``, run the detector.
 
     Returns (prediction, codec applied, codec wall time in ms, per-window scores if
-    ``with_timeline``). Raises HTTPException; on any failure nothing has been scored or stored."""
+    ``with_timeline``, language result or None). Raises HTTPException; on any failure nothing
+    has been scored or stored."""
     waveform, sample_rate = decode_audio(data, cfg.max_audio_seconds, cfg.max_upload_bytes)
+    language = check_language(checker, waveform, sample_rate)  # the original, not the codec
     codec_ms: float | None = None
     if chosen is not None:  # before inference; never falls back to the original audio
         t0 = time.perf_counter()
@@ -101,7 +121,19 @@ def _score(
     except Exception:
         logger.exception("Detector failed")
         raise HTTPException(500, "Detector failed") from None
-    return pred, chosen, codec_ms, windows
+    return pred, chosen, codec_ms, windows, language
+
+
+def language_fields(language: object | None) -> dict[str, object]:
+    if language is None:
+        return {}
+    from voxguard.language import language_name
+
+    return {
+        "language": language.code,  # type: ignore[attr-defined]
+        "language_name": language_name(language.code),  # type: ignore[attr-defined]
+        "language_supported": language.supported,  # type: ignore[attr-defined]
+    }
 
 
 def _timeline_fields(windows: list[WindowScore], threshold: float) -> dict[str, object]:
@@ -128,6 +160,7 @@ def create_app(
     detector: Detector | None = None,
     settings: Settings | None = None,
     thresholds: ThresholdSet | None = None,
+    language_checker: object | None = None,
 ) -> FastAPI:
     """Build the app. Invalid VOXGUARD_* settings raise ValueError here (fail fast).
 
@@ -155,6 +188,13 @@ def create_app(
             found = thresholds
         app.state.detector = det
         app.state.thresholds = found
+        checker = language_checker
+        if checker is None and settings.language_check:  # fail fast, like the detector
+            from voxguard.language import WhisperLanguageChecker
+
+            checker = WhisperLanguageChecker(settings.language_model)
+            logger.info("language check on: %s", settings.language_model)
+        app.state.language_checker = checker
         app.state.session_factory = sessionmaker(engine, expire_on_commit=False)
         try:
             yield
@@ -184,6 +224,7 @@ def create_app(
         cfg: Annotated[Settings, Depends(get_settings)],
         model_thresholds: Annotated[ThresholdSet | None, Depends(get_thresholds)],
         gate: Annotated[AnalysisGate, Depends(get_gate)],
+        checker: Annotated[object | None, Depends(get_language_checker)],
         caller_id: Annotated[str | None, Form(max_length=128)] = None,
         simulate_codec: Annotated[bool, Form()] = False,
         codec: Annotated[str | None, Form(max_length=32)] = None,
@@ -218,8 +259,8 @@ def create_app(
 
         try:
             # decode, simulation and inference hold the memory: bounded, on dedicated threads
-            pred, codec_applied, codec_ms, windows = gate.run(
-                _score, data, chosen, det, cfg, timeline
+            pred, codec_applied, codec_ms, windows, language = gate.run(
+                _score, data, chosen, det, cfg, timeline, checker
             )
         except Busy:
             logger.warning("analysis refused: server busy (%d running)", gate.running)
@@ -235,10 +276,12 @@ def create_app(
         except Exception:
             logger.exception("Detector failed")
             raise HTTPException(500, "Detector failed") from None
+        if language is not None and not language.supported:  # type: ignore[attr-defined]
+            decision = prevention.unsupported_language(decision)
 
         try:  # session, alert and blocklist update commit together or not at all
             row = prevention.store_session(
-                db, uuid.uuid4().hex, caller_id, pred, decision, codec_applied
+                db, uuid.uuid4().hex, caller_id, pred, decision, codec_applied, language=language
             )
         except SQLAlchemyError:
             db.rollback()
@@ -269,6 +312,7 @@ def create_app(
             codec_applied=codec_applied,
             codec_ms=codec_ms,
             **(_timeline_fields(windows, decision.threshold) if windows is not None else {}),
+            **language_fields(language),
         )
 
     # live call monitor (api/stream.py); the /monitor page is its browser client

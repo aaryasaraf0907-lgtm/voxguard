@@ -180,6 +180,7 @@ function t(key, vars) {
 
 const state = { ws: null, ctx: null, media: null, source: null, pending: [], pendingN: 0,
                 points: [], threshold: null, flagAt: null, alerted: false, last: null,
+                unsupported: false, languageName: null,
                 minWindows: 2, caution: 1.5, alertFactor: 1.5,
                 banner: ["", "monitor_status_idle", null], final: null, seconds: 0 };
 
@@ -314,6 +315,10 @@ function onMessage(m) {
     state.alerted = true; state.flagAt = m.t_s;
     showRisk(state.last);
     draw();
+  } else if (m.type === "language") {
+    // speech clearly not in English or Hindi: no verdict, advise a call-back (never "safe")
+    state.languageName = m.language_name || m.language;
+    if (m.language_supported === false) { state.unsupported = true; showUnsupported(); }
   } else if (m.type === "busy") {
     $("final").textContent = t("monitor_busy");
   } else if (m.type === "final") {
@@ -324,7 +329,13 @@ function onMessage(m) {
   }
 }
 
+function showUnsupported() {
+  showBanner("caution", "monitor_lang_unsupported",
+             { key: "monitor_lang_unsupported_advice", vars: { language: state.languageName } });
+}
+
 function showRisk(m) {
+  if (state.unsupported) { showUnsupported(); return; }
   // graded: "checking" until enough windows; "elevated" over the threshold but below the alert
   // level (no alert: genuine calls often sit here); after an alert, caution or alert
   const over = m.running_score >= state.threshold;
@@ -354,6 +365,11 @@ function renderFinal() {
   if (f.error) { $("final").textContent = t("monitor_error", { detail: f.error }); return; }
   if (!f.stored && f.windows === 0) { $("final").textContent = t("monitor_final_none"); return; }
   const vars = { score: f.fake_score.toFixed(6), threshold: f.threshold.toFixed(6), session: f.session_id };
+  if (f.label === "unsupported") {
+    $("final").textContent = t("monitor_final_unsupported",
+                               { language: f.language_name || f.language, session: f.session_id });
+    return;
+  }
   let text = t(f.flagged ? "monitor_final_flagged" : "monitor_final_clear", vars);
   // the two-window rule gates only the live alert: a short call can be flagged with none
   if (f.flagged && f.first_flag_s === null) text += " " + t("monitor_final_no_live_alert");
@@ -441,6 +457,7 @@ function teardown() { stopAudio(); }
 
 function reset() {
   Object.assign(state, { points: [], threshold: null, flagAt: null, alerted: false, last: null,
+                         unsupported: false, languageName: null,
                          final: null, seconds: 0, pending: [], pendingN: 0, sessionId: null,
                          decision: null });
   $("approve").disabled = true; renderDecision(); $("reportlinks").hidden = true; $("scorenote").hidden = true;

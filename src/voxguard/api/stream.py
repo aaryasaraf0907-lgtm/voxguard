@@ -53,6 +53,11 @@ MIN_RATE, MAX_RATE = 8_000, 48_000
 MAX_FRAME_BYTES = 1024 * 1024  # about 5 s at 48 kHz; clients send about 0.25 s per frame
 IDLE_TIMEOUT_S = 30.0
 MIN_FINAL_S = 1.0  # a call shorter than one window is scored once at the end if this long
+# The spoken-language check (VOXGUARD_LANGUAGE_CHECK) runs once on the first LANGUAGE_S of audio:
+# before the earliest possible alert (two windows, 6.25 s), so an unsupported-language call never
+# alerts first. A call that ends sooner is checked at its end if it has MIN_LANGUAGE_S.
+LANGUAGE_S = 6.0
+MIN_LANGUAGE_S = 2.0
 WINDOW_S = NUM_SAMPLES / TARGET_SR
 
 # WebSocket close codes (RFC 6455)
@@ -109,6 +114,19 @@ class LiveCall:
     model_version: str = ""
     first_flag_s: float | None = None
     skipped: int = 0
+    opening: list[np.ndarray] = field(default_factory=list)  # first LANGUAGE_S, for the check
+    opening_n: int = 0
+    language: object | None = None  # voxguard.language.LanguageResult once checked
+    language_checked: bool = False
+
+    @property
+    def unsupported(self) -> bool:
+        return self.language is not None and not self.language.supported  # type: ignore[attr-defined]
+
+    def keep_opening(self, samples: np.ndarray, sample_rate: int) -> None:
+        if self.opening_n < LANGUAGE_S * sample_rate:
+            self.opening.append(samples)
+            self.opening_n += len(samples)
 
     @property
     def running(self) -> float:
@@ -282,6 +300,13 @@ async def _serve(
             samples = _samples(message)
             if samples is None:
                 break
+            call.keep_opening(samples, cutter.sample_rate)
+            if not call.language_checked and call.opening_n >= LANGUAGE_S * cutter.sample_rate:
+                await _check_language(state.language_checker, call, cutter.sample_rate)
+                if call.language is not None:
+                    from voxguard.api.main import language_fields
+
+                    await ws.send_json({"type": "language", **language_fields(call.language)})
             due = cutter.feed(samples)
             if due is not None:
                 await _score_due(ws, det, gate, codec, cutter, call, due)
@@ -328,6 +353,7 @@ async def _score_due(
     except (codec_sim.CodecUnavailableError, codec_sim.CodecSimulationError):
         raise StreamError("Codec simulation failed") from None
     alert = call.add(pred.fake_score, pred.latency_ms, pred.model_version, t_s)
+    alert = alert and not call.unsupported  # no verdict for an unsupported language
     await ws.send_json(
         {
             "type": "score",
@@ -364,6 +390,17 @@ async def _score_due(
                 "level": level,
             },
         )
+
+
+async def _check_language(checker: object | None, call: LiveCall, sample_rate: int) -> None:
+    """Run the language check once on the call's opening (first LANGUAGE_S of audio)."""
+    from voxguard.api.main import check_language
+
+    call.language_checked = True
+    if checker is None or call.opening_n < MIN_LANGUAGE_S * sample_rate:
+        return
+    audio = np.concatenate(call.opening)
+    call.language = await to_thread.run_sync(lambda: check_language(checker, audio, sample_rate))
 
 
 async def _finish(
@@ -406,14 +443,19 @@ async def _finish(
     )
     channel = prevention.channel_for(known_clean=False, codec_applied=codec)
     decision = prevention.decide(clip, cfg, state.thresholds, channel)  # type: ignore[attr-defined]
+    if not call.language_checked:  # a short call: check what there is
+        await _check_language(state.language_checker, call, cutter.sample_rate)  # type: ignore[attr-defined]
+    if call.unsupported:
+        decision = prevention.unsupported_language(decision)
 
     def store() -> str | None:
         """The evidence chain head after storing, or None if the call could not be stored."""
         with state.session_factory() as db:  # type: ignore[attr-defined]
             try:
                 prevention.store_session(
-                    db, session_id, caller, clip, decision, codec, windows=call.points
-                )
+                    db, session_id, caller, clip, decision, codec, windows=call.points,
+                    language=call.language,
+                )  # fmt: skip
             except SQLAlchemyError:
                 logger.exception("live stream: could not store session")
                 return None
@@ -443,4 +485,11 @@ async def _finish(
         "flagged": decision.flagged,
         "latency_ms": clip.latency_ms,
         "model_version": clip.model_version,
+        **_language_fields(call.language),
     }
+
+
+def _language_fields(language: object | None) -> dict[str, object]:
+    from voxguard.api.main import language_fields
+
+    return language_fields(language)

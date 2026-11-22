@@ -31,6 +31,11 @@ wraps them in an application:
   and allowed, sent for verification (call-back, OTP or a second approver) or held, with an
   audit trail and an incident report per call that can be downloaded (HTML) or printed / saved
   as PDF (no audio kept).
+- **Language check** (`VOXGUARD_LANGUAGE_CHECK=on`): the detector is trained and tested on
+  English, with Hindi as a small test. Speech that is clearly in another language gets
+  "Language not supported yet (detected: …)" instead of a real/fake verdict: not flagged, not
+  blocked, and the call should be confirmed by a call-back. Language ID uses Whisper
+  (`openai/whisper-base`); unclear or short clips keep the normal verdict.
 
 ## Quick start: the demo with the real model
 
@@ -45,7 +50,7 @@ integration), plus a Hugging Face account in the private `voxguard-team` organis
    git clone https://github.com/aaryasaraf0907-lgtm/voxguard.git && cd voxguard
    cp .env.example .env
    ```
-3. **Edit `.env`:** change these six lines (they are all already in the file):
+3. **Edit `.env`:** change these seven lines (they are all already in the file):
    ```bash
    INSTALL_ML=1
    VOXGUARD_DETECTOR=real
@@ -53,6 +58,7 @@ integration), plus a Hugging Face account in the private `voxguard-team` organis
    HF_TOKEN=<your read token>
    VOXGUARD_API_START_PERIOD=600s
    VOXGUARD_SIMULATE_CODEC=g711_mulaw
+   VOXGUARD_LANGUAGE_CHECK=on
    ```
 4. **Start:** `docker compose up --build`. Ports 8000 or 8501 already in use? Run
    `VOXGUARD_API_PORT=8001 VOXGUARD_UI_PORT=8502 docker compose up --build` and open port 8502

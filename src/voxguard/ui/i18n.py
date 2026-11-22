@@ -81,6 +81,22 @@ EN: dict[str, str] = {
     "m_session": "Session ID: {session_id}",
     "label_real": "Real",
     "label_fake": "Fake",
+    "label_unsupported": "Not supported",
+    "monitor_lang_unsupported": "Language not supported yet (detected: {language})",
+    "monitor_lang_unsupported_advice": (
+        "LineTrue is trained and tested on English, with Hindi as a small test, so it "
+        "gives no real/fake verdict for this language. Do not treat the call as safe: "
+        "confirm it by calling back on a number you already trust."
+    ),
+    "monitor_final_unsupported": (
+        "Call ended: language not supported ({language}), so no verdict. Saved as "
+        "session {session}."
+    ),
+    "report_language": "Spoken language",
+    "report_language_unsupported": "{language}: not supported, no verdict",
+    "tx_reason_unsupported_language": (
+        "The call is in a language LineTrue does not support yet, so there is no verdict."
+    ),
     "yes": "Yes",
     "no": "No",
     "none_value": "None",
@@ -410,6 +426,23 @@ HI: dict[str, str] = {
     "m_session": "सत्र आईडी: {session_id}",
     "label_real": "असली",
     "label_fake": "नकली",
+    "label_unsupported": "समर्थित नहीं",
+    "monitor_lang_unsupported": "यह भाषा अभी समर्थित नहीं है (पहचानी गई: {language})",
+    "monitor_lang_unsupported_advice": (
+        "LineTrue को अंग्रेज़ी पर प्रशिक्षित और परखा गया है, और हिंदी पर एक छोटा "
+        "परीक्षण हुआ है, इसलिए इस भाषा के लिए वह असली/नकली का फ़ैसला नहीं देता। कॉल को "
+        "सुरक्षित न मानें: किसी ऐसे नंबर पर वापस कॉल करके पुष्टि करें जिस पर आप पहले से "
+        "भरोसा करते हैं।"
+    ),
+    "monitor_final_unsupported": (
+        "कॉल समाप्त: भाषा समर्थित नहीं ({language}), इसलिए कोई फ़ैसला नहीं। सत्र "
+        "{session} के रूप में सहेजा गया।"
+    ),
+    "report_language": "बोली गई भाषा",
+    "report_language_unsupported": "{language}: समर्थित नहीं, कोई फ़ैसला नहीं",
+    "tx_reason_unsupported_language": (
+        "कॉल ऐसी भाषा में है जिसे LineTrue अभी समर्थित नहीं करता, इसलिए कोई फ़ैसला नहीं है।"
+    ),
     "yes": "हाँ",
     "no": "नहीं",
     "none_value": "कोई नहीं",

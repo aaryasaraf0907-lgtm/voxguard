@@ -7,7 +7,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-Label = Literal["real", "fake"]
+# "unsupported": speech clearly not in English or Hindi (VOXGUARD_LANGUAGE_CHECK); no verdict
+Label = Literal["real", "fake", "unsupported"]
 
 
 class HealthResponse(BaseModel):
@@ -47,6 +48,21 @@ class AnalyzeResponse(BaseModel):
         description=(
             "Only with timeline=true: seconds of audio after which the running average first "
             "reached the threshold; null if it never did. Not stored."
+        ),
+    )
+    language: str | None = Field(
+        default=None,
+        description=(
+            "Only with VOXGUARD_LANGUAGE_CHECK=on: the most likely spoken language (Whisper code, "
+            'e.g. "en", "ta"); null if the check is off or the clip is too short to judge.'
+        ),
+    )
+    language_name: str | None = Field(default=None, description='e.g. "Tamil"')
+    language_supported: bool | None = Field(
+        default=None,
+        description=(
+            "False when the speech is clearly not English or Hindi: label is then "
+            '"unsupported", flagged is false, and the call should be verified by a call-back.'
         ),
     )
 
