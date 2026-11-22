@@ -250,6 +250,11 @@ EN: dict[str, str] = {
     ),
     "monitor_report": "Open the incident report",
     "monitor_report_download": "Download the report",
+    "monitor_score_note": (
+        "Live scoring averages 4 s windows taken every 2 s; an uploaded file is scored in"
+        " back-to-back 4 s blocks, so the two scores for the same recording can differ slightly."
+        " The threshold is the same."
+    ),
     "tab_transactions": "Transactions",
     "transactions_header": "Transfer decisions",
     "empty_transactions": "No transfer has been checked yet.",
@@ -552,6 +557,11 @@ HI: dict[str, str] = {
     "monitor_tx_note": ("कदम नामित व्यक्ति द्वारा पूरे दर्ज होते हैं; यह डेमो न OTP भेजता है न कॉल करता है।"),
     "monitor_report": "घटना रिपोर्ट खोलें",
     "monitor_report_download": "रिपोर्ट डाउनलोड करें",
+    "monitor_score_note": (
+        "लाइव स्कोरिंग हर 2 सेकंड पर लिए गए 4 सेकंड के विंडो का औसत लेती है; अपलोड की गई फ़ाइल को"
+        " लगातार 4 सेकंड के हिस्सों में स्कोर किया जाता है, इसलिए एक ही रिकॉर्डिंग के दोनों स्कोर"
+        " थोड़े अलग हो सकते हैं। सीमा वही रहती है।"
+    ),
     "tab_transactions": "लेन-देन",
     "transactions_header": "ट्रांसफ़र निर्णय",
     "empty_transactions": "अभी तक कोई ट्रांसफ़र नहीं जाँचा गया।",

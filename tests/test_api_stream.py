@@ -316,6 +316,10 @@ def test_monitor_page_offers_the_report_and_its_download() -> None:
     assert 'id="report"' in body and 'id="reportdl" href="#" download' in body
     assert EN["monitor_report_download"] in body and HI["monitor_report_download"] in body
     assert '$("reportdl").href = `${url}&download=true`' in body
+    # why the same recording scores a little differently when uploaded (shown with the result)
+    assert '<p id="scorenote" class="muted" hidden data-t="monitor_score_note">' in body
+    assert EN["monitor_score_note"] in body and HI["monitor_score_note"] in body
+    assert '$("scorenote").hidden = !(f && f.stored);' in body
 
 
 def test_one_window_over_the_threshold_is_not_an_alert_yet() -> None:
