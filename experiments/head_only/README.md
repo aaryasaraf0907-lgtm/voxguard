@@ -68,7 +68,7 @@ shortcut above.
 The Hindi set (untouched), the same-speaker clone test, Set C and the 2021 LA calls (test only),
 In-the-Wild report speakers (report only).
 
-## Round 2 (amendment, 22 Nov 2026 ~06:40 UTC, before any round-2 training)
+## Round 2 (amendment, 22 Nov 2026 ~06:15 UTC, before any round-2 training)
 
 **What round 1 showed so far.** Runs 1-3 of 8 have finished; runs 4-8, the gate, the In-the-Wild
 gate part and the report have not been run. On the dev phone set, all three beat p3 on both error
