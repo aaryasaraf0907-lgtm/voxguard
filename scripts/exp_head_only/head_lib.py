@@ -87,3 +87,21 @@ def summary(scores: np.ndarray, labels: np.ndarray, threshold: float | None = No
 
 def phone_mask(meta: list[dict]) -> np.ndarray:
     return np.array([m["condition"] in PHONE for m in meta])
+
+
+class TopHead(nn.Module):
+    """Round 2d: XLS-R's last ``top`` layers + final layer norm + head, on cached layer inputs."""
+
+    def __init__(self, model: nn.Module, top: int = 2) -> None:
+        super().__init__()
+        enc = model.frontend.model.encoder
+        self.layers = nn.ModuleList(copy.deepcopy(enc.layers[-top:]))
+        self.layer_norm = copy.deepcopy(enc.layer_norm)
+        self.head = Head(model)
+
+    def forward(self, h: torch.Tensor) -> torch.Tensor:
+        h = h.float()
+        for layer in self.layers:
+            out = layer(h)
+            h = out[0] if isinstance(out, tuple) else out
+        return self.head(self.layer_norm(h))

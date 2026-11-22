@@ -136,3 +136,24 @@ genuine Svarah rows as the other runs; still no clones and no OpenVoice). Their 
 run (`r2-<base>-mu<μ>`, so `r2-...-nosv-...` means "started from the no-Svarah head"). Nothing else
 changes. The accent-shortcut check stays: the same-speaker clone test stop rule applies to any chosen
 candidate, as above.
+
+## Round 2d (amendment, 22 Nov 2026 ~11:25 UTC, before any round-2d training)
+
+**Why.** Every round-1 candidate loses some In-the-Wild EER to p3, and a head on a frozen front-end
+cannot learn new audio cues. The fallback CLAUDE.md section 9 already names, and `ssl_aasist.py`
+already supports (`finetune: last_n`), is to train the top XLS-R layers too.
+
+**What.** XLS-R's last **2** of 24 layers + its final layer norm + the head train together
+(`--top`, `TopHead`), about 25M parameters, on the cached **inputs** of those 2 layers
+(`features_top.py`: the same jobs and seeded waveforms as `features.py`, so row i is the same clip
+and augmentation as in the head-only cache and `teacher.npy`). Checked before caching: p3's own top
+layers + head on these inputs reproduce p3's scores to within fp16 rounding (largest difference
+0.006 in P(fake) on 8 In-the-Wild clips).
+
+**Settings (fixed now).** Start from p3 (its layers and head); with Svarah; λ 2 (distillation to p3);
+lr 1e-5 for the XLS-R layers and layer norm, 5e-5 for the head; 3 epochs; the genuine anchor with
+μ in {0.5, 2}; `--select-drift` (against p3's own threshold). 2 runs: `top-mu0.5`, `top-mu2`.
+
+**Judged the same way.** One final gate and report on all 26 runs (8 round 1, 16 round 2, 2 round
+2d), each as A, B and C (78 candidates), with the gate, choice rule, report, stop rules and test-only
+checks unchanged.

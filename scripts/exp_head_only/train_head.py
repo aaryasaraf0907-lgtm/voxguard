@@ -22,7 +22,18 @@ import time
 import numpy as np
 import torch
 import torch.nn.functional as F
-from head_lib import FEATS, Head, X, fake_prob, load_p3, load_set, logits, phone_mask, summary
+from head_lib import (
+    FEATS,
+    Head,
+    TopHead,
+    X,
+    fake_prob,
+    load_p3,
+    load_set,
+    logits,
+    phone_mask,
+    summary,
+)
 
 T = 2.0
 
@@ -39,31 +50,42 @@ def main() -> None:
     ap.add_argument("--init", help="round 2: start from runs/INIT/best_head.pt")
     ap.add_argument("--anchor", type=float, default=0.0, help="round 2: genuine-margin weight")
     ap.add_argument("--select-drift", action="store_true", help="round 2: prefer epochs in 1.5x")
+    ap.add_argument("--top", action="store_true", help="round 2d: train XLS-R's last 2 layers too")
+    ap.add_argument("--lr-top", type=float, default=1e-5, help="round 2d: lr of the XLS-R layers")
     a = ap.parse_args()
     torch.manual_seed(a.seed)
     rng = np.random.default_rng(a.seed)
 
     p3, _ = load_p3()
     teacher_head = Head(p3)
-    tr_f, tr_m = load_set("train")
+    sfx = "_top" if a.top else ""  # round 2d reads the cached inputs of XLS-R's last 2 layers
+    tr_f, tr_m = load_set("train" + sfx)
     y = np.array([int(m["label"]) for m in tr_m])
     rows = np.array([i for i, m in enumerate(tr_m) if not (a.no_svarah and m["group"] == "svarah")])
     tpath = FEATS / "train" / "teacher.npy"
     if not tpath.exists():
-        np.save(tpath, logits(teacher_head, tr_f))
+        np.save(
+            tpath, logits(teacher_head, load_set("train")[0])
+        )  # p3 on its own last-layer features
     teacher = np.load(tpath)
-    dev_f, dev_m = load_set("dev")
+    dev_f, dev_m = load_set("dev" + sfx)
     dev_y = np.array([int(m["label"]) for m in dev_m])
     ph = phone_mask(dev_m)
 
     freq = np.bincount(y[rows], minlength=2) / len(rows)
     weight = torch.tensor((1 / freq) / (1 / freq).sum(), dtype=torch.float32, device="cuda")
 
-    head = Head(p3)
+    head = TopHead(p3) if a.top else Head(p3)
     if a.init:
         head.load_state_dict(torch.load(X / "runs" / a.init / "best_head.pt", map_location="cpu"))
     head = head.cuda()
-    opt = torch.optim.Adam(head.parameters(), lr=a.lr, weight_decay=1e-4)
+    if a.top:
+        groups = [{"params": [*head.layers.parameters(), *head.layer_norm.parameters()],
+                   "lr": a.lr_top},
+                  {"params": head.head.parameters(), "lr": a.lr}]  # fmt: skip
+        opt = torch.optim.Adam(groups, weight_decay=1e-4)
+    else:
+        opt = torch.optim.Adam(head.parameters(), lr=a.lr, weight_decay=1e-4)
     out = X / "runs" / a.name
     out.mkdir(parents=True, exist_ok=True)
     hist, best = [], None
@@ -82,7 +104,7 @@ def main() -> None:
 
     p3_thr = None
     if a.select_drift:  # p3's own dev phone threshold (epoch 0 is the warm start when --init)
-        s3 = fake_prob(logits(teacher_head, dev_f))
+        s3 = fake_prob(logits(teacher_head, load_set("dev")[0]))
         p3_thr = summary(s3[ph], dev_y[ph])["eer_thr"]
         print(json.dumps({"p3_dev_phone_thr": round(p3_thr, 5)}), flush=True)
     hist.append(gate(0))  # epoch 0 = the starting head: p3, or the --init run's head
