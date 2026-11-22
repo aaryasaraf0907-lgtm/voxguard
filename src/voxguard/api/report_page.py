@@ -85,13 +85,26 @@ def _evidence(check: dict, session_id: str, lang: str) -> str:
     )
 
 
+def _actions(lang: str) -> str:
+    """Download (the same report as an HTML file) and Print, which also saves a PDF."""
+    e = escape
+    return (
+        '<p class="actions">'
+        f'<a href="?lang={e(lang)}&amp;download=true" download>{e(t("report_download", lang))}</a>'
+        f'<button type="button" onclick="window.print()">{e(t("report_print", lang))}</button>'
+        "</p>"
+    )
+
+
 def render_report(
     row: SessionRow,
     windows: list[CallWindow],
     decisions: list[TransactionDecision],
     lang: str,
     check: dict | None = None,
+    actions: bool = True,
 ) -> str:
+    """``actions`` adds the Download and Print buttons (left out of the downloaded file itself)."""
     e = escape
     verdict = t("report_flagged" if row.flagged else "report_not_flagged", lang)
     facts = [
@@ -180,13 +193,16 @@ def render_report(
   .muted {{ color: #6b7280; font-size: .88rem; }}
   .ok {{ color: #14532d; font-weight: 600; }} .bad {{ color: #7f1d1d; font-weight: 600; }}
   code {{ font-size: .85rem; word-break: break-all; }}
-  @media print {{ main {{ padding: 0; }} }}
+  .actions {{ display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0 16px; }}
+  .actions a, .actions button {{ font: inherit; padding: 6px 12px; border: 1px solid #c7ccd4;
+    border-radius: 6px; background: #f6f7f9; color: #1f2430; text-decoration: none; cursor: pointer; }}
+  @media print {{ main {{ padding: 0; }} .actions {{ display: none; }} }}
 </style>
 </head>
 <body><main>
 <h1>{e(t("report_title", lang))}</h1>
 <p class="muted">{e(t("report_generated", lang, time=_fmt_time(datetime.now(UTC))))}</p>
-<p class="verdict"><strong>{e(verdict)}</strong></p>
+{_actions(lang) + chr(10) if actions else ""}<p class="verdict"><strong>{e(verdict)}</strong></p>
 <table>{facts_html}</table>
 <h2>{e(t("report_timeline", lang))}</h2>
 {timeline}

@@ -337,6 +337,39 @@ def test_incident_report(lang: str) -> None:
     assert "<script" not in body and "src=" not in body and "https://" not in body
 
 
+@pytest.mark.parametrize("lang", ["en", "hi"])
+def test_report_has_download_and_print_and_downloads_as_a_file(lang: str) -> None:
+    import re
+
+    from voxguard.ui.i18n import t
+
+    with _client(0.5) as c:
+        sid = _upload(c)["session_id"]
+        view = c.get(f"/v1/sessions/{sid}/report?lang={lang}")
+        dl = c.get(f"/v1/sessions/{sid}/report?lang={lang}&download=true")
+    assert "content-disposition" not in view.headers
+    assert f'href="?lang={lang}&amp;download=true" download' in view.text
+    assert t("report_download", lang) in view.text and t("report_print", lang) in view.text
+    assert 'onclick="window.print()"' in view.text
+    assert dl.status_code == 200 and dl.headers["cache-control"] == "no-store"
+    assert dl.headers["content-disposition"] == (
+        f'attachment; filename="linetrue-report-{sid}-{lang}.html"'
+    )
+    assert 'class="actions"' not in dl.text  # the saved file has no buttons that cannot work
+
+    # the same report otherwise, apart from the "generated at" time
+    def strip(body: str) -> str:
+        body = re.sub(r'<p class="actions">.*?</p>\n', "", body)
+        return re.sub(r"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d UTC", "T", body)
+
+    assert strip(view.text) == strip(dl.text)
+
+
+def test_report_download_of_an_unknown_session_is_404() -> None:
+    with _client() as c:
+        assert c.get("/v1/sessions/nope/report?download=true").status_code == 404
+
+
 def test_report_of_a_live_call_has_its_chart(monkeypatch) -> None:
     with TestClient(create_app(_Scripted([0.05, 0.5]), Settings(db_url="sqlite://"))) as c:
         with c.websocket_connect("/v1/stream?sample_rate=16000") as ws:

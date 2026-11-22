@@ -138,7 +138,8 @@ PAGE = r"""<!doctype html>
     <span class="muted" data-t="monitor_seconds"></span>
   </div>
   <div id="final" class="muted"></div>
-  <p><a id="report" href="#" target="_blank" rel="noopener" hidden data-t="monitor_report"></a></p>
+  <p id="reportlinks" hidden><a id="report" href="#" target="_blank" rel="noopener" data-t="monitor_report"></a>
+    · <a id="reportdl" href="#" download data-t="monitor_report_download"></a></p>
 
   <section id="tx">
     <h2 data-t="monitor_tx_title"></h2>
@@ -341,8 +342,12 @@ function showRisk(m) {
 
 function renderFinal() {
   const f = state.final;
-  $("report").hidden = !(f && f.stored);
-  if (f && f.stored) $("report").href = `/v1/sessions/${encodeURIComponent(f.session_id)}/report?lang=${lang}`;
+  $("reportlinks").hidden = !(f && f.stored);
+  if (f && f.stored) {
+    const url = `/v1/sessions/${encodeURIComponent(f.session_id)}/report?lang=${lang}`;
+    $("report").href = url;
+    $("reportdl").href = `${url}&download=true`;
+  }
   if (!f) { $("final").textContent = ""; return; }
   if (f.error) { $("final").textContent = t("monitor_error", { detail: f.error }); return; }
   if (!f.stored && f.windows === 0) { $("final").textContent = t("monitor_final_none"); return; }
@@ -436,7 +441,7 @@ function reset() {
   Object.assign(state, { points: [], threshold: null, flagAt: null, alerted: false, last: null,
                          final: null, seconds: 0, pending: [], pendingN: 0, sessionId: null,
                          decision: null });
-  $("approve").disabled = true; renderDecision(); $("report").hidden = true;
+  $("approve").disabled = true; renderDecision(); $("reportlinks").hidden = true;
   for (const id of ["elapsed", "window", "running", "threshold"]) $(id).textContent = "–";
   $("final").textContent = "";
   draw();
