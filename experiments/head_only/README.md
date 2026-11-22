@@ -67,3 +67,40 @@ shortcut above.
 
 The Hindi set (untouched), the same-speaker clone test, Set C and the 2021 LA calls (test only),
 In-the-Wild report speakers (report only).
+
+## Round 2 (amendment, 22 Nov 2026 ~06:40 UTC, before any round-2 training)
+
+**What round 1 showed so far.** Runs 1-3 of 8 have finished; runs 4-8, the gate, the In-the-Wild
+gate part and the report have not been run. On the dev phone set, all three beat p3 on both error
+checks (EER 0.18-0.26 % vs 0.47 %, missed fakes at 1 % false alarms 0.03 % vs 0.25 %). All three
+fail one check only: the dev phone threshold moved 14x, 10.6x and 4.2x from p3's (limit 1.5x).
+Stronger distillation (λ 2 vs 0.5) cut the drift, so the cause is the head's genuine scores leaving
+p3's scale.
+
+**The targeted fix.** One change aimed at that cause, everything else kept:
+- **Warm start:** from each round-1 run's best head (`--init`), so what it learned is the
+  starting point.
+- **Genuine anchor:** a loss term on **training** rows only: μ x the mean squared difference
+  between the head's and p3's logit margins (fake minus genuine) on the genuine rows of each
+  batch (`--anchor`). Genuine scores keep p3's scale; fakes are free to move. No dev, In-the-Wild
+  or eval data is used for training.
+- **Settings:** the base run's λ and Svarah setting, lr 5e-5, 3 epochs, μ in {0.5, 2}: 2 round-2
+  runs for each of the 8 round-1 runs (16 runs, named `r2-<base>-mu<μ>`). Fixed now, for all 8
+  base runs, before runs 4-8 have finished.
+- **Epoch choice** (`--select-drift`): among the epochs whose dev phone threshold is within 1.5x of
+  p3's, the fewest missed fakes at 1 % false alarms, then the lowest EER; all epochs if none is.
+  This uses the dev gate set as round 1's epoch choice does.
+
+**Judged the same way, nothing relaxed.** The same gate, unchanged (all five checks, including the
+1.5x threshold), on all 24 runs (8 round 1 + 16 round 2), each as A and B. Among the candidates that
+pass, the one with the fewest dev phone missed fakes at 1 % false alarms, then the lowest dev phone
+EER, is chosen. The report, the stop rules and the test-only checks follow for that candidate as
+above. Running 16 more candidates makes a lucky gate pass more likely; the In-the-Wild report part
+and the eval attacks, never used to choose, are the check on that.
+
+**Fixes for other failures** (In-the-Wild, a watched attack, the clone test), if the gate or report
+shows any, are not part of this round: they would need their own amendment, written before
+training.
+
+**Still apart from the submission.** The submission ships p3 (24 Nov); nothing here is merged before
+then, and Aarya decides afterwards.
