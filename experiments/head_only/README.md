@@ -104,3 +104,22 @@ training.
 
 **Still apart from the submission.** The submission ships p3 (24 Nov); nothing here is merged before
 then, and Aarya decides afterwards.
+
+## Round 2b (amendment, 22 Nov 2026 ~10:40 UTC, after the round-1 gate, before any round-2 result)
+
+**What the round-1 gate showed** (16 candidates: 8 runs as A and B). All pass the two dev phone error
+checks. All fail the 1.5x threshold check (round 2's target). **All also fail the In-the-Wild gate
+EER check**: 15.33-18.87 % vs p3's 15.27 %; B (half p3) is consistently closer to p3 than A. With
+Svarah, In-the-Wild false alarms at the candidate's own dev threshold pass (7.6-9.1 % vs 14.8 %);
+without it they fail (16.0-23.7 %).
+
+**The targeted fix.** In-the-Wild cannot be trained on: its 54 speakers are all assigned to the gate
+and report parts. The one lever that needs no new data is how far each candidate leans on p3, whose
+In-the-Wild EER the heads lose. So one candidate type is added: **C = 0.75 x p3's fake score + 0.25 x
+the head's**, for every round-1 and round-2 head. The weight is fixed here and not tuned. No training
+changes; round 2 runs as registered above.
+
+**Judged the same way.** The same five gate checks, unchanged, on A, B and C of all 24 runs (72
+candidates), the same choice rule among passing candidates, then the report, stop rules and test-only
+checks. More candidates make a lucky pass more likely; the In-the-Wild report part and the eval
+attacks, never used to choose, are the check on that.

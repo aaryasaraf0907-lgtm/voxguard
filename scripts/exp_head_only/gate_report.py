@@ -1,8 +1,9 @@
 """Apply the pre-registered gate, then the report, to p3 and the candidates.
 
-Candidates: ``A:<run>`` (a trained head) and ``B:<run>`` (the mean of p3's and that head's fake
-scores). The gate uses the dev gate set and the In-the-Wild gate part only; the eval report
-subset and the In-the-Wild report part are scored for the report, for the candidates named, once.
+Candidates: ``A:<run>`` (a trained head), ``B:<run>`` (the mean of p3's and that head's fake
+scores) and ``C:<run>`` (0.75 x p3's + 0.25 x the head's; README "Round 2b"). The gate uses the
+dev gate set and the In-the-Wild gate part only; the eval report subset and the In-the-Wild report
+part are scored for the report, for the candidates named, once.
 Usage: ``python gate_report.py RUN [RUN ...] [--report]``. Writes ``runs/gate[-report].json/.md``.
 """
 
@@ -43,6 +44,7 @@ def scores_for(heads: dict, set_name: str, bs: int = 256) -> tuple[dict, list[di
     s = {k: fake_prob(torch.cat(v).numpy()) for k, v in out.items()}
     for k in [k for k in s if k.startswith("A:")]:
         s["B:" + k[2:]] = (s["p3"] + s[k]) / 2
+        s["C:" + k[2:]] = 0.75 * s["p3"] + 0.25 * s[k]  # README "Round 2b"
     return s, meta
 
 
