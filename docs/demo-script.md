@@ -126,10 +126,10 @@ The demo runs offline once the model is in the volume; no network is needed.
   voice and an open cloning tool (`docs/real-audio-testing.md`, section 5): most clones scored
   above the genuine recordings, but some overlapped them, live especially. Say plainly that this
   is the hardest case and the main limitation of the submitted model, and that the transfer check
-  is there for exactly this: a large transfer (₹50,000 or more, with the default policy; smaller ones get a step-up) is held
-  whenever the call scores over the threshold,
-  until a call-back and a second person confirm it. Quote only the
-  counts in that section.
+  is there for exactly this: with the default policy, a transfer of ₹50,000 or more is held
+  whenever the call scores over the threshold (a smaller one gets a step-up, or is held too once
+  the call reaches 1.5 x the threshold), until a call-back and a second person confirm it. Quote
+  only the counts in that section.
 - **Why did it say "elevated" and not alert?** Genuine speech often runs just over the
   threshold, so the live alert waits until the call's risk reaches 1.5 x it
   (`docs/real-audio-testing.md`, section 4). The stored verdict still uses the threshold.
