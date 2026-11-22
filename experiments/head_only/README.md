@@ -123,3 +123,16 @@ changes; round 2 runs as registered above.
 candidates), the same choice rule among passing candidates, then the report, stop rules and test-only
 checks. More candidates make a lucky pass more likely; the In-the-Wild report part and the eval
 attacks, never used to choose, are the check on that.
+
+## Round 2c (amendment, 22 Nov 2026 ~10:43 UTC, before any round-2 training)
+
+**What failed.** The 8 candidates from the runs without Svarah fail the In-the-Wild false-alarm
+check (16.0-23.7 % vs p3's 14.8 %); the 8 with Svarah pass it (7.6-9.1 %). In every pair,
+Svarah also gave a lower dev phone EER and less threshold drift. The no-Svarah runs were there to
+test whether Svarah helps; round 1 answered that.
+
+**The fix.** The round-2 runs that start from a no-Svarah head train **with** Svarah (the same
+genuine Svarah rows as the other runs; still no clones and no OpenVoice). Their names keep the base
+run (`r2-<base>-mu<μ>`, so `r2-...-nosv-...` means "started from the no-Svarah head"). Nothing else
+changes. The accent-shortcut check stays: the same-speaker clone test stop rule applies to any chosen
+candidate, as above.
