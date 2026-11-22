@@ -29,7 +29,8 @@ wraps them in an application:
   microphone or a file, not a phone line.
 - **Transfer checks:** during the call, a transfer approval is checked against the call's risk
   and allowed, sent for verification (call-back, OTP or a second approver) or held, with an
-  audit trail and a printable incident report per call (no audio kept).
+  audit trail and an incident report per call that can be downloaded (HTML) or printed / saved
+  as PDF (no audio kept).
 
 ## Quick start: the demo with the real model
 

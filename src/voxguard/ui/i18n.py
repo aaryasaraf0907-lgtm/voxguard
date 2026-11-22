@@ -155,6 +155,8 @@ EN: dict[str, str] = {
     "timeline_threshold": "Threshold",
     "timeline_replay": "Replay",
     "report_title": "LineTrue incident report",
+    "report_download": "Download report (HTML)",
+    "report_print": "Print / Save as PDF",
     "report_evidence": "Evidence trail",
     "report_evidence_ok": (
         "Intact: all {entries} entries of the tamper-evident log check out against the records."
@@ -247,6 +249,7 @@ EN: dict[str, str] = {
         "Steps are recorded as done by the person named; this demo sends no OTP and places no call."
     ),
     "monitor_report": "Open the incident report",
+    "monitor_report_download": "Download the report",
     "tab_transactions": "Transactions",
     "transactions_header": "Transfer decisions",
     "empty_transactions": "No transfer has been checked yet.",
@@ -465,6 +468,8 @@ HI: dict[str, str] = {
     "timeline_threshold": "सीमा",
     "timeline_replay": "दोबारा चलाएँ",
     "report_title": "LineTrue घटना रिपोर्ट",
+    "report_download": "रिपोर्ट डाउनलोड करें (HTML)",
+    "report_print": "प्रिंट करें / PDF के रूप में सहेजें",
     "report_evidence": "साक्ष्य रिकॉर्ड",
     "report_evidence_ok": (
         "सुरक्षित: छेड़छाड़-पहचान लॉग की सभी {entries} प्रविष्टियाँ रिकॉर्ड से मेल खाती हैं।"
@@ -546,6 +551,7 @@ HI: dict[str, str] = {
     "monitor_tx_mark": "पूरा हुआ चिह्नित करें",
     "monitor_tx_note": ("कदम नामित व्यक्ति द्वारा पूरे दर्ज होते हैं; यह डेमो न OTP भेजता है न कॉल करता है।"),
     "monitor_report": "घटना रिपोर्ट खोलें",
+    "monitor_report_download": "रिपोर्ट डाउनलोड करें",
     "tab_transactions": "लेन-देन",
     "transactions_header": "ट्रांसफ़र निर्णय",
     "empty_transactions": "अभी तक कोई ट्रांसफ़र नहीं जाँचा गया।",

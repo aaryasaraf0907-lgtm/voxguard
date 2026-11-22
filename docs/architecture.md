@@ -286,7 +286,12 @@ call is decided from the call's risk.
 - **Incident report** (`/v1/sessions/{id}/report?lang=en|hi`, `api/report_page.py`): the
   verdict, the timeline as a chart and a table, every transfer decision and step, the 1930 /
   cybercrime.gov.in guidance and a no-audio statement. Self-contained HTML, every value escaped.
-  Linked from the monitor page and the Alerts and Transactions tabs.
+  Linked from the monitor page and the Alerts and Transactions tabs. The page has **Download
+  report (HTML)** and **Print / Save as PDF** buttons (hidden when printed); `&download=true`
+  returns the same report as a file (`Content-Disposition: attachment`,
+  `linetrue-report-<session>-<lang>.html`) without the buttons, and the monitor links to it
+  directly ("Download the report"). PDF comes from the browser's print dialog, so no PDF library
+  is added.
 - **Tamper-evident evidence trail** (`api/evidence.py`): every stored session, a live call's
   per-window scores, each transfer decision and each verification step add one entry to
   `evidence_log` in the same transaction: the SHA-256 of the record's canonical fields, the

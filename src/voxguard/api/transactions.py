@@ -253,12 +253,18 @@ def session_report(
     session_id: str,
     db: Annotated[Session, Depends(get_db)],
     lang: Literal["en", "hi"] = "en",
+    download: bool = False,
 ) -> HTMLResponse:
+    """The incident report; ``download=true`` returns it as a self-contained HTML file."""
     row = db.get(SessionRow, session_id)
     if row is None:
         raise HTTPException(404, "Unknown session_id")
     stmt = select(TransactionRow).where(TransactionRow.session_id == session_id)
     decisions = [_decision(db, r) for r in db.scalars(stmt.order_by(TransactionRow.created_at))]
     html = render_report(row, _windows(db, session_id), decisions, lang,
-                         evidence.verify(db, session_id))  # fmt: skip
-    return HTMLResponse(html, headers={"Cache-Control": "no-store"})
+                         evidence.verify(db, session_id), actions=not download)  # fmt: skip
+    headers = {"Cache-Control": "no-store"}
+    if download:
+        name = f"linetrue-report-{session_id}-{lang}.html"
+        headers["Content-Disposition"] = f'attachment; filename="{name}"'
+    return HTMLResponse(html, headers=headers)

@@ -307,6 +307,17 @@ def test_monitor_page_is_served_with_both_languages() -> None:
     assert "<script src=" not in body and "https://" not in body  # nothing from the network
 
 
+def test_monitor_page_offers_the_report_and_its_download() -> None:
+    from voxguard.ui.i18n import EN, HI
+
+    with _client() as c:
+        body = c.get("/monitor").text
+    assert '<p id="reportlinks" hidden>' in body  # shown only once the call is stored
+    assert 'id="report"' in body and 'id="reportdl" href="#" download' in body
+    assert EN["monitor_report_download"] in body and HI["monitor_report_download"] in body
+    assert '$("reportdl").href = `${url}&download=true`' in body
+
+
 def test_one_window_over_the_threshold_is_not_an_alert_yet() -> None:
     """Seen on the real model: a genuine recording's first window was just over the threshold
     and the rest below it. The alert waits for two windows."""
