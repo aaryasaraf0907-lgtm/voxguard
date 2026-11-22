@@ -14,7 +14,7 @@ from collections import defaultdict
 
 import numpy as np
 import torch
-from head_lib import X, Head, fake_prob, load_p3, load_set, logits, phone_mask, summary
+from head_lib import X, Head, fake_prob, load_p3, load_set, phone_mask, summary
 
 WATCH = ("A10", "A11", "A17", "A18")
 
@@ -29,9 +29,18 @@ def scorers(runs: list[str]) -> dict:
     return out
 
 
-def scores_for(heads: dict, set_name: str) -> tuple[dict, list[dict]]:
+@torch.no_grad()
+def scores_for(heads: dict, set_name: str, bs: int = 256) -> tuple[dict, list[dict]]:
+    """Every head's fake scores; each feature batch is read from disk once, for all heads."""
     f, meta = load_set(set_name)
-    s = {k: fake_prob(logits(h, f)) for k, h in heads.items()}
+    for h in heads.values():
+        h.eval().cuda()
+    out: dict = {k: [] for k in heads}
+    for i in range(0, len(f), bs):
+        x = torch.from_numpy(np.asarray(f[i : i + bs])).cuda()
+        for k, h in heads.items():
+            out[k].append(h(x).float().cpu())
+    s = {k: fake_prob(torch.cat(v).numpy()) for k, v in out.items()}
     for k in [k for k in s if k.startswith("A:")]:
         s["B:" + k[2:]] = (s["p3"] + s[k]) / 2
     return s, meta
