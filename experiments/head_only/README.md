@@ -208,3 +208,12 @@ measured failure of the realistic fine-tune or a known risk of a full fine-tune:
 - **Gradient clipping** at norm 1.0, and a batch with a non-finite loss is skipped and counted.
 - **Candidate E = an exponential moving average of the weights** (decay 0.999), saved after every
   epoch (`ema_last.pt`, the final one is the candidate); judged like A-D.
+
+**Round 3 on Colab (22 Nov ~17:10 UTC, before any round-3 training).** Kaggle's free T4 queue is
+long tonight, so the **same** run (same script, settings and data, from the same private datasets)
+is also started on Colab's free T4 as a backup, saving every epoch to Google Drive. The script now
+takes its input and output folders from `INPUT_ROOT` / `OUT_DIR` and **resumes** after a disconnect
+from the last saved epoch (weights and EMA; Adam restarts, the learning-rate schedule continues;
+logged as a `resume` event). Rule for two results: the run that finishes its 10.5 h budget first
+is round 3's result; if both finish, the other is reported as a **replication** (same settings,
+different hardware and random order), never used to choose.

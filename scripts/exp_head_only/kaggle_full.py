@@ -39,11 +39,13 @@ LLRD = 0.9  # each XLS-R layer below the top learns 0.9x as fast as the one abov
 WARMUP_STEPS, COSINE_EPOCHS, LR_FLOOR = 500, 9, 0.1  # then cosine to 10 % over 9 epochs
 CLIP_NORM, EMA_DECAY = 1.0, 0.999
 BATCH = 4 if SMOKE else 12
-OUT = Path("/kaggle/working") if Path("/kaggle/working").exists() else Path("runs/kaggle_full")
+_KAGGLE_OUT = "/kaggle/working" if Path("/kaggle/working").exists() else "runs/kaggle_full"
+OUT = Path(os.environ.get("OUT_DIR") or _KAGGLE_OUT)  # Colab: a Google Drive folder
 
 
 def find(marker: str) -> Path:
-    for root in (Path("/kaggle/input"), Path(".")):
+    roots = [Path(os.environ["INPUT_ROOT"])] if os.environ.get("INPUT_ROOT") else []
+    for root in (*roots, Path("/kaggle/input"), Path(".")):
         for p in root.rglob(marker):
             return p.parent
     raise SystemExit(f"input with {marker} not found")
@@ -215,8 +217,23 @@ def main() -> None:
 
     data = Clips(rows, codecs)
     epochs = 1 if SMOKE else 99
+    # Resume after a disconnect (Colab): continue from the last saved epoch's weights, and its EMA.
+    # The optimiser state is not saved (it would triple the files), so Adam restarts there; the
+    # learning-rate schedule continues from that epoch. Logged, so the report can say so.
+    done = sorted(int(f.stem[5:]) for f in OUT.glob("epoch*.pt"))
+    first = 1
+    if done and not SMOKE:
+        last = torch.load(OUT / f"epoch{done[-1]}.pt", map_location="cuda")
+        model.load_state_dict({k: v.float() if v.is_floating_point() else v
+                               for k, v in last["model"].items()})  # fmt: skip
+        if (OUT / "ema_last.pt").exists():
+            em = torch.load(OUT / "ema_last.pt", map_location="cuda")["model"]
+            ema.module.load_state_dict({k: v.float() if v.is_floating_point() else v
+                                        for k, v in em.items()})  # fmt: skip
+        first = done[-1] + 1
+        log(event="resume", from_epoch=done[-1], optimizer="restarted")
     epoch_s = None
-    for epoch in range(1, epochs + 1):
+    for epoch in range(first, epochs + 1):
         if epoch_s and time.time() - T0 + epoch_s > BUDGET_S:
             log(event="stop", reason="time budget", next_epoch=epoch)
             break
@@ -226,6 +243,8 @@ def main() -> None:
         loader = DataLoader(data, batch_size=BATCH, shuffle=True, generator=g, num_workers=4,
                             drop_last=True, persistent_workers=False)  # fmt: skip
         total, n = 0.0, 0
+        if step_global == 0 and epoch > 1:  # resumed: the schedule continues where it was
+            step_global = (epoch - 1) * len(loader)
         for step, (x, lab) in enumerate(loader):
             x, lab = x.cuda(non_blocking=True), lab.cuda(non_blocking=True)
             with torch.no_grad(), torch.autocast("cuda", dtype=torch.float16):
