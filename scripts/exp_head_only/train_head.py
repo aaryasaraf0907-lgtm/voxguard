@@ -77,7 +77,11 @@ def main() -> None:
 
     head = TopHead(p3) if a.top else Head(p3)
     if a.init:
-        head.load_state_dict(torch.load(X / "runs" / a.init / "best_head.pt", map_location="cpu"))
+        state = torch.load(X / "runs" / a.init / "best_head.pt", map_location="cpu")
+        if a.top and not any(k.startswith("layers.") for k in state):
+            head.head.load_state_dict(state)  # a head-only run's head under p3's own top layers
+        else:
+            head.load_state_dict(state)
     head = head.cuda()
     if a.top:
         groups = [{"params": [*head.layers.parameters(), *head.layer_norm.parameters()],

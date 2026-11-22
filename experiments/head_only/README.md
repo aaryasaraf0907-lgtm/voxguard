@@ -223,3 +223,15 @@ finished).** Colab's ffmpeg has no AMR encoders (`libopencore_amrnb`, `libvo_amr
 `usable_codecs` skips AMR-NB and AMR-WB with a warning (as the repo intends for missing encoders):
 training codecs are G.711 µ-law, G.711 A-law and Opus (weight 2), the same three the dev and eval
 phone sets use. The Kaggle run logs its own codec list; the report states which were used.
+
+## Adaptive round 2 (22 Nov ~17:40 UTC; the rule, before any adaptive run)
+
+From here, each fix run targets the checks the previous runs failed, and is **written here before
+it trains** (name `fix-<n>-…`, its settings and the failure it addresses). Fix runs go first; when
+none is queued, the remaining pre-registered round-2 runs continue. No new run starts after 01:30
+UTC on 23 Nov; the final gate and report then cover every completed run, with the gate, choice rule,
+report and stop rules unchanged. Each adaptation uses only dev-gate results (per-epoch dev phone EER,
+missed fakes, threshold) to decide, never the In-the-Wild report part, the eval attacks, the clone
+test, Set C or the 2021 LA calls; those stay the honest check on how many adaptations were made.
+(`train_head.py --top --init <head-only run>` now starts the back-end from that run's head under
+p3's own top layers.)
