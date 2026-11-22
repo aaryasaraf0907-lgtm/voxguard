@@ -80,7 +80,12 @@ def main() -> None:
         print(json.dumps(line), flush=True)
         return rec
 
-    hist.append(gate(0))  # epoch 0 = p3 itself
+    p3_thr = None
+    if a.select_drift:  # p3's own dev phone threshold (epoch 0 is the warm start when --init)
+        s3 = fake_prob(logits(teacher_head, dev_f))
+        p3_thr = summary(s3[ph], dev_y[ph])["eer_thr"]
+        print(json.dumps({"p3_dev_phone_thr": round(p3_thr, 5)}), flush=True)
+    hist.append(gate(0))  # epoch 0 = the starting head: p3, or the --init run's head
     for epoch in range(1, a.epochs + 1):
         head.train()
         order = rng.permutation(rows)
@@ -109,14 +114,14 @@ def main() -> None:
         hist.append(rec)
         key = (rec["phone"]["miss_at_1far"], rec["phone"]["eer"])
         if a.select_drift:
-            ratio = rec["phone"]["eer_thr"] / hist[0]["phone"]["eer_thr"]
+            ratio = rec["phone"]["eer_thr"] / p3_thr
             key = (not 1 / 1.5 <= ratio <= 1.5, *key)  # in-band epochs first
         if best is None or key < best[0]:
             best = (key, epoch)
             torch.save(head.state_dict(), out / "best_head.pt")
     (out / "history.json").write_text(json.dumps(
         {"args": vars(a), "rows": len(rows), "class_weight": weight.tolist(), "best_epoch": best[1],
-         "history": hist},
+         "p3_dev_phone_thr": p3_thr, "history": hist},
         indent=2))  # fmt: skip
     print(f"best epoch {best[1]}", flush=True)
 
