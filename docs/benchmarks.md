@@ -8,6 +8,8 @@ The CLAUDE.md latency targets (CPU < 2 s, GPU < 300 ms per 4 s clip) apply to In
 |---|---|---|---|---|---|---|---|---|---|
 | 6704bc5111fd | rawnet2:voxguard-rawnet2-codec-aug:epoch17 | checkpoint | cpu: 13th Gen Intel(R) Core(TM) i5-13450HX | 2.85 | 53.3 / 73.4 | g711_mulaw 8.6 / 11.4 | 88.3 / 107.9 | 94.5 / 106.1 | 8.3 / 9.6 |
 | af5a05af535d | rawnet2:voxguard-rawnet2-codec-aug:epoch17 | checkpoint | cuda: NVIDIA GeForce RTX 3050 6GB Laptop GPU | 2.34 | 11.6 / 15.1 | g711_mulaw 9.1 / 10.4 | 16.2 / 18.7 | 24.1 / 27.0 | 7.9 / 8.7 |
+| e3f96ef30835 | rawnet2/rawnet2-codec-aug-v2:voxguard-rawnet2-codec-aug:epoch4 | checkpoint | cpu: 13th Gen Intel(R) Core(TM) i5-13450HX | 3.01 | 48.5 / 58.0 | g711_mulaw 7.5 / 8.2, opus 85.1 / 93.3, amr_nb 23.2 / 24.0 | 55.3 / 59.7 | 67.0 / 77.3 | 9.7 / 11.9 |
+| 4f90c71418ed | rawnet2/rawnet2-codec-aug-v2:voxguard-rawnet2-codec-aug:epoch4 | checkpoint | cuda: NVIDIA GeForce RTX 3050 6GB Laptop GPU | 2.31 | 11.7 / 13.5 | g711_mulaw 7.2 / 8.4, opus 85.2 / 91.0, amr_nb 23.7 / 24.8 | 18.6 / 21.6 | 26.4 / 32.6 | 7.8 / 11.4 |
 | 4736434ce9ea | rawnet2:best.pt:epoch0 | untrained | cpu: 13th Gen Intel(R) Core(TM) i5-13450HX | 0.11 | 48.4 / 51.7 | g711_mulaw 7.4 / 7.9 | 78.8 / 83.4 | 87.5 / 92.8 | n/a |
 | 3091e9185427 | rawnet2:best.pt:epoch0 | untrained | cuda: NVIDIA GeForce RTX 3050 6GB Laptop GPU | 0.90 | 11.5 / 14.4 | g711_mulaw 7.6 / 8.2 | 15.9 / 18.5 | 24.2 / 28.1 | n/a |
 | b9f34536f17a | ssl_aasist/ssl-aasist-codec-aug-v2:voxguard-ssl-aasist-codec-aug:epoch11 | checkpoint | cpu: 13th Gen Intel(R) Core(TM) i5-13450HX | 11.01 | 508.9 / 667.7 | g711_mulaw 9.6 / 12.8, opus 89.4 / 113.0, amr_nb 24.1 / 25.8 | 500.3 / 546.7 | 523.7 / 602.2 | 10.5 / 13.2 |
@@ -18,6 +20,8 @@ Notes per run:
 
 - `6704bc5111fd` (2026-11-13T16:37:40+00:00, commit 27927bc): 4.0 s at 16000 Hz, 5 warm-up + 50 timed runs. RawNet2 codec-aug epoch17; pre-class-weight-fix checkpoint; latency and integration testing only; not valid for accuracy evaluation
 - `af5a05af535d` (2026-11-13T12:34:14+00:00, commit 76c4db6): 4.0 s at 16000 Hz, 5 warm-up + 50 timed runs. RawNet2 codec-aug epoch17; pre-class-weight-fix checkpoint; latency and integration testing only; not valid for accuracy evaluation
+- `e3f96ef30835` (2026-11-22T04:21:43+00:00, commit 52ae27a): 4.0 s at 16000 Hz, 5 warm-up + 50 timed runs. RawNet2 codec-aug v2 (run rawnet2-codec-aug-v2, epoch 4, HF rev bb9e3a2); latency only, not an accuracy result
+- `4f90c71418ed` (2026-11-22T04:22:04+00:00, commit 52ae27a): 4.0 s at 16000 Hz, 5 warm-up + 50 timed runs. RawNet2 codec-aug v2 (run rawnet2-codec-aug-v2, epoch 4, HF rev bb9e3a2); latency only, not an accuracy result
 - `4736434ce9ea` (2026-11-10T12:20:30+00:00, commit 22e8a0a): 4.0 s at 16000 Hz, 5 warm-up + 50 timed runs. UNTRAINED weights from configs/rawnet2.yaml (latency only). RawNet2 at the training configuration.
 - `3091e9185427` (2026-11-10T12:20:49+00:00, commit 22e8a0a): 4.0 s at 16000 Hz, 5 warm-up + 50 timed runs. UNTRAINED weights from configs/rawnet2.yaml (latency only). RawNet2 at the training configuration.
 - `b9f34536f17a` (2026-11-15T07:00:40+00:00, commit f252ecb): 4.0 s at 16000 Hz, 5 warm-up + 50 timed runs. SSL-AASIST codec-aug (run ssl-aasist-codec-aug-v2, epoch 11, HF rev f376f4f); latency only, not an accuracy result
