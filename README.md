@@ -71,9 +71,10 @@ For development (tests, the local run without Docker, training), see [Setup](#se
   and benchmarking are implemented.
 - **SSL-AASIST** is trained (clean and codec-augmented); the codec-augmented checkpoint is the
   demo model, with its dev-set thresholds published next to it.
-- The RawNet2 results in [docs/results.md](docs/results.md) (2x2 matrix, per codec, held-out
-  GSM) are **preliminary**: those runs used inverted class weights (both arms alike), and RawNet2
-  is being retrained with the fix. The final four-model results will replace them.
+- **RawNet2** (the baseline) is retrained with the class-weight fix, clean and
+  codec-augmented. The codec-augmented run stopped at Kaggle's 12 h limit after 7 of 12 epochs
+  (best epoch 4). [docs/results.md](docs/results.md) has the final results for all four models
+  (2x2 matrix, per codec, held-out GSM).
 - Progress and known issues per person: [docs/STATUS.md](docs/STATUS.md). Scope and roadmap:
   `CLAUDE.md`.
 
@@ -235,7 +236,7 @@ after the `ui` container has started (with the ports-taken variant, http://local
 
 `curl localhost:8000/health` should then show `"detector": "real"`, and the UI sidebar
 "Detector: real". `voxguard-ssl-aasist-codec-aug` is the demo model (its `thresholds.json` sets the
-operating threshold); the RawNet2 repos are for integration and latency checks only (see Status).
+operating threshold); RawNet2 is the baseline, not the demo model (see Status).
 This path has been run end to end on amd64 (Windows with WSL2 and Docker Desktop): with the
 SSL-AASIST demo model, from a fresh clone with nothing cached, the first analysis in the UI came
 3 min 28 s after `git clone` (18 Nov 2026; an earlier RawNet2 run on a slower connection took
@@ -261,10 +262,11 @@ uv run uvicorn voxguard.api.main:create_app --factory --port 8000
 - Trained checkpoints are in the private Hugging Face org; access needs a token with permission
   for that org. SSL-AASIST: `voxguard-team/voxguard-ssl-aasist-codec-aug` (the demo model) and
   `voxguard-team/voxguard-ssl-aasist-clean`, each with its `thresholds.json`. RawNet2:
-  `voxguard-team/voxguard-rawnet2-clean` and `voxguard-team/voxguard-rawnet2-codec-aug`, from the
-  runs with the class-weight bug above, to be replaced by the retrained ones. The codec-aug RawNet2 checkpoint (epoch 17) has been loaded through the API and
-  the demo on CUDA (13 Nov). Because of the class-weight bug its scores are for checking
-  integration and latency only, not detection results.
+  `voxguard-team/voxguard-rawnet2-codec-aug` holds the retrained codec-augmented checkpoint
+  (`rawnet2-codec-aug-v2`, epoch 4, published 22 Nov) with its `thresholds.json`.
+  `voxguard-team/voxguard-rawnet2-clean` still holds the older checkpoint trained with the
+  class-weight bug, with no `thresholds.json`; its scores are not detection results (the
+  retrained clean RawNet2 in `docs/results.md` is not published).
 - The model is loaded once at startup; `/health` then reports `"detector": "real"` and the
   checkpoint's `model_version`. If loading fails the API exits with an error that says what to
   fix; it never falls back to the stub.
@@ -275,8 +277,9 @@ uv run uvicorn voxguard.api.main:create_app --factory --port 8000
   explicit `VOXGUARD_THRESHOLD` overrides the file; `low_far` mode uses its own threshold.
   Without a file the detector's default of 0.5 applies, which is not an operating point for any
   trained checkpoint (their scores sit on very different scales; see `docs/results.md`), and the
-  API logs a warning. Both SSL-AASIST repos publish their `thresholds.json`; the RawNet2 repos
-  do not yet, so with them the API decides at 0.5 and warns.
+  API logs a warning. Both SSL-AASIST repos and `voxguard-rawnet2-codec-aug` publish their
+  `thresholds.json`; `voxguard-rawnet2-clean` does not, so with it the API decides at 0.5 and
+  warns.
 
 ## Tests and checks
 
