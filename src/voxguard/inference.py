@@ -200,7 +200,9 @@ class RealDetector:
     ``model_repo``: local ``.pt`` file, a directory containing ``filename``, or a Hugging Face
     repo id (default: ``VOXGUARD_MODEL_REPO``). Threshold precedence: argument, then
     ``VOXGUARD_THRESHOLD``, then 0.5. Long clips are scored per 64,600-sample window and the
-    window scores averaged.
+    window scores averaged, ``batch_size`` windows per forward pass (4: measured 22 Nov on the
+    SSL-AASIST demo model on CPU, a 60 s clip took 2.7 s at 4 and 2.6 s at 8, but peak memory
+    was 2.8 GB at 4 against 3.5 GB at 8, per analysis, and the API runs two at once).
     """
 
     def __init__(
@@ -209,7 +211,7 @@ class RealDetector:
         threshold: float | None = None,
         device: str = "cpu",
         filename: str = "best.pt",
-        batch_size: int = 8,
+        batch_size: int = 4,
     ) -> None:
         import torch
 
