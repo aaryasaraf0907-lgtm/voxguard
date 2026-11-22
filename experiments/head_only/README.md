@@ -157,3 +157,9 @@ lr 1e-5 for the XLS-R layers and layer norm, 5e-5 for the head; 3 epochs; the ge
 **Judged the same way.** One final gate and report on all 26 runs (8 round 1, 16 round 2, 2 round
 2d), each as A, B and C (78 candidates), with the gate, choice rule, report, stop rules and test-only
 checks unchanged.
+
+**Execution order (22 Nov ~15:40 UTC, no change to any setting or rule).** The two round-2d runs
+(`top-mu0.5`, `top-mu2`) run right after round-2 run 5 (`r2-l2-lr1e4-mu0.5`), before the remaining
+11 round-2 runs, instead of after all of them, so the front-end question is answered sooner. Every
+run, the gate, the choice rule and the report stay exactly as registered; all 26 runs are still judged
+together at the end.
