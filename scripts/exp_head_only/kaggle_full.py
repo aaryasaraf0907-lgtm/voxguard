@@ -8,10 +8,12 @@ Kaggle mounts them: the experiment's code (``pyproject.toml``), the training aud
 Each epoch sees every training clip once with **fresh** augmentation, drawn from a seed of
 (epoch, clip): a codec on the whole file with probability ``P_CODEC`` (the head-only
 ``CODEC_POLICY``: Opus weighted 2, noise before the codec on 30 %), a random 64,600-sample crop,
-then ``data/realistic.py`` on both classes. Loss: inverse-frequency weighted cross-entropy +
-LAM x KL(p3 || model) at T=2 + MU x the genuine-margin anchor to p3 (as ``train_head.py``).
-p3 runs alongside as a frozen fp16 teacher. Every epoch's weights are saved (fp16) to
-``/kaggle/working``; the epoch is chosen later, locally, by the unchanged dev gate.
+then RawBoost on half the clips (``rawboost``), then ``data/realistic.py`` on both classes.
+Loss: inverse-frequency weighted cross-entropy + LAM x KL(p3 || model) at T=2 + MU x the
+genuine-margin anchor to p3 (as ``train_head.py``). p3 runs alongside as a frozen fp16 teacher.
+The CNN feature encoder stays p3's (frozen); the transformer layers and the back-end train.
+Every epoch's weights are saved (fp16) to ``/kaggle/working``; the epoch is chosen later,
+locally, by the unchanged dev gate.
 ``SMOKE=1``: 64 clips, 1 epoch, to check the environment.
 """
 
@@ -57,10 +59,48 @@ from voxguard.data.datasets import fix_length  # noqa: E402
 from voxguard.data.realistic import RealisticPolicy, apply_realistic  # noqa: E402
 from voxguard.models import load_from_checkpoint  # noqa: E402
 
+P_RAWBOOST = 0.5
 REALISTIC = RealisticPolicy(probability=0.5, reverb_probability=0.5, rt60_s=(0.15, 0.8),
                             eq_probability=0.5, eq_max_db=8.0, noise_probability=0.5,
                             snr_db=(10.0, 35.0), gain_db=(-6.0, 6.0))  # fmt: skip
 WANTED = ["g711_mulaw", "g711_alaw", "amr_nb", "amr_wb", "opus"]
+
+
+def _notch_coeffs(rng: np.random.Generator, n_bands: int = 5) -> np.ndarray:
+    """A random multi-band FIR filter (RawBoost, Tak et al., ICASSP 2022, eq. 2-3; own code)."""
+    from scipy.signal import firwin, freqz
+
+    b = np.array([1.0])
+    for _ in range(n_bands):
+        fc = rng.uniform(20, 8000)
+        bw = rng.uniform(100, 1000)
+        c = int(rng.integers(10, 101)) | 1  # odd number of taps
+        lo, hi = max(fc - bw / 2, 1.0), min(fc + bw / 2, 7999.0)
+        if hi - lo < 10:
+            continue
+        b = np.convolve(b, firwin(c, [lo, hi], window="hamming", fs=16_000))
+    _, h = freqz(b, 1, fs=16_000)
+    return b / np.max(np.abs(h))
+
+
+def rawboost(x: np.ndarray, rng: np.random.Generator) -> np.ndarray:
+    """RawBoost's LA setting: linear + non-linear convolutive noise, then impulsive
+    signal-dependent noise (Tak, Kamble, Patino, Todisco, Evans, "RawBoost", ICASSP 2022).
+    Written from the paper's description; peak-normalised like the original."""
+    from scipy.signal import lfilter
+
+    y = np.zeros_like(x, dtype=np.float64)
+    for i in range(5):  # N_f = 5 non-linear orders
+        g = rng.uniform(-5.0, 0.0) if i == 0 else rng.uniform(-20.0, -5.0)  # dB per order
+        y += 10 ** (g / 20) * lfilter(_notch_coeffs(rng), 1, x.astype(np.float64) ** (i + 1))
+    y -= y.mean()
+    y /= np.max(np.abs(y)) + 1e-9
+    n = int(len(y) * rng.uniform(0, 10) / 100)  # impulsive: up to 10 % of samples
+    idx = rng.permutation(len(y))[:n]
+    f = (2 * rng.random(n) - 1) * (2 * rng.random(n) - 1)
+    y[idx] += 2.0 * y[idx] * f
+    y /= np.max(np.abs(y)) + 1e-9
+    return (y * np.max(np.abs(x))).astype(np.float32)  # keep the clip's original peak level
 
 
 def log(**kw) -> None:
@@ -104,6 +144,9 @@ class Clips(Dataset):
         if self.codecs and rng.random() < P_CODEC:
             x = degrade(x, sample_spec(rng, self.policy, self.codecs), rng)
         x = fix_length(x, N, derive_rng(SEED, key, 1))
+        r3 = derive_rng(SEED, key, 3)
+        if r3.random() < P_RAWBOOST:
+            x = rawboost(x, r3)
         x = apply_realistic(x, REALISTIC, derive_rng(SEED, key, 2))
         return torch.from_numpy(np.ascontiguousarray(x, dtype=np.float32)), y
 
@@ -131,9 +174,12 @@ def main() -> None:
     for p in model.parameters():
         p.requires_grad = True
     model.frontend.model.gradient_checkpointing_enable()
-    front = list(model.frontend.parameters())
+    for p in model.frontend.model.feature_extractor.parameters():  # CNN encoder stays p3's
+        p.requires_grad = False
+    front = [p for p in model.frontend.parameters() if p.requires_grad]
     ids = {id(p) for p in front}
-    rest = [p for p in model.parameters() if id(p) not in ids]
+    cnn = {id(p) for p in model.frontend.model.feature_extractor.parameters()}
+    rest = [p for p in model.parameters() if id(p) not in ids and id(p) not in cnn]
     opt = torch.optim.Adam([{"params": front, "lr": LR_FRONTEND}, {"params": rest, "lr": LR_HEAD}],
                            weight_decay=1e-4)  # fmt: skip
     scaler = torch.amp.GradScaler("cuda")

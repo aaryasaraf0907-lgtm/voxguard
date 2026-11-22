@@ -187,3 +187,15 @@ data as the gate (dev gate phone set, In-the-Wild gate part); the epoch is chose
 (within 1.5x of p3's dev phone threshold first, then fewest missed fakes at 1 % false alarms, then
 lowest EER), as A, B and C, and judged by the same five gate checks. Then the report, stop rules and
 test-only checks, as above. It joins the same final comparison as rounds 1-2d.
+
+**Round 3 additions (22 Nov ~16:05 UTC, still before any round-3 training).** Each one answers a
+measured failure of the realistic fine-tune or a known risk of a full fine-tune:
+- **RawBoost** (Tak et al., ICASSP 2022, the SSL-AASIST paper's augmentation), its LA setting
+  (linear + non-linear convolutive noise, then impulsive signal-dependent noise), on half the clips
+  after the codec and crop, before `data/realistic.py`. Our own implementation from the paper's
+  description (`kaggle_full.py`, `rawboost`), peak level preserved.
+- **The CNN feature encoder stays frozen** (p3's): only the 24 transformer layers, the layer norm and
+  the back-end train, which keeps the low-level acoustic front end stable.
+- **Candidate D = the average of the last 3 saved epochs' weights**, scored and judged like A, B and C
+  (weight averaging usually generalises and calibrates better than any one epoch; it is also the
+  check on unseen attacks, where the realistic fine-tune lost A10, A11, A17 and A18).
