@@ -137,7 +137,7 @@ run (`r2-<base>-mu<μ>`, so `r2-...-nosv-...` means "started from the no-Svarah 
 changes. The accent-shortcut check stays: the same-speaker clone test stop rule applies to any chosen
 candidate, as above.
 
-## Round 2d (amendment, 22 Nov 2026 ~11:25 UTC, before any round-2d training)
+## Round 2d (amendment, 22 Nov 2026 ~10:55 UTC, before any round-2d training)
 
 **Why.** Every round-1 candidate loses some In-the-Wild EER to p3, and a head on a frozen front-end
 cannot learn new audio cues. The fallback CLAUDE.md section 9 already names, and `ssl_aasist.py`
