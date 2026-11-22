@@ -199,7 +199,7 @@ Thresholds (agreed 13 Nov): `thresholds.json` next to each checkpoint (`{model_v
 | | **Person 1 - ML Core + repo owner (Aarya)** | **Person 2 - Product & Platform (teammate)** |
 |---|---|---|
 | Owns | `data/`, `models/`, `metrics.py`, `train.py`, `evaluate.py`, `inference.py` (RealDetector), `configs/`, `scripts/`, results docs | `api/`, `ui/`, `schemas.py`, `docker/`, `.github/`, API/UI tests, README, `architecture.md`, deployment |
-| Delivers | pipeline, 2 models, 2x2 results, latency numbers, checkpoint on HF Hub | working API + prevention layer, EN/HI demo, CI, Docker, local compose deployment, demo script/video |
+| Delivers | pipeline, 2 models, 2x2 results, latency numbers, checkpoint on HF Hub | working API + prevention layer, EN/HI demo, CI, Docker, local compose deployment, demo script |
 | Shared | `CLAUDE.md`, `pyproject.toml`, `docs/STATUS.md`, `docs/invention-disclosure.md`, the section-7 contract | |
 
 Person 1 lands the scaffold + contract first (small PR, within a day) so Person 2 is never blocked. Person 2 builds against `StubDetector` until the real checkpoint exists.
@@ -231,10 +231,10 @@ Python 3.11, type hints everywhere, ruff (lint + format), pydantic v2, `logging`
 | 2 (9-15 Nov) | dataset loaders, EER, RawNet2 + smoke run; SSL-AASIST code | prevention layer, alerts, UI (EN/HI), API tests, CI. **M1** |
 | 3 (16-22 Nov) | full training runs (clean vs codec-aug) on Kaggle/Colab | Docker/compose, benchmark harness, "simulate phone line" toggle (uses `codecs.py`) |
 | 4 (23-29 Nov) | evaluation matrix, per-codec results, RealDetector + checkpoint to HF Hub. **M2** | integrate real detector, compose deployment with the real detector, demo polish |
-| 5 (30 Nov-6 Dec) | stretch: unseen codec / Hindi; results write-up | docs, README, demo video/script; **M3 (8 Dec) feature freeze** |
+| 5 (30 Nov-6 Dec) | stretch: unseen codec / Hindi; results write-up | docs, README, demo script; **M3 (8 Dec) feature freeze** |
 | 6 (7-13 Dec) | final numbers, report sections, invention disclosure | final report/presentation support, rehearsal, buffer |
 
-**Compressed plan (decided 18 Nov; deadline moved to 24 Nov 23:59 IST on 22 Nov): everything above is done by 24 Nov 2026, 23:59 IST.** The only blocked work is GPU training after the Kaggle quota reset (Sat 21 Nov 05:30 IST). 21 Nov: RawNet2 codec-aug v2 and the SSL realistic fine-tune run in parallel. 22-23 Nov: thresholds, evaluation, the four-model `docs/results.md`, checkpoints published, demo model and operating point fixed. Person 2 in parallel: demo script and video, the 15-minute README check with a person, retrained RawNet2 benchmarks, re-running the sanity clips. 23 Nov: Person 2's demo video, README check with a person, Firefox check and sanity clips. 24 Nov: final docs and STATUS, then the final `dev` -> `main` promotion, by 23:59 IST. The week rows above are kept for history.
+**Compressed plan (decided 18 Nov; deadline moved to 24 Nov 23:59 IST on 22 Nov): everything above is done by 24 Nov 2026, 23:59 IST.** The only blocked work is GPU training after the Kaggle quota reset (Sat 21 Nov 05:30 IST). 21 Nov: RawNet2 codec-aug v2 and the SSL realistic fine-tune run in parallel. 22-23 Nov: thresholds, evaluation, the four-model `docs/results.md`, checkpoints published, demo model and operating point fixed. Person 2 in parallel: the demo script, the 15-minute README check with a person, retrained RawNet2 benchmarks, re-running the sanity clips. 23 Nov: Person 2's README check with a person, browser checks (Safari, Firefox, Edge, Brave) and sanity clips; the demo video was dropped (22 Nov). 24 Nov: final docs and STATUS, then the final `dev` -> `main` promotion, by 23:59 IST. The week rows above are kept for history.
 
 If behind schedule, cut stretch items first, then the second SSL model, then Hindi eval. Never cut: the 2x2 matrix, the working demo, tests/CI.
 
