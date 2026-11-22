@@ -217,3 +217,9 @@ from the last saved epoch (weights and EMA; Adam restarts, the learning-rate sch
 logged as a `resume` event). Rule for two results: the run that finishes its 10.5 h budget first
 is round 3's result; if both finish, the other is reported as a **replication** (same settings,
 different hardware and random order), never used to choose.
+
+**Round 3 deviation (22 Nov ~17:10 UTC, seen in the Colab run's first log lines, before any epoch
+finished).** Colab's ffmpeg has no AMR encoders (`libopencore_amrnb`, `libvo_amrwbenc`), so
+`usable_codecs` skips AMR-NB and AMR-WB with a warning (as the repo intends for missing encoders):
+training codecs are G.711 µ-law, G.711 A-law and Opus (weight 2), the same three the dev and eval
+phone sets use. The Kaggle run logs its own codec list; the report states which were used.
