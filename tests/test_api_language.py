@@ -42,25 +42,32 @@ def _upload(c, caller: str | None = None) -> dict:
     return r.json()
 
 
-def test_unsupported_language_gives_no_verdict_and_raises_nothing() -> None:
+def test_unsupported_language_never_switches_off_a_warning() -> None:
+    # Aarya's #125 review: a cloned voice speaking Tamil and scoring 0.9 must still be flagged,
+    # alerted and blocklisted; the language note is only added to it.
     with _client(0.9, _Checker("ta", supported=False)) as c:
-        r = _upload(c, caller="+911234")  # a score far over the threshold
-        sessions = c.get("/v1/sessions").json()
+        r = _upload(c, caller="+911234")
         alerts = c.get("/v1/alerts").json()
         blocklist = c.get("/v1/blocklist").json()
         report = c.get(f"/v1/sessions/{r['session_id']}/report").text
         tx = c.post("/v1/transactions/check",
                     json={"session_id": r["session_id"], "amount_inr": 1000}).json()  # fmt: skip
-    assert r["label"] == "unsupported" and r["flagged"] is False
+    assert r["label"] == "fake" and r["flagged"] is True
     assert r["language"] == "ta" and r["language_supported"] is False
     assert r["language_name"] in ("Tamil", "ta")
-    assert r["fake_score"] == pytest.approx(0.9)  # the score is still reported and stored
-    assert sessions[0]["label"] == "unsupported" and not sessions[0]["flagged"]
-    assert alerts == [] and blocklist == []  # no alert and no blocklist entry
-    assert "Language not supported yet" in report and "not supported, no verdict" in report
-    # a transfer is never "low risk" on a call without a verdict: it is verified first
-    assert tx["tier"] == "unknown" and "unsupported_language" in tx["reasons"]
-    assert tx["action"] != "allow"
+    assert len(alerts) == 1 and blocklist[0]["caller_id"] == "+911234"
+    assert "Flagged" in report and "Language not supported yet" in report
+    assert "less reliable" in report and tx["tier"] == "high"
+
+
+def test_unsupported_language_below_the_threshold_says_so_but_keeps_the_verdict() -> None:
+    with _client(0.1, _Checker("mr", supported=False)) as c:
+        r = _upload(c, caller="+911234")
+        report = c.get(f"/v1/sessions/{r['session_id']}/report").text
+        alerts = c.get("/v1/alerts").json()
+    assert r["label"] == "real" and r["flagged"] is False and alerts == []
+    assert r["language_supported"] is False
+    assert "Not flagged" in report and "Language not supported yet" in report
 
 
 def test_supported_language_keeps_the_normal_verdict() -> None:
@@ -130,19 +137,18 @@ def _live(checker: object | None) -> tuple[list[dict], dict]:
     return msgs, {"alerts": alerts}
 
 
-def test_live_unsupported_language_never_alerts_and_ends_without_a_verdict() -> None:
+def test_live_unsupported_language_is_reported_and_still_alerts() -> None:
     checker = _Checker("mr", supported=False)
     msgs, rest = _live(checker)
     kinds = [m["type"] for m in msgs]
     lang = next(m for m in msgs if m["type"] == "language")
     final = msgs[-1]
-    assert "alert" not in kinds and rest["alerts"] == []
     assert lang["language"] == "mr" and lang["language_supported"] is False
     # checked once, on the first 6 s, before the earliest possible alert (two windows, 6.25 s)
     assert len(checker.calls) == 1 and checker.calls[0] == pytest.approx(6.0, abs=0.3)
-    assert kinds.index("language") < kinds.index("score") + 2
-    assert final["label"] == "unsupported" and final["flagged"] is False
-    assert final["language_supported"] is False
+    assert kinds.index("language") < kinds.index("alert")
+    assert "alert" in kinds and len(rest["alerts"]) == 1  # the warning is never switched off
+    assert final["flagged"] is True and final["language_supported"] is False
 
 
 def test_live_supported_language_alerts_as_before() -> None:

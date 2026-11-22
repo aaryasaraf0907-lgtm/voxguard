@@ -108,12 +108,13 @@ def render_report(
     """``actions`` adds the Download and Print buttons (left out of the downloaded file itself)."""
     e = escape
     verdict = t("report_flagged" if row.flagged else "report_not_flagged", lang)
-    unsupported = row.label == "unsupported"
-    if unsupported:  # speech clearly not in English or Hindi: no verdict (voxguard/language.py)
-        name = language[0] if language else "?"
-        verdict = (
-            f"{t('monitor_lang_unsupported', lang, language=name)} "
-            f"{t('monitor_lang_unsupported_advice', lang)}"
+    # speech clearly not in English or Hindi (voxguard/language.py): a note next to the verdict,
+    # which is unchanged (a flagged call stays flagged, with its alert and blocklist entry)
+    lang_note = ""
+    if language is not None and not language[1]:
+        lang_note = (
+            f'<p class="langnote">{e(t("monitor_lang_unsupported", lang, language=language[0]))} '
+            f"{e(t('monitor_lang_unsupported_advice', lang))}</p>"
         )
     facts = [
         (t("report_session", lang), row.session_id),
@@ -198,7 +199,8 @@ def render_report(
   body {{ font: 15px/1.5 system-ui, "Segoe UI", "Noto Sans", "Noto Sans Devanagari", sans-serif; color:#1f2430; margin:0; background:#fff; }}
   main {{ max-width: 860px; margin: 0 auto; padding: 24px 16px 48px; }}
   h1 {{ font-size: 1.5rem; margin: 0 0 4px; }} h2 {{ font-size: 1.1rem; margin: 24px 0 8px; }}
-  .verdict {{ padding: 12px 14px; border-radius: 8px; background: {"#fef3c7" if unsupported else "#fee2e2" if row.flagged else "#dcfce7"}; }}
+  .verdict {{ padding: 12px 14px; border-radius: 8px; background: {"#fee2e2" if row.flagged else "#dcfce7"}; }}
+  .langnote {{ padding: 10px 14px; border-radius: 8px; background: #fef3c7; }}
   table {{ border-collapse: collapse; width: 100%; margin: 8px 0; font-size: .92rem; }}
   th, td {{ border: 1px solid #e5e7eb; padding: 4px 8px; text-align: left; vertical-align: top; }}
   th {{ background: #f6f7f9; }}
@@ -215,6 +217,7 @@ def render_report(
 <h1>{e(t("report_title", lang))}</h1>
 <p class="muted">{e(t("report_generated", lang, time=_fmt_time(datetime.now(UTC))))}</p>
 {_actions(lang) + chr(10) if actions else ""}<p class="verdict"><strong>{e(verdict)}</strong></p>
+{lang_note}
 <table>{facts_html}</table>
 <h2>{e(t("report_timeline", lang))}</h2>
 {timeline}

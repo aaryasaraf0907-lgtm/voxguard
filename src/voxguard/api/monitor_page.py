@@ -68,6 +68,7 @@ PAGE = r"""<!doctype html>
   #banner.alert { background:var(--alert); color:var(--alert-fg); }
   #banner.info { background:var(--info); color:var(--info-fg); }
   #banner.caution { background:#fef3c7; color:#78350f; }
+  #langnote { background:#fef3c7; color:#78350f; padding:10px 14px; border-radius:8px; }
   #banner strong { font-size:1.25rem; display:block; }
   #guidance { margin-top:10px; }
   #guidance ul { margin:4px 0 0; padding-left:20px; }
@@ -137,6 +138,7 @@ PAGE = r"""<!doctype html>
     <span><i class="key" style="background:var(--thr)"></i><span data-t="monitor_threshold"></span></span>
     <span class="muted" data-t="monitor_seconds"></span>
   </div>
+  <p id="langnote" hidden></p>
   <div id="final" class="muted"></div>
   <p id="scorenote" class="muted" hidden data-t="monitor_score_note"></p>
   <p id="reportlinks" hidden><a id="report" href="#" target="_blank" rel="noopener" data-t="monitor_report"></a>
@@ -192,6 +194,7 @@ function applyLanguage() {
   showBanner(...state.banner);
   renderFinal();
   renderDecision();
+  renderLangNote();
 }
 
 function showBanner(kind, headKey, detail) {
@@ -318,7 +321,7 @@ function onMessage(m) {
   } else if (m.type === "language") {
     // speech clearly not in English or Hindi: no verdict, advise a call-back (never "safe")
     state.languageName = m.language_name || m.language;
-    if (m.language_supported === false) { state.unsupported = true; showUnsupported(); }
+    if (m.language_supported === false) { state.unsupported = true; renderLangNote(); }
   } else if (m.type === "busy") {
     $("final").textContent = t("monitor_busy");
   } else if (m.type === "final") {
@@ -329,13 +332,16 @@ function onMessage(m) {
   }
 }
 
-function showUnsupported() {
-  showBanner("caution", "monitor_lang_unsupported",
-             { key: "monitor_lang_unsupported_advice", vars: { language: state.languageName } });
+function renderLangNote() {
+  // a note next to the risk banner, which is unchanged: an alert still fires when the risk is high
+  $("langnote").hidden = !state.unsupported;
+  if (state.unsupported) {
+    $("langnote").textContent = t("monitor_lang_unsupported", { language: state.languageName }) +
+      " " + t("monitor_lang_unsupported_advice");
+  }
 }
 
 function showRisk(m) {
-  if (state.unsupported) { showUnsupported(); return; }
   // graded: "checking" until enough windows; "elevated" over the threshold but below the alert
   // level (no alert: genuine calls often sit here); after an alert, caution or alert
   const over = m.running_score >= state.threshold;
@@ -365,11 +371,6 @@ function renderFinal() {
   if (f.error) { $("final").textContent = t("monitor_error", { detail: f.error }); return; }
   if (!f.stored && f.windows === 0) { $("final").textContent = t("monitor_final_none"); return; }
   const vars = { score: f.fake_score.toFixed(6), threshold: f.threshold.toFixed(6), session: f.session_id };
-  if (f.label === "unsupported") {
-    $("final").textContent = t("monitor_final_unsupported",
-                               { language: f.language_name || f.language, session: f.session_id });
-    return;
-  }
   let text = t(f.flagged ? "monitor_final_flagged" : "monitor_final_clear", vars);
   // the two-window rule gates only the live alert: a short call can be flagged with none
   if (f.flagged && f.first_flag_s === null) text += " " + t("monitor_final_no_live_alert");
@@ -460,7 +461,7 @@ function reset() {
                          unsupported: false, languageName: null,
                          final: null, seconds: 0, pending: [], pendingN: 0, sessionId: null,
                          decision: null });
-  $("approve").disabled = true; renderDecision(); $("reportlinks").hidden = true; $("scorenote").hidden = true;
+  $("approve").disabled = true; renderDecision(); $("reportlinks").hidden = true; $("scorenote").hidden = true; $("langnote").hidden = true;
   for (const id of ["elapsed", "window", "running", "threshold"]) $(id).textContent = "–";
   $("final").textContent = "";
   draw();

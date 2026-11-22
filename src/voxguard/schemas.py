@@ -7,8 +7,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-# "unsupported": speech clearly not in English or Hindi (VOXGUARD_LANGUAGE_CHECK); no verdict
-Label = Literal["real", "fake", "unsupported"]
+Label = Literal["real", "fake"]
 
 
 class HealthResponse(BaseModel):
@@ -61,8 +60,8 @@ class AnalyzeResponse(BaseModel):
     language_supported: bool | None = Field(
         default=None,
         description=(
-            "False when the speech is clearly not English or Hindi: label is then "
-            '"unsupported", flagged is false, and the call should be verified by a call-back.'
+            "False when the speech is clearly not English or Hindi: the verdict is unchanged "
+            "but less reliable for this language; confirm the call by a call-back."
         ),
     )
 

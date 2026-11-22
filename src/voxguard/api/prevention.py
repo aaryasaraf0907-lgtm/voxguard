@@ -35,9 +35,7 @@ class Decision:
 
     threshold: float
     flagged: bool
-    # "unsupported": the speech is clearly not English or Hindi (voxguard/language.py), so no
-    # real/fake verdict is given; never flagged, never safe (callers advise a call-back)
-    label: Literal["real", "fake", "unsupported"]
+    label: Literal["real", "fake"]
 
 
 def is_flagged(fake_score: float, threshold: float) -> bool:
@@ -81,12 +79,6 @@ def decide(
     threshold = effective_threshold(pred, settings, thresholds, channel)
     flagged = is_flagged(pred.fake_score, threshold)
     return Decision(threshold=threshold, flagged=flagged, label="fake" if flagged else "real")
-
-
-def unsupported_language(decision: Decision) -> Decision:
-    """The decision for speech in an unsupported language: no verdict, not flagged, so no alert
-    and no blocklist entry. The score and threshold are still stored for the record."""
-    return Decision(threshold=decision.threshold, flagged=False, label="unsupported")
 
 
 def normalize_caller_id(raw: str | None) -> str | None:

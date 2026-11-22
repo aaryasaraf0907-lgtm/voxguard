@@ -276,8 +276,6 @@ def create_app(
         except Exception:
             logger.exception("Detector failed")
             raise HTTPException(500, "Detector failed") from None
-        if language is not None and not language.supported:  # type: ignore[attr-defined]
-            decision = prevention.unsupported_language(decision)
 
         try:  # session, alert and blocklist update commit together or not at all
             row = prevention.store_session(

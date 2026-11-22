@@ -2,8 +2,9 @@
 
 The deepfake detector is trained and evaluated on English (ASVspoof), with Hindi as a small
 generalisation test (CLAUDE.md section 11). For speech that is clearly in another language its
-score means little, so the API reports "language not supported" instead of a real/fake verdict
-and advises a call-back (it never treats such a call as safe).
+score is less reliable, so the API adds a "language not supported yet" note and advises a
+call-back. The verdict itself is unchanged: a call over the threshold is still flagged, alerted
+and blocklisted.
 
 Language identification uses Whisper's language token (``openai/whisper-base`` by default, MIT
 licence): the probability of each language for the first decoder step, on up to the first 30 s.

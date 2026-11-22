@@ -60,19 +60,17 @@ def _flagged_before(db: Session, caller_id: str | None, this_session_flagged: bo
 
 def _call_risk(
     request: Request, db: Session, session_id: str
-) -> tuple[float | None, float, int | None, str | None, bool, bool, bool]:
-    """(score, threshold, live windows, caller_id, live, this session flagged, unsupported
-    language: no verdict, so the risk counts as unknown and the transfer is verified first)."""
+) -> tuple[float | None, float, int | None, str | None, bool, bool]:
+    """(score, threshold, live windows, caller_id, live, this session flagged)."""
     call = request.app.state.live_calls.get(session_id)
     if call is not None:
         windows = len(call.scores)
         return (call.running if windows else None, call.threshold, windows, call.caller_id, True,
-                False, call.unsupported)  # fmt: skip
+                False)  # fmt: skip
     row = db.get(SessionRow, session_id)
     if row is None:
         raise HTTPException(404, "Unknown session_id: no live call or stored session")
-    return (row.fake_score, row.threshold, None, row.caller_id, False, row.flagged,
-            row.label == "unsupported")  # fmt: skip
+    return row.fake_score, row.threshold, None, row.caller_id, False, row.flagged
 
 
 def _decision(db: Session, row: TransactionRow) -> TransactionDecision:
@@ -110,18 +108,13 @@ def check_transaction(
     cfg: Annotated[Settings, Depends(get_settings)],
 ) -> TransactionDecision:
     begin_write(db)  # serialised with every other writer: the evidence chain stays in order
-    score, threshold, windows, caller, live, flagged, unsupported = _call_risk(
-        request, db, body.session_id
-    )
+    score, threshold, windows, caller, live, flagged = _call_risk(request, db, body.session_id)
     base = policy.tier_for(score if score is not None else 0.0, threshold, windows)
-    if unsupported:  # no verdict on this language: never "low", always verified
-        base = "unknown"
     before = _flagged_before(db, caller, flagged)
     tier = policy.escalate(base, before)
     action, high_value = policy.decide(tier, body.amount_inr, cfg.high_value_inr,
                                        dict(cfg.transaction_policy))  # fmt: skip
-    why_unknown = "unsupported_language" if unsupported else "not_enough_audio"
-    reasons = [f"risk_{base}"] + ([why_unknown] if base == "unknown" else [])
+    reasons = [f"risk_{base}"] + (["not_enough_audio"] if base == "unknown" else [])
     reasons += (["caller_flagged_before"] if before else []) + (
         ["high_value"] if high_value else []
     )

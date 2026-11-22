@@ -33,10 +33,7 @@ def _transaction_keys() -> set[str]:
     keys |= {f"tx_method_{x}" for x in policy.METHODS} | {
         f"tx_reason_risk_{x}" for x in policy.TIERS
     }
-    keys |= {
-        f"tx_reason_{x}"
-        for x in ("not_enough_audio", "unsupported_language", "caller_flagged_before", "high_value")
-    }
+    keys |= {f"tx_reason_{x}" for x in ("not_enough_audio", "caller_flagged_before", "high_value")}
     keys |= {f"report_kind_{x}" for x in ("session", "windows", "decision", "event")}
     return keys
 
@@ -112,13 +109,13 @@ def test_every_literal_key_used_by_the_ui_exists() -> None:
 
 def test_dynamic_keys_used_by_the_ui_exist() -> None:
     dynamic = {f"err_{k}" for k in get_args(ErrorKind)}
-    dynamic |= {"label_real", "label_fake", "label_unsupported", "source_upload", "source_record"}
+    dynamic |= {"label_real", "label_fake", "source_upload", "source_record"}
     assert dynamic <= set(EN)
 
 
 def test_no_unused_translation_keys() -> None:
     dynamic = {f"err_{k}" for k in get_args(ErrorKind)}
-    dynamic |= {"label_real", "label_fake", "label_unsupported", "source_upload", "source_record"}
+    dynamic |= {"label_real", "label_fake", "source_upload", "source_record"}
     constants = {
         n.value
         for n in ast.walk(ast.parse(APP.read_text()))

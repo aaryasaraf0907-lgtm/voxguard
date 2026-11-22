@@ -353,7 +353,6 @@ async def _score_due(
     except (codec_sim.CodecUnavailableError, codec_sim.CodecSimulationError):
         raise StreamError("Codec simulation failed") from None
     alert = call.add(pred.fake_score, pred.latency_ms, pred.model_version, t_s)
-    alert = alert and not call.unsupported  # no verdict for an unsupported language
     await ws.send_json(
         {
             "type": "score",
@@ -445,8 +444,6 @@ async def _finish(
     decision = prevention.decide(clip, cfg, state.thresholds, channel)  # type: ignore[attr-defined]
     if not call.language_checked:  # a short call: check what there is
         await _check_language(state.language_checker, call, cutter.sample_rate)  # type: ignore[attr-defined]
-    if call.unsupported:
-        decision = prevention.unsupported_language(decision)
 
     def store() -> str | None:
         """The evidence chain head after storing, or None if the call could not be stored."""

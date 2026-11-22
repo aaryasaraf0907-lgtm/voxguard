@@ -271,15 +271,14 @@ simulation; up to the first 30 s of an upload, the first 6 s of a live call, whi
 earliest possible live alert at 6.25 s).
 
 - **Unsupported** only when English + Hindi + Urdu together get less than 10 % (spoken Hindi and
-  Urdu are nearly the same). Then `label` is `"unsupported"`, `flagged` is false (no alert, no
-  blocklist entry), live alerts are suppressed, the monitor and the report say "Language not
-  supported yet (detected: X)" and advise a call-back, and a transfer check counts the call as
-  `unknown` risk (reason `unsupported_language`), so it is verified first: switching language
-  never makes a call look safe. The score is still returned and stored.
+  Urdu are nearly the same). Then `language_supported` is false and the app, the monitor and the
+  incident report add a note, "Language not supported yet (detected: X)": the result is less
+  reliable for this language, confirm by a call-back. **The verdict is unchanged:** a call over
+  the threshold is still flagged, alerted and blocklisted (a cloned voice must not escape by
+  switching language), and transfer checks are unchanged.
 - **Anything less clear** (also clips under 2 s, or a failed check) keeps the normal verdict.
 - **Stored** in its own table, `session_languages` (code, supported share, supported), so
-  existing databases gain it at startup without a migration. The session's `label` is in the
-  evidence chain; the language row is not.
+  existing databases gain it at startup without a migration (not part of the evidence chain).
 - **Checked privately (22 Nov)** with whisper-base: 1 of 320 genuine English clips
   (Indian-accented, ASVspoof 2019, In-the-Wild) fell under the cut; 28 of 30 synthetic Tamil,
   Marathi, Bengali, French and Spanish sentences (MMS-TTS) did, and no Hindi one. Phone-band audio
