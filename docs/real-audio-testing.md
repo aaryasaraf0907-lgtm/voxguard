@@ -248,8 +248,9 @@ model's operating point is chosen on dev.
 
 ### Run 2 (21 Nov 2026, the final demo model, alert at 1.5 x, #103's scoring)
 
-Aarya confirmed on 21 Nov that the demo model stays (SSL-AASIST codec-aug, epoch 11, phone
-threshold 0.012676). Same command, seed and calls as run 1, against `dev` @ `5014cfc`; copied
+The demo model was decided on 21 Nov from the measured comparison: it stays SSL-AASIST
+codec-aug, epoch 11, phone threshold 0.012676 (the realistic fine-tune missed 26 % of phone
+fakes against 16 %). Same command, seed and calls as run 1, against `dev` @ `5014cfc`; copied
 from the generated report (kept privately):
 
 | Codec | Kind | Calls | Live alerts (high) | First window alone over | Flagged verdicts | Fake: time to alert | Mixed: alerts before the switch | Mixed: after the switch, median / max | Score arrival, median |
