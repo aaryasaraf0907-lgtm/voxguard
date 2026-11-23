@@ -353,7 +353,7 @@ The dev and eval gains (missed fakes 0.25 % to 0.16 % on dev, A11 29.9 % to 15.4
 to the clone test, the same-speaker check this rule was written for. The submission ships p3, as
 planned. Round 3 (full fine-tune, `fix-r3` on Kaggle): see "Round 3 results" below.
 
-## Round 3 results (23 Nov, 10:46-12:20 UTC; reported late, after the final gate): **not to adopt**
+## Round 3 results (23 Nov, 10:46-11:05 UTC; reported late, after the final gate): **not to adopt**
 
 Both Kaggle runs used the same script, data and budget (10.5 h on a T4, as many epochs as fit);
 the only code difference is `fix-r3` (eval mode) and a GPU-memory log line.
