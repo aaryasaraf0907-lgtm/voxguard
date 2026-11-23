@@ -264,6 +264,34 @@ from the first run. (The first run's scorer also printed its In-the-Wild preview
 not used for this fix, which follows from the train/eval check above.) Its epochs are scored at the
 final gate if they arrive in time, otherwise reported later in this PR, marked as late.
 
+## Final gate (23 Nov, 02:40 UTC; all 23 completed runs, each as A, B and C: 69 candidates)
+
+Produced by `gate_report.py <every completed run> --report` (private output
+`runs/gate-report-final.json`). **Data sets:** "dev" is the **dev gate part** (`splits/la_dev_gate.txt`:
+8,548 of the 24,844 LA dev clips, scored under G.711 µ-law, A-law and Opus, 25,644 scores), not the
+full dev set, so p3's numbers here differ from `docs/results.md` (its EER threshold is 0.01485 here,
+0.012676 on the full dev set). "ITW gate" is the In-the-Wild gate part (`splits/itw_gate.txt`: 27
+speakers, 3,000 clips); its false alarms are counted at each candidate's own dev threshold.
+
+| Candidate | Dev EER | Dev missed fakes at 1 % FA | Dev threshold (x p3) | ITW gate EER | ITW gate false alarms | Gate |
+|---|---|---|---|---|---|---|
+| p3 | 0.467 % | 0.25 % | 0.01485 (1x) | 15.27 % | 14.80 % | (reference) |
+| **C:fix-2-top-init-l2-gentle** | **0.367 %** | **0.16 %** | 0.01932 (1.30x) | 14.60 % | 11.47 % | **pass** |
+| C:top-mu0.5 | 0.478 % | 0.21 % | 0.01847 (1.24x) | 15.20 % | 12.40 % | pass |
+| B:top-mu0.5 | 0.489 % | 0.24 % | 0.02136 (1.44x) | 15.07 % | 11.60 % | pass |
+| A:fix-2-top-init-l2-gentle | 0.301 % | 0.14 % | 0.03150 (2.12x) | 14.53 % | 10.00 % | fail (threshold) |
+| A:fix-1-top-init-l2 | 0.350 % | 0.12 % | 0.04838 (3.26x) | 15.53 % | 9.40 % | fail (threshold, ITW EER) |
+
+The other 63 candidates fail at least one check. Three pass; the choice rule picks C:fix-2 (fewest
+missed fakes).
+
+**Report part for C:fix-2 (never used to choose).** Eval report part (`splits/la_eval_report.txt`:
+7,200 LA eval clips under the same three codecs): EER 2.42 % (p3) vs 2.30 %, missed fakes at 1 % FA
+10.1 % vs 7.6 %; watched attacks' missed fakes at 1 % FA: A10 64.0 vs 59.8, A11 29.9 vs 15.4, A17
+0.9 vs 0.8, A18 12.7 vs 12.6 (so the attack stop rule does not trigger). In-the-Wild report part
+(`splits/itw_report.txt`: the other 27 speakers, 3,000 clips): EER 15.47 % vs 14.87 %; at each
+model's own dev threshold, false alarms 10.0 % vs 8.4 % and missed fakes 21.5 % vs 23.0 %.
+
 ## Test-only checks (23 Nov 02:48 UTC, commit dc9dcee: after the final gate, before any test-only result)
 
 **Chosen candidate.** The final gate (all completed runs, unchanged checks) passed three
