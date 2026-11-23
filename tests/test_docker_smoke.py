@@ -4,6 +4,7 @@ the real containers. Opt-in (they build images and take minutes):
     VOXGUARD_DOCKER_TESTS=1 uv run pytest tests/test_docker_smoke.py -v
 """
 
+import base64
 import io
 import json
 import os
@@ -46,15 +47,19 @@ def _get(url: str) -> tuple[int, bytes]:
 
 
 def _post_wav(url: str, **form: str) -> tuple[int, dict]:
+    return _post_file(url, "a.wav", _wav(), **form)
+
+
+def _post_file(url: str, filename: str, data: bytes, **form: str) -> tuple[int, dict]:
     boundary = uuid.uuid4().hex
     parts = [
         f'--{boundary}\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode()
         for k, v in form.items()
     ]
     parts.append(
-        f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="a.wav"\r\n'
-        "Content-Type: audio/wav\r\n\r\n".encode()
-        + _wav()
+        f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="{filename}"\r\n'
+        "Content-Type: application/octet-stream\r\n\r\n".encode()
+        + data
         + b"\r\n"
     )
     body = b"".join(parts) + f"--{boundary}--\r\n".encode()
@@ -112,7 +117,9 @@ def test_compose_config_is_valid(compose: Compose) -> None:
         cwd=ROOT, env=env, capture_output=True, text=True, check=True,
     ).stdout  # fmt: skip
     api_env = json.loads(out)["services"]["api"]["environment"]
-    assert api_env["VOXGUARD_DETECTOR"] == "stub" and api_env["VOXGUARD_THRESHOLD"] == "0.5"
+    assert api_env["VOXGUARD_DETECTOR"] == "stub" and api_env["VOXGUARD_THRESHOLD_MODE"] == "eer"
+    # empty values stay empty (compose keeps an inline comment after an empty value as the value)
+    assert api_env["VOXGUARD_THRESHOLD"] == "" and api_env["VOXGUARD_MODEL_REPO"] == ""
     assert api_env["VOXGUARD_DB_URL"] == "sqlite:////data/voxguard.db"
 
 
@@ -134,6 +141,24 @@ def test_ui_container_reaches_api_by_service_name(compose: Compose) -> None:
     )
     out = compose("exec", "-T", "ui", "python", "-c", code).stdout.split()
     assert out == ["http://api:8000", "stub"]
+
+
+def test_ui_client_phone_line_through_containers(compose: Compose) -> None:
+    """The UI's own client, inside the UI container, asks the API for a simulated analysis."""
+    code = (  # the UI image has no soundfile: build the WAV with the standard library
+        "import io, wave, numpy as np; "
+        "from voxguard.ui.api_client import VoxGuardClient; "
+        "b = io.BytesIO(); w = wave.open(b, 'wb'); w.setnchannels(1); w.setsampwidth(2); "
+        "w.setframerate(16000); "
+        "w.writeframes((8000 * np.sin(np.arange(16000) / 3)).astype('<i2').tobytes()); "
+        "w.close(); c = VoxGuardClient(); "
+        "print(c.analyze(b.getvalue(), simulate_codec=True).codec_applied, "
+        "c.analyze(b.getvalue()).codec_applied)"
+    )
+    r = compose("exec", "-T", "ui", "python", "-c", code, check=False)
+    assert r.returncode == 0, r.stderr[-2000:]
+    out = r.stdout.split()
+    assert out == ["g711_mulaw", "None"]
 
 
 def test_containers_run_as_non_root(compose: Compose) -> None:
@@ -249,7 +274,7 @@ def test_space_exits_early_when_the_api_cannot_start(space: tuple[str, str]) -> 
     out = r.stdout + r.stderr
     assert r.returncode != 0 and elapsed < 60, (elapsed, out[-2000:])
     assert "VOXGUARD_SIMULATE_CODEC must be one of" in out
-    assert "VoxGuard API exited during startup" in out
+    assert "LineTrue API exited during startup" in out
 
 
 def test_space_start_timeout_is_validated(space: tuple[str, str]) -> None:
@@ -260,3 +285,89 @@ def test_space_start_timeout_is_validated(space: tuple[str, str]) -> None:
     )  # fmt: skip
     assert r.returncode != 0
     assert "VOXGUARD_API_START_TIMEOUT must be a number" in r.stdout + r.stderr
+
+
+# --- #73 follow-up: the ffmpeg decoder fallback against the API image's own ffmpeg ------------
+
+# Runs inside the API container as its user (uid 1000), with the image's ffmpeg (Debian 12's
+# 5.1.x when written). Generates an M4A with the moov index at the end, decodes it through
+# decode_audio, and records the temp dir and file modes at the moment each process starts.
+DECODER_CHECK = r"""
+import base64, json, os, shutil, subprocess, tempfile
+from voxguard.api import audio_ffmpeg
+from voxguard.api.audio import decode_audio
+
+real_popen, modes, dirs = subprocess.Popen, [], []
+def popen(cmd, **kw):
+    url = next((c for c in cmd if c.startswith("file:")), None)
+    if url:
+        path = url.removeprefix("file:")
+        d = os.path.dirname(path)
+        dirs.append(d)
+        modes.append([oct(os.stat(d).st_mode & 0o777), oct(os.stat(path).st_mode & 0o777)])
+    return real_popen(cmd, **kw)
+audio_ffmpeg.subprocess.Popen = popen
+
+work = tempfile.mkdtemp(prefix="smoke-")
+m4a = os.path.join(work, "t.m4a")
+subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-y", "-f", "lavfi", "-i",
+                "sine=frequency=440:duration=3:sample_rate=44100", "-c:a", "aac", m4a], check=True)
+data = open(m4a, "rb").read()
+shutil.rmtree(work)
+boxes, i = [], 0
+while i + 8 <= len(data):
+    size = int.from_bytes(data[i:i + 4], "big")
+    boxes.append(data[i + 4:i + 8].decode("latin-1"))
+    if size < 8:
+        break
+    i += size
+x, sr = decode_audio(data, 60)
+statuses = {}
+for name, blob in {"playlist": b"#EXTM3U\nfile:/etc/passwd\n", "too_long": data}.items():
+    try:
+        decode_audio(blob, 1.0 if name == "too_long" else 60)
+    except Exception as exc:
+        statuses[name] = exc.status_code
+leftovers = [n for n in os.listdir(tempfile.gettempdir()) if n.startswith("voxguard-decode-")]
+def version(tool):
+    return subprocess.run([tool, "-version"], capture_output=True, text=True).stdout.splitlines()[0]
+print(json.dumps({
+    "ffmpeg": version("ffmpeg"), "ffprobe": version("ffprobe"),
+    "uid": os.getuid(), "tmp": tempfile.gettempdir(), "boxes": boxes,
+    "sr": sr, "seconds": len(x) / sr, "peak": float(abs(x).max()),
+    "modes": modes, "dirs_left": [d for d in dirs if os.path.exists(d)], "leftovers": leftovers,
+    "statuses": statuses, "m4a_b64": base64.b64encode(data).decode(),
+}))
+"""
+
+
+def _decoder_report(compose: Compose) -> dict:
+    out = compose("exec", "-T", "api", "python", "-c", DECODER_CHECK).stdout
+    return json.loads(out.strip().splitlines()[-1])
+
+
+def test_decoder_fallback_with_the_image_ffmpeg(compose: Compose) -> None:
+    report = _decoder_report(compose)
+    print({k: v for k, v in report.items() if k != "m4a_b64"})
+    assert report["uid"] == 1000  # the image's non-root user
+    assert report["boxes"].index("mdat") < report["boxes"].index("moov")  # index at the end
+    assert report["sr"] == 16_000 and abs(report["seconds"] - 3.0) <= 0.05
+    assert report["peak"] > 0.1  # the tone, not silence
+    # probe + decode of the M4A, then the over-length case's probe (it stops before decoding)
+    assert report["modes"] == [["0o700", "0o600"]] * 3
+    assert report["dirs_left"] == [] and report["leftovers"] == []  # cleaned up
+    assert report["statuses"] == {"playlist": 415, "too_long": 422}
+
+
+def test_m4a_through_the_api_container(compose: Compose) -> None:
+    m4a = base64.b64decode(_decoder_report(compose)["m4a_b64"])
+    url = f"http://127.0.0.1:{API_PORT}/v1/analyze"
+    for form in ({}, {"simulate_codec": "true"}):  # decoder alone, then decoder + phone line
+        status, body = _post_file(url, "rec.m4a", m4a, **form)
+        assert status == 200, body
+        assert body["codec_applied"] == ("g711_mulaw" if form else None)
+    code = (
+        "import os, tempfile; d = tempfile.gettempdir();"
+        "print([n for n in os.listdir(d) if n.startswith('voxguard-decode-')])"
+    )
+    assert compose("exec", "-T", "api", "python", "-c", code).stdout.strip() == "[]"

@@ -5,15 +5,21 @@ from __future__ import annotations
 import math
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Literal
 
+from sqlalchemy import func
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from voxguard.api.db import AlertRow, BlocklistRow, SessionRow
+from voxguard.api import evidence
+from voxguard.api.db import AlertRow, BlocklistRow, CallWindowRow, SessionRow, begin_write
 from voxguard.api.deps import Settings
+from voxguard.api.thresholds import ThresholdSet
 from voxguard.inference import Prediction
+
+Channel = Literal["clean", "phone"]
 
 
 @dataclass(frozen=True)
@@ -32,15 +38,38 @@ def is_flagged(fake_score: float, threshold: float) -> bool:
     return fake_score >= threshold
 
 
-def effective_threshold(pred: Prediction, settings: Settings) -> float:
+def channel_for(known_clean: bool, codec_applied: str | None) -> Channel:
+    """Which threshold applies (agreed with Aarya): phone-line audio and audio of unknown
+    origin use the phone threshold; only audio known to be clean uses the clean one."""
+    return "clean" if known_clean and codec_applied is None else "phone"
+
+
+def effective_threshold(
+    pred: Prediction,
+    settings: Settings,
+    thresholds: ThresholdSet | None = None,
+    channel: Channel = "phone",
+) -> float:
+    """Precedence: low_far mode's explicit threshold, then an explicit VOXGUARD_THRESHOLD,
+    then the checkpoint's thresholds.json (one clean and one phone value; per-codec values
+    are never used here), then the detector's own threshold (legacy behaviour)."""
     if settings.threshold_mode == "low_far":
         assert settings.low_far_threshold is not None  # enforced by Settings
         return settings.low_far_threshold
+    if settings.threshold_override is not None:
+        return settings.threshold_override
+    if thresholds is not None:
+        return thresholds.clean if channel == "clean" else thresholds.phone
     return pred.threshold
 
 
-def decide(pred: Prediction, settings: Settings) -> Decision:
-    threshold = effective_threshold(pred, settings)
+def decide(
+    pred: Prediction,
+    settings: Settings,
+    thresholds: ThresholdSet | None = None,
+    channel: Channel = "phone",
+) -> Decision:
+    threshold = effective_threshold(pred, settings, thresholds, channel)
     flagged = is_flagged(pred.fake_score, threshold)
     return Decision(threshold=threshold, flagged=flagged, label="fake" if flagged else "real")
 
@@ -53,7 +82,10 @@ def normalize_caller_id(raw: str | None) -> str | None:
 
 
 def upsert_blocklist(db: Session, caller_id: str, seen_at: datetime) -> None:
-    """Atomic insert-or-increment, safe under concurrent requests for the same caller."""
+    """Atomic insert-or-increment, safe under concurrent requests for the same caller.
+
+    ``last_seen`` only moves forward: timestamps are taken before the commit, so two concurrent
+    requests can commit in the opposite order to their timestamps."""
     stmt = sqlite_insert(BlocklistRow).values(
         caller_id=caller_id, hit_count=1, first_seen=seen_at, last_seen=seen_at
     )
@@ -62,10 +94,60 @@ def upsert_blocklist(db: Session, caller_id: str, seen_at: datetime) -> None:
             index_elements=[BlocklistRow.caller_id],
             set_={
                 "hit_count": BlocklistRow.hit_count + 1,
-                "last_seen": stmt.excluded.last_seen,
+                # two-argument max() is SQLite's scalar maximum
+                "last_seen": func.max(BlocklistRow.last_seen, stmt.excluded.last_seen),
             },
         )
     )
+
+
+def store_session(
+    db: Session,
+    session_id: str,
+    caller_id: str | None,
+    pred: Prediction,
+    decision: Decision,
+    codec_applied: str | None,
+    windows: list[tuple[float, float, float]] | None = None,
+) -> SessionRow:
+    """Store one analysed session, plus its alert and blocklist update when flagged, and a live
+    call's per-window scores (``windows``: t_s, window score, running average), in one
+    transaction. The timestamp is taken under SQLite's write lock, so it follows commit order.
+    Raises SQLAlchemyError after rolling back; the caller maps it to its own error."""
+    try:
+        begin_write(db)
+        row = SessionRow(
+            session_id=session_id,
+            created_at=datetime.now(UTC),
+            caller_id=normalize_caller_id(caller_id),
+            label=decision.label,
+            fake_score=pred.fake_score,
+            threshold=decision.threshold,
+            flagged=decision.flagged,
+            codec_applied=codec_applied,
+            model_version=pred.model_version,
+            latency_ms=pred.latency_ms,
+        )
+        db.add(row)
+        db.flush()  # the session row must exist before the rows that reference it
+        evidence.append(db, "session", session_id, session_id, evidence.session_payload(row))
+        if windows:
+            window_rows = [
+                CallWindowRow(session_id=session_id, t_s=t, window_score=w, running_score=r)
+                for t, w, r in windows
+            ]
+            db.add_all(window_rows)
+            db.flush()
+            evidence.append(
+                db, "windows", session_id, session_id, evidence.windows_payload(window_rows)
+            )
+        if row.flagged:
+            record_flag(db, row)
+        db.commit()
+    except SQLAlchemyError:
+        db.rollback()
+        raise
+    return row
 
 
 def record_flag(db: Session, session_row: SessionRow) -> None:

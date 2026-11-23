@@ -12,7 +12,11 @@ import logging
 import os
 import time
 
-from voxguard.inference import Detector, get_detector
+import numpy as np
+
+from voxguard.api import thresholds as thresholds_mod
+from voxguard.api.thresholds import ThresholdsError, ThresholdSet
+from voxguard.inference import DEFAULT_THRESHOLD, NUM_SAMPLES, TARGET_SR, Detector, get_detector
 
 logger = logging.getLogger(__name__)
 
@@ -84,4 +88,63 @@ def load_detector(device: str = "cpu") -> Detector:
         getattr(detector, "device", device),
         time.perf_counter() - t0,
     )
+    _warm_up(detector)
     return detector
+
+
+def _warm_up(detector: Detector) -> None:
+    """One inference on 4 s of silence (one 16 kHz mono window, a batch of one) before serving.
+
+    It absorbs CUDA / cuDNN initialisation (about 1 s on a laptop GPU), which the first request
+    would otherwise report as detector latency. It warms only that path: the first clip at
+    another sample rate (torch resampling) or longer than about 5 s (several windows per batch)
+    can still be somewhat slower once; stereo is averaged to mono in numpy and needs no warm-up.
+    """
+    t0 = time.perf_counter()
+    try:
+        detector.predict(np.zeros(NUM_SAMPLES, dtype=np.float32), TARGET_SR)
+    except Exception as exc:  # fail at startup rather than on the first request
+        raise RuntimeError(f"the real detector failed its warm-up inference: {exc}") from exc
+    logger.info("warm-up inference took %.0f ms", (time.perf_counter() - t0) * 1000)
+
+
+def load_model_thresholds(detector: Detector) -> ThresholdSet | None:
+    """The real detector's thresholds.json (next to its checkpoint), or None.
+
+    The stub has none. A missing file keeps the legacy single threshold; an unusable one
+    (malformed, out of range, for another model_version) stops startup.
+    """
+    if os.environ.get("VOXGUARD_DETECTOR", "stub").strip().lower() != "real":
+        return None
+    repo = os.environ.get("VOXGUARD_MODEL_REPO", "").strip()
+    try:
+        found = thresholds_mod.load_thresholds(repo, detector.model_version)
+    except ThresholdsError as exc:
+        raise RuntimeError(f"unusable thresholds for VOXGUARD_MODEL_REPO={repo!r}: {exc}") from exc
+    except Exception as exc:  # hub/network errors while looking for thresholds.json
+        raise RuntimeError(
+            f"could not fetch {thresholds_mod.FILENAME} (VOXGUARD_MODEL_REPO={repo!r}): "
+            f"{type(exc).__name__}: {exc}"
+        ) from exc
+    if found is None:
+        logger.warning("%s has no %s; using one threshold", repo, thresholds_mod.FILENAME)
+    else:
+        logger.info(
+            "thresholds for %s (selected on %s): clean %.4g, phone %.4g",
+            found.model_version, found.selected_on, found.clean, found.phone,
+        )  # fmt: skip
+    return found
+
+
+def warn_if_default_threshold(
+    detector: Detector, thresholds: ThresholdSet | None, threshold_mode: str, override: float | None
+) -> None:
+    """Warn when the real detector would decide at the untuned 0.5 default."""
+    real = os.environ.get("VOXGUARD_DETECTOR", "stub").strip().lower() == "real"
+    if real and threshold_mode == "eer" and override is None and thresholds is None:
+        logger.warning(
+            "VOXGUARD_THRESHOLD is the default %.2f, which is not an operating point for any "
+            "trained checkpoint, and the checkpoint has no %s. Upload its %s, set "
+            "VOXGUARD_THRESHOLD to its eer_threshold, or use VOXGUARD_THRESHOLD_MODE=low_far.",
+            DEFAULT_THRESHOLD, thresholds_mod.FILENAME, thresholds_mod.FILENAME,
+        )  # fmt: skip

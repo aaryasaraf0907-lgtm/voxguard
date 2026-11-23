@@ -165,3 +165,279 @@ def test_end_to_end_with_tiny_checkpoints(tmp_path: Path) -> None:
     main(["--config", str(cfg_file), "--render-only"])
     md = (tmp_path / "results.md").read_text()
     assert "## rawnet2" in md and "## missing" in md
+
+
+# --- dev-set thresholds (thresholds.json) ---------------------------------------------------
+
+
+def _scores(n: int, shift: float, seed: int) -> tuple[np.ndarray, np.ndarray]:
+    rng = np.random.default_rng(seed)
+    labels = np.r_[np.zeros(n), np.ones(n)].astype(int)
+    scores = np.clip(np.r_[rng.normal(0.3, 0.1, n), rng.normal(0.3 + shift, 0.1, n)], 0, 1)
+    return scores, labels
+
+
+def test_low_far_threshold_misses_at_most_the_target() -> None:
+    from voxguard.evaluate import low_far_threshold
+
+    scores, labels = _scores(1000, 0.4, 0)
+    thr = low_far_threshold(scores, labels, 0.01)
+    fakes = scores[labels == 1]
+    assert np.mean(fakes < thr) <= 0.01
+    assert np.mean(fakes < thr) > 0.005  # and is not needlessly low
+    with pytest.raises(ValueError):
+        low_far_threshold(scores[labels == 0], labels[labels == 0], 0.01)
+
+
+def test_select_thresholds_round_trips_through_the_api_parser() -> None:
+    from voxguard.api.thresholds import parse_thresholds
+    from voxguard.evaluate import select_thresholds
+    from voxguard.metrics import compute_eer
+
+    clean = _scores(500, 0.5, 1)
+    s_g, y_g = _scores(500, 0.2, 2)  # phone audio: classes overlap more, scores sit higher
+    s_o, y_o = _scores(500, 0.3, 3)
+    s_gsm, y_gsm = _scores(500, -0.2, 4)  # held-out codec with inverted scores
+    phone = (
+        np.r_[s_g, s_o, s_gsm],
+        np.r_[y_g, y_o, y_gsm],
+        ["g711_mulaw"] * 1000 + ["opus"] * 1000 + ["gsm"] * 1000,
+    )
+    version = "ssl_aasist/ssl-aasist-codec-aug-v2:best.pt:epoch7"
+    data = select_thresholds(clean, phone, version)
+
+    assert data["selected_on"] == "dev" and data["excluded_codecs"] == ["gsm"]
+    assert set(data["per_codec"]) == {"g711_mulaw", "opus"}  # GSM never picks a threshold
+    assert data["phone"] == pytest.approx(compute_eer(np.r_[s_g, s_o], np.r_[y_g, y_o])[1])
+    assert data["clean"] == pytest.approx(compute_eer(*clean)[1])
+    assert data["low_far"]["phone"] <= data["phone"]  # fewer missed fakes = lower threshold
+    assert data["low_far_max_missed"] == 0.001
+    assert data["dev_clips"] == {"clean": 1000, "phone": 2000}
+    ts = parse_thresholds(
+        json.loads(json.dumps(data)), "ssl_aasist/ssl-aasist-codec-aug-v2:hub:epoch7"
+    )
+    assert ts.phone == data["phone"] and ts.per_codec == data["per_codec"]
+
+
+def test_select_thresholds_needs_phone_clips_beyond_gsm() -> None:
+    from voxguard.evaluate import select_thresholds
+
+    clean = _scores(50, 0.5, 5)
+    s, y = _scores(50, 0.3, 6)
+    with pytest.raises(ValueError, match="held-out"):
+        select_thresholds(clean, (s, y, ["gsm"] * 100), "m:s:epoch0")
+
+
+def test_operating_point_rates() -> None:
+    from voxguard.evaluate import operating_point
+
+    scores = np.array([0.1, 0.6, 0.2, 0.9, 0.4, 0.8])
+    labels = np.array([0, 0, 0, 1, 1, 1])
+    op = operating_point(scores, labels, 0.5)  # one real called fake, one fake missed
+    assert op["fpr"] == pytest.approx(1 / 3) and op["fnr"] == pytest.approx(1 / 3)
+    assert op["hter"] == pytest.approx(1 / 3) and op["accuracy"] == pytest.approx(4 / 6)
+
+
+def test_load_dev_thresholds(tmp_path: Path) -> None:
+    from voxguard.evaluate import load_dev_thresholds
+
+    ckpt = tmp_path / "best.pt"
+    assert load_dev_thresholds(ckpt) is None  # no file: the table is simply left out
+    (tmp_path / "thresholds.json").write_text(json.dumps({"selected_on": "eval", "clean": 0.1}))
+    with pytest.raises(ValueError, match="dev"):
+        load_dev_thresholds(ckpt)  # never report thresholds picked on the test set
+
+
+def test_render_operating_point_table() -> None:
+    fam = _fake_family()
+    assert "Operating points" not in render_markdown({"rawnet2": fam})  # optional section
+
+    def op(hter: float) -> dict:
+        return {"threshold": 0.1, "fpr": hter, "fnr": hter, "hter": hter, "accuracy": 1 - hter}
+
+    fam["models"] = {"clean": {"dev_thresholds": {"clean": 0.5, "phone": 0.0123}}}
+    fam["matrix"]["clean"]["clean"]["at_dev_thresholds"] = {"clean": op(0.02), "phone": op(0.3)}
+    fam["matrix"]["clean"]["degraded"]["at_dev_thresholds"] = {"clean": op(0.4), "phone": op(0.1)}
+    md = render_markdown({"rawnet2": fam})
+    assert "### Operating points chosen on dev: eval HTER (%)" in md
+    assert "| Clean only | 0.5 | 0.0123 | 2.00 | 10.00 | 40.00 | not run |" in md
+    assert "| Codec-augmented | not run | not run | not run | not run | not run | not run |" in md
+
+
+def test_low_far_default_stays_below_the_eer_threshold_for_a_sharp_model() -> None:
+    """A model missing well under 1% of dev fakes at EER: a 1% target would put low_far *above*
+    the EER threshold (15 Nov, SSL-AASIST codec-aug); the 0.1% default keeps it below."""
+    from voxguard.evaluate import low_far_threshold, select_thresholds
+
+    rng = np.random.default_rng(7)
+    real = rng.normal(0.0075, 0.001, 5000)
+    fake = np.r_[rng.normal(0.9, 0.05, 4950), rng.normal(0.011, 0.001, 50)]  # 1% hard fakes
+    s, y = np.r_[real, fake], np.r_[np.zeros(5000), np.ones(5000)].astype(int)
+    data = select_thresholds((s, y), (s, y, ["opus"] * len(s)), "m:s:epoch0")
+    assert low_far_threshold(s, y, 0.01) > data["phone"]  # the old target defeats the mode
+    assert data["low_far"]["phone"] < data["phone"]
+
+
+def test_render_low_far_table() -> None:
+    fam = _fake_family()
+    assert "low_far operating point" not in render_markdown({"rawnet2": fam})  # optional
+
+    def op(fpr: float, fnr: float) -> dict:
+        return {"threshold": 0.01, "fpr": fpr, "fnr": fnr, "hter": (fpr + fnr) / 2,
+                "accuracy": 0.9}  # fmt: skip
+
+    fam["models"] = {"codec_aug": {"dev_thresholds": {
+        "clean": 0.0138, "phone": 0.0127, "low_far": {"clean": 0.01, "phone": 0.0093},
+        "low_far_max_missed": 0.001,
+    }}}  # fmt: skip
+    fam["matrix"]["codec_aug"]["clean"]["at_dev_thresholds"] = {
+        "clean": op(0, 0),
+        "phone": op(0, 0),
+        "low_far": op(0.0131, 0.0147),
+    }
+    fam["matrix"]["codec_aug"]["degraded"]["at_dev_thresholds"] = {
+        "clean": op(0, 0),
+        "phone": op(0, 0),
+        "low_far": op(0.0291, 0.0126),
+    }
+    md = render_markdown({"rawnet2": fam})
+    assert "### low_far operating point chosen on dev" in md
+    assert "| Codec-augmented | 0.0093 | 0.1 | 1.31 / 1.47 | 2.91 / 1.26 | not run |" in md
+    assert "| Clean only | not run | not run | not run | not run | not run |" in md
+
+
+def test_evaluate_family_reports_eval_rates_at_the_dev_low_far_threshold(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import sys
+    from types import SimpleNamespace
+
+    from voxguard import evaluate
+
+    # voxguard.train imports torch, which CI's lint-test job does not install
+    monkeypatch.setitem(sys.modules, "voxguard.train", SimpleNamespace(pick_device=lambda d: d))
+    ckpt = tmp_path / "best.pt"
+    ckpt.write_bytes(b"")
+    thr = {"selected_on": "dev", "clean": 0.5, "phone": 0.6, "low_far": {"phone": 0.25},
+           "low_far_max_missed": 0.001}  # fmt: skip
+    (tmp_path / "thresholds.json").write_text(json.dumps(thr))
+    scores, labels = np.array([0.1, 0.3, 0.2, 0.4, 0.7, 0.9]), np.array([0, 0, 0, 1, 1, 1])
+    monkeypatch.setattr(evaluate, "load_model", lambda p, d: (object(), {"name": "m", "epoch": 0}))
+    monkeypatch.setattr(evaluate, "score_manifests", lambda *a, **k: (scores, labels, ["opus"] * 6))
+    cfg = evaluate.EvalConfig(
+        test_sets={"clean": ["c.csv"], "degraded": ["d.csv"]},
+        device="cpu",
+        latency_devices=[],
+        out_dir=str(tmp_path / "results"),
+    )
+    res = evaluate.evaluate_family("m", {"clean": str(ckpt)}, cfg)
+    low_far = res["matrix"]["clean"]["degraded"]["at_dev_thresholds"]["low_far"]
+    assert low_far["threshold"] == 0.25
+    assert (
+        low_far["fpr"] == pytest.approx(1 / 3) and low_far["fnr"] == 0
+    )  # 0.3 flagged, none missed
+    assert "low_far operating point" in evaluate.render_markdown({"m": res})
+
+
+def test_render_out_of_domain_table() -> None:
+    fam = _fake_family()
+    assert "Out-of-domain" not in render_markdown({"rawnet2": fam})  # optional
+
+    pooled = {"eer": 0.1384, "n": 31779, "accuracy_at_eer": 0.86, "accuracy_at_0.5": 0.4}
+    fam["matrix"]["codec_aug"]["in_the_wild"] = {
+        "pooled": pooled,
+        "at_dev_thresholds": {"phone": {"threshold": 0.0127, "fpr": 0.1917, "fnr": 0.0964,
+                                        "hter": 0.144, "accuracy": 0.83}},
+    }  # fmt: skip
+    fam["matrix"]["clean"]["in_the_wild"] = {"pooled": {**pooled, "eer": 0.0952}}
+    md = render_markdown({"rawnet2": fam})
+    assert "### Out-of-domain (In-the-Wild)" in md
+    row = "| Codec-augmented | not run | 13.84 | 19.17 (first 4 s) | 9.64 (first 4 s) | 31779 |"
+    assert row in md
+    assert "| Clean only | not run | 9.52 | no thresholds | no thresholds | 31779 |" in md
+    assert "Codec-augmented on in_the_wild: n=31779" in md
+
+
+def test_render_hindi_table_alongside_in_the_wild() -> None:
+    fam = _fake_family()
+    pooled = {"eer": 0.05, "n": 836, "accuracy_at_eer": 0.95, "accuracy_at_0.5": 0.5}
+    fam["matrix"]["codec_aug"]["hindi"] = {"pooled": pooled}
+    md = render_markdown({"rawnet2": fam})
+    assert "### Hindi generalisation (small set)" in md and "Out-of-domain (In-the-Wild)" not in md
+    assert "| Codec-augmented | not run | 5.00 | no thresholds | no thresholds | 836 |" in md
+    assert "| Clean only | not run | not run | not run | not run | not run |" in md
+    assert "not a language claim" in md
+
+
+def test_render_out_of_domain_prefers_whole_clip_scores() -> None:
+    fam = _fake_family()
+    pooled = {"eer": 0.4426, "n": 836, "accuracy_at_eer": 0.56, "accuracy_at_0.5": 0.5}
+    first = {"threshold": 0.0127, "fpr": 0.3684, "fnr": 0.5215, "hter": 0.4, "accuracy": 0.6}
+    whole = {"threshold": 0.0127, "fpr": 0.30, "fnr": 0.20, "hter": 0.25, "accuracy": 0.75}
+    fam["matrix"]["codec_aug"]["hindi"] = {
+        "pooled": pooled,
+        "at_dev_thresholds": {"phone": first},
+        "whole_clip": {"pooled": {**pooled, "eer": 0.2536}, "at_phone": whole},
+    }
+    md = render_markdown({"rawnet2": fam})
+    assert "| Codec-augmented | 25.36 | 44.26 | 30.00 | 20.00 | 836 |" in md
+    assert "as the API does" in md
+
+
+def test_evaluate_family_scores_out_of_domain_sets_as_whole_clips(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import sys
+    from types import SimpleNamespace
+
+    from voxguard import evaluate
+
+    monkeypatch.setitem(sys.modules, "voxguard.train", SimpleNamespace(pick_device=lambda d: d))
+    ckpt = tmp_path / "best.pt"
+    ckpt.write_bytes(b"")
+    thr = {"selected_on": "dev", "clean": 0.5, "phone": 0.5}
+    (tmp_path / "thresholds.json").write_text(json.dumps(thr))
+    first, labels = np.array([0.6, 0.4, 0.3, 0.7]), np.array([0, 0, 1, 1])
+    whole = np.array([0.1, 0.2, 0.8, 0.9])
+    monkeypatch.setattr(evaluate, "load_model", lambda p, d: (object(), {"name": "m", "epoch": 0}))
+    monkeypatch.setattr(evaluate, "score_manifests", lambda *a, **k: (first, labels, ["clean"] * 4))
+    monkeypatch.setattr(evaluate, "score_whole_clips", lambda *a, **k: (whole, labels))
+    cfg = evaluate.EvalConfig(
+        test_sets={"clean": ["c.csv"], "hindi": ["h.csv"]}, device="cpu", latency_devices=[],
+        out_dir=str(tmp_path / "results"),
+    )  # fmt: skip
+    res = evaluate.evaluate_family("m", {"codec_aug": str(ckpt)}, cfg)
+    assert "whole_clip" not in res["matrix"]["codec_aug"]["clean"]  # in-domain: first 4 s only
+    hindi = res["matrix"]["codec_aug"]["hindi"]
+    assert hindi["pooled"]["eer"] >= 0.5 and hindi["whole_clip"]["pooled"]["eer"] == 0.0
+    assert (
+        hindi["whole_clip"]["at_phone"]["fpr"] == 0 and hindi["whole_clip"]["at_phone"]["fnr"] == 0
+    )
+    cache = tmp_path / "results" / "cache" / "scores" / "m"
+    assert sorted(p.name for p in cache.iterdir()) == [
+        "codec_aug__clean.npz", "codec_aug__hindi.npz", "codec_aug__hindi_whole.npz",
+    ]  # fmt: skip
+    saved = np.load(cache / "codec_aug__hindi_whole.npz")
+    assert np.array_equal(saved["scores"], whole) and np.array_equal(saved["labels"], labels)
+
+
+def test_score_whole_clips_averages_every_window(tmp_path: Path) -> None:
+    torch = pytest.importorskip("torch")
+    sf = pytest.importorskip("soundfile")
+    from voxguard import evaluate
+
+    sr, n = 16_000, 64_600
+    clip = np.concatenate([np.full(n, 0.1), np.full(n, 0.5)]).astype(np.float32)  # 2 windows
+    sf.write(tmp_path / "a.wav", clip, sr, subtype="FLOAT")
+    (tmp_path / "m.csv").write_text(
+        "path,label,split,codec,bitrate,source\na.wav,1,eval,clean,,x\n"
+    )
+
+    class Mean(torch.nn.Module):  # logits (0, 10 * mean): P(fake) = sigmoid(10 * mean)
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            return torch.stack([torch.zeros(len(x)), 10 * x.mean(dim=1)], dim=1)
+
+    cfg = evaluate.EvalConfig(roots=[str(tmp_path)], batch_size=1)
+    scores, labels = evaluate.score_whole_clips(Mean(), [tmp_path / "m.csv"], cfg, "cpu")
+    expected = np.mean([1 / (1 + np.exp(-1.0)), 1 / (1 + np.exp(-5.0))])
+    assert labels.tolist() == [1] and scores[0] == pytest.approx(expected, rel=1e-5)

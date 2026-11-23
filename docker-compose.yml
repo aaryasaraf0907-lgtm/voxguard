@@ -21,7 +21,9 @@ services:
     volumes:
       - voxguard-data:/data
     ports:
-      - "${VOXGUARD_API_PORT:-8000}:8000"
+      # Published on this machine only by default: the API has no authentication. Set
+      # VOXGUARD_BIND_ADDRESS=0.0.0.0 to reach it from other devices on a network you trust.
+      - "${VOXGUARD_BIND_ADDRESS:-127.0.0.1}:${VOXGUARD_API_PORT:-8000}:8000"
     healthcheck:
       # Same check as the image; the grace period is longer for the real detector, whose
       # first start downloads the checkpoint (set VOXGUARD_API_START_PERIOD=600s).
@@ -39,12 +41,14 @@ services:
     image: voxguard-ui:local
     environment:
       VOXGUARD_API_URL: http://api:8000
+      # the live call monitor link: the browser reaches the API through the published port
+      VOXGUARD_MONITOR_URL: http://localhost:${VOXGUARD_API_PORT:-8000}/monitor
       STREAMLIT_SERVER_MAX_UPLOAD_SIZE: ${VOXGUARD_UI_MAX_UPLOAD_MB:-25}
     depends_on:
       api:
         condition: service_healthy
     ports:
-      - "${VOXGUARD_UI_PORT:-8501}:8501"
+      - "${VOXGUARD_BIND_ADDRESS:-127.0.0.1}:${VOXGUARD_UI_PORT:-8501}:8501"
     restart: unless-stopped
 
 volumes:

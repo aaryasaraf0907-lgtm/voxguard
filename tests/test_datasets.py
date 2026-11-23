@@ -77,3 +77,26 @@ def test_manifest_dataset_end_to_end(tmp_path: Path) -> None:
 
     with pytest.raises(FileNotFoundError):
         ManifestDataset([m], [tmp_path / "nowhere"])[0]
+
+
+def test_realistic_augmentation_only_in_train_mode(tmp_path: Path) -> None:
+    torch = pytest.importorskip("torch")
+    sf = pytest.importorskip("soundfile")
+    from voxguard.data.datasets import ManifestDataset
+    from voxguard.data.realistic import RealisticPolicy
+
+    raw = tmp_path / "raw"
+    raw.mkdir()
+    m = _manifest(tmp_path, 2)
+    for i in range(2):
+        sf.write(raw / f"f{i}.flac", synthetic(5.0, i), 16000)
+    always = RealisticPolicy(probability=1.0)
+    plain = ManifestDataset([m], [raw], train=True, seed=5)
+    aug = ManifestDataset([m], [raw], train=True, seed=5, realistic=always)
+    assert not torch.equal(plain[1][0], aug[1][0])
+    assert torch.equal(aug[1][0], aug[1][0])  # seeded per (seed, epoch, idx)
+    aug.set_epoch(1)
+    plain.set_epoch(1)
+    assert not torch.equal(plain[1][0], aug[1][0])
+    ev = ManifestDataset([m], [raw], train=False, realistic=always)
+    assert torch.equal(ev[1][0], ManifestDataset([m], [raw], train=False)[1][0])

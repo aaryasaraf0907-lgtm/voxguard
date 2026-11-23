@@ -12,12 +12,17 @@ from fastapi import Request
 from sqlalchemy.orm import Session
 
 from voxguard.api.db import require_sqlite_url
+from voxguard.api.gate import DEFAULT_RUNNING, DEFAULT_WAITING, AnalysisGate
+from voxguard.api.policy import DEFAULT_HIGH_VALUE_INR, DEFAULT_POLICY, parse_policy
+from voxguard.api.thresholds import ThresholdSet
 from voxguard.data.codecs import CODECS
-from voxguard.inference import Detector
+from voxguard.inference import Detector, threshold_from_env
 
 DEFAULT_DB_URL = "sqlite:///./voxguard.db"
 DEFAULT_MAX_UPLOAD_MB = 25.0
 DEFAULT_MAX_AUDIO_SECONDS = 60.0
+DEFAULT_MAX_STREAMS = 4
+DEFAULT_MAX_STREAM_SECONDS = 600.0
 
 
 def _positive_float_env(name: str, default: float) -> float:
@@ -33,6 +38,19 @@ def _positive_float_env(name: str, default: float) -> float:
     return value
 
 
+def _int_env(name: str, default: int, minimum: int) -> int:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        raise ValueError(f"{name} must be a whole number >= {minimum}, got {raw!r}") from None
+    if value < minimum:
+        raise ValueError(f"{name} must be a whole number >= {minimum}, got {raw!r}")
+    return value
+
+
 @dataclass(frozen=True)
 class Settings:
     max_upload_bytes: int = int(DEFAULT_MAX_UPLOAD_MB * 1024 * 1024)
@@ -41,7 +59,20 @@ class Settings:
     threshold_mode: Literal["eer", "low_far"] = "eer"
     low_far_threshold: float | None = None
     simulate_codec: str | None = None  # codec used when a request sets simulate_codec=true
+    threshold_override: float | None = None  # VOXGUARD_THRESHOLD if set: beats thresholds.json
     device: str = "cpu"  # VOXGUARD_DEVICE for the real detector: cpu | cuda | auto
+    max_running_analyses: int = DEFAULT_RUNNING  # VOXGUARD_MAX_RUNNING_ANALYSES (see api/gate.py)
+    max_waiting_analyses: int = DEFAULT_WAITING  # VOXGUARD_MAX_WAITING_ANALYSES
+    max_streams: int = DEFAULT_MAX_STREAMS  # VOXGUARD_MAX_STREAMS: live calls at once (/v1/stream)
+    max_stream_seconds: float = DEFAULT_MAX_STREAM_SECONDS  # VOXGUARD_MAX_STREAM_SECONDS
+    # VOXGUARD_STREAM_ORIGINS: extra browser origins allowed to open /v1/stream (comma-separated);
+    # the API's own origin (the /monitor page) and non-browser clients are always allowed
+    stream_origins: tuple[str, ...] = ()
+    high_value_inr: float = DEFAULT_HIGH_VALUE_INR  # VOXGUARD_HIGH_VALUE_INR (api/policy.py)
+    # tier -> (normal-value action, high-value action), as pairs so Settings stays hashable
+    transaction_policy: tuple[tuple[str, tuple[str, str]], ...] = tuple(DEFAULT_POLICY.items())
+    alert_webhook_url: str | None = None  # VOXGUARD_ALERT_WEBHOOK_URL (api/webhook.py)
+    alert_webhook_secret: str | None = None  # VOXGUARD_ALERT_WEBHOOK_SECRET, signs each request
 
     def __post_init__(self) -> None:
         require_sqlite_url(self.db_url)
@@ -52,6 +83,25 @@ class Settings:
                 f"VOXGUARD_SIMULATE_CODEC must be one of {sorted(CODECS)}, "
                 f"got {self.simulate_codec!r}"
             )
+        t = self.threshold_override
+        if t is not None and (not math.isfinite(t) or not 0.0 <= t <= 1.0):
+            raise ValueError(f"VOXGUARD_THRESHOLD must be in [0, 1], got {t!r}")
+        if self.max_running_analyses < 1 or self.max_waiting_analyses < 0:
+            raise ValueError(
+                "VOXGUARD_MAX_RUNNING_ANALYSES must be >= 1 and VOXGUARD_MAX_WAITING_ANALYSES >= 0"
+            )
+        if self.max_streams < 1:
+            raise ValueError("VOXGUARD_MAX_STREAMS must be >= 1")
+        if not math.isfinite(self.max_stream_seconds) or self.max_stream_seconds <= 0:
+            raise ValueError("VOXGUARD_MAX_STREAM_SECONDS must be a positive number")
+        if self.alert_webhook_url is not None:
+            if not self.alert_webhook_url.startswith(("http://", "https://")):
+                raise ValueError("VOXGUARD_ALERT_WEBHOOK_URL must be an http(s) URL")
+            if not self.alert_webhook_secret or len(self.alert_webhook_secret) < 16:
+                raise ValueError(
+                    "VOXGUARD_ALERT_WEBHOOK_SECRET must be set (at least 16 characters) when "
+                    "VOXGUARD_ALERT_WEBHOOK_URL is: every request is signed with it"
+                )
         if self.threshold_mode not in ("eer", "low_far"):
             raise ValueError(
                 f"VOXGUARD_THRESHOLD_MODE must be 'eer' or 'low_far', got {self.threshold_mode!r}"
@@ -88,7 +138,28 @@ class Settings:
             threshold_mode=mode,  # type: ignore[arg-type]  # validated in __post_init__
             low_far_threshold=low_far,
             simulate_codec=os.environ.get("VOXGUARD_SIMULATE_CODEC", "").strip() or None,
+            threshold_override=(  # unset or empty: not an override
+                threshold_from_env() if os.environ.get("VOXGUARD_THRESHOLD", "").strip() else None
+            ),
             device=os.environ.get("VOXGUARD_DEVICE", "").strip().lower() or "cpu",
+            max_running_analyses=_int_env("VOXGUARD_MAX_RUNNING_ANALYSES", DEFAULT_RUNNING, 1),
+            max_waiting_analyses=_int_env("VOXGUARD_MAX_WAITING_ANALYSES", DEFAULT_WAITING, 0),
+            max_streams=_int_env("VOXGUARD_MAX_STREAMS", DEFAULT_MAX_STREAMS, 1),
+            max_stream_seconds=_positive_float_env(
+                "VOXGUARD_MAX_STREAM_SECONDS", DEFAULT_MAX_STREAM_SECONDS
+            ),
+            high_value_inr=_positive_float_env("VOXGUARD_HIGH_VALUE_INR", DEFAULT_HIGH_VALUE_INR),
+            transaction_policy=tuple(
+                parse_policy(os.environ.get("VOXGUARD_TRANSACTION_POLICY", "")).items()
+            ),
+            alert_webhook_url=os.environ.get("VOXGUARD_ALERT_WEBHOOK_URL", "").strip() or None,
+            alert_webhook_secret=os.environ.get("VOXGUARD_ALERT_WEBHOOK_SECRET", "").strip()
+            or None,
+            stream_origins=tuple(
+                o.strip().rstrip("/")
+                for o in os.environ.get("VOXGUARD_STREAM_ORIGINS", "").split(",")
+                if o.strip()
+            ),
         )
 
 
@@ -98,6 +169,14 @@ def get_settings(request: Request) -> Settings:
 
 def get_detector_dep(request: Request) -> Detector:
     return request.app.state.detector
+
+
+def get_gate(request: Request) -> AnalysisGate:
+    return request.app.state.gate
+
+
+def get_thresholds(request: Request) -> ThresholdSet | None:
+    return request.app.state.thresholds
 
 
 def get_db(request: Request) -> Iterator[Session]:

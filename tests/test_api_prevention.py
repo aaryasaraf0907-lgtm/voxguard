@@ -114,6 +114,27 @@ def test_blocklist_counts_and_timestamps(client_factory) -> None:
         assert second.first_seen == first.first_seen and second.last_seen > first.last_seen
 
 
+def test_blocklist_last_seen_never_moves_backwards(client_factory) -> None:
+    """Timestamps are taken before the commit, so concurrent requests can commit out of order:
+    the later-committed, earlier-stamped hit must count without rewinding last_seen."""
+    early, late = (
+        datetime(2026, 11, 18, 12, 0, 0, tzinfo=UTC),
+        datetime(2026, 11, 18, 12, 0, 5, tzinfo=UTC),
+    )
+    with client_factory(FixedDetector(0.9)) as c:
+        with c.app.state.session_factory() as db:
+            prevention.upsert_blocklist(db, "alice", late)
+            prevention.upsert_blocklist(db, "alice", early)
+            db.commit()
+        (row,) = _all(c, BlocklistRow)
+        assert row.hit_count == 2 and row.first_seen == late and row.last_seen == late
+        with c.app.state.session_factory() as db:
+            prevention.upsert_blocklist(db, "alice", late.replace(second=9))
+            db.commit()
+        (row,) = _all(c, BlocklistRow)
+        assert row.hit_count == 3 and row.last_seen == late.replace(second=9)
+
+
 def test_caller_ids_normalized_consistently(client_factory) -> None:
     with client_factory(FixedDetector(0.9)) as c:
         _post(c, caller_id="  alice ")

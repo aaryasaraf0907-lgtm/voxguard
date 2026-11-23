@@ -4,10 +4,13 @@ from pathlib import Path
 import pytest
 from streamlit.testing.v1 import AppTest
 
+from voxguard.data.codecs import CODECS
 from voxguard.schemas import (
     AlertRecord,
     AnalyzeResponse,
     BlocklistEntry,
+    CodecInfo,
+    CodecsResponse,
     HealthResponse,
     SessionRecord,
 )
@@ -29,22 +32,48 @@ class FakeClient:
         self.sessions_response: list[SessionRecord] = []
         self.blocklist_response: list[BlocklistEntry] = []
         self.alerts_response: list[AlertRecord] = []
+        self.transactions_response: list = []
         self.analyze_response: AnalyzeResponse | ApiError | None = None
+        self.codecs_response: CodecsResponse | ApiError = CodecsResponse(
+            default="g711_mulaw",
+            codecs=[CodecInfo(name=n, available=n != "amr_wb", bitrate=None) for n in CODECS],
+        )
         self.calls: list[tuple] = []
+        self.codecs_sent: list[str | None] = []  # the codec field of each analyze request
+        self.timeline_sent: list[bool] = []  # the timeline field of each analyze request
 
     def _check(self) -> None:
         if self.down:
             raise self.down
 
     def health(self):
+        self.calls.append(("health",))
         self._check()
         return self.health_response
 
-    def analyze(self, audio, filename="audio.wav", caller_id=None):
-        self.calls.append(("analyze", audio, filename, caller_id))
-        if isinstance(self.analyze_response, ApiError):
-            raise self.analyze_response
-        return self.analyze_response
+    def analyze(
+        self,
+        audio,
+        filename="audio.wav",
+        caller_id=None,
+        simulate_codec=False,
+        codec=None,
+        timeline=False,
+    ):
+        self.calls.append(("analyze", audio, filename, caller_id, simulate_codec))
+        self.codecs_sent.append(codec)
+        self.timeline_sent.append(timeline)
+        response = self.analyze_response
+        if callable(response):  # lets a test answer per request (e.g. clean vs simulated)
+            response = response(simulate_codec)
+        if isinstance(response, ApiError):
+            raise response
+        return response
+
+    def codecs(self):
+        if isinstance(self.codecs_response, ApiError):
+            raise self.codecs_response
+        return self.codecs_response
 
     def sessions(self, flagged_only=False, limit=50):
         self.calls.append(("sessions", flagged_only, limit))
@@ -52,6 +81,7 @@ class FakeClient:
         return self.sessions_response
 
     def blocklist(self):
+        self.calls.append(("blocklist",))
         self._check()
         return self.blocklist_response
 
@@ -60,16 +90,23 @@ class FakeClient:
         self._check()
         return self.alerts_response
 
+    def transactions(self, limit=50):
+        self.calls.append(("transactions", limit))
+        self._check()
+        return self.transactions_response
+
 
 def _analyze_calls(client: FakeClient) -> list[tuple]:
     return [c for c in client.calls if c[0] == "analyze"]
 
 
-def _result(flagged: bool, score: float = 0.9, codec: str | None = None) -> AnalyzeResponse:
+def _result(
+    flagged: bool, score: float = 0.9, codec: str | None = None, codec_ms: float | None = None
+) -> AnalyzeResponse:
     return AnalyzeResponse(
         session_id="sess-1", label="fake" if flagged else "real", fake_score=score,
         threshold=0.5, latency_ms=12.34, model_version="m-1", flagged=flagged,
-        codec_applied=codec,
+        codec_applied=codec, codec_ms=codec_ms,
     )  # fmt: skip
 
 
@@ -97,20 +134,21 @@ def test_renders_english() -> None:
     assert not at.exception
     assert at.title[0].value == t("app_title", "en")
     assert [tab.label for tab in at.tabs] == [
-        t(k, "en") for k in ("tab_analyze", "tab_sessions", "tab_blocklist", "tab_alerts")
+        t(k, "en")
+        for k in ("tab_analyze", "tab_sessions", "tab_blocklist", "tab_alerts", "tab_transactions")
     ]
     assert t("status_connected", "en") in _text(at)
     assert t("status_detail", "en", detector="stub", model="m-1") in _text(at)
 
 
-def test_renders_hindi_and_shows_draft_notice() -> None:
+def test_renders_hindi_with_reviewed_strings() -> None:
     at = _run(FakeClient(), "hi")
     assert not at.exception
-    assert [tab.label for tab in at.tabs][0] == t("tab_analyze", "hi")
+    assert [tab.label for tab in at.tabs][:2] == [t("tab_analyze", "hi"), "चिह्नित कॉल"]
     text = _text(at)
     assert t("app_subtitle", "hi") in text
-    assert t("hi_draft_notice", "hi") in text
-    assert t("hi_draft_notice", "en") not in text
+    assert "नमूना (प्लेसहोल्डर)" in text  # Aarya's stub_notice wording (PR #14 review)
+    assert "प्रारूप" not in text and "मसौदा" not in text  # draft notice removed after her review
 
 
 def test_language_switch() -> None:
@@ -120,7 +158,6 @@ def test_language_switch() -> None:
     assert not at.exception and at.tabs[1].label == t("tab_sessions", "hi")
     at.selectbox[0].set_value("en").run()
     assert at.tabs[1].label == t("tab_sessions", "en")
-    assert t("hi_draft_notice", "en") not in _text(at)
 
 
 def test_stub_notice_only_for_stub_detector() -> None:
@@ -188,6 +225,29 @@ def test_populated_tables_show_api_data_in_utc() -> None:
     assert alerts[t("col_message", "en")].tolist() == ["Flagged call: x"]
 
 
+def test_tables_use_no_deprecated_streamlit_arguments(monkeypatch) -> None:
+    """Streamlit warns (in the server log) for deprecated arguments such as use_container_width."""
+    import streamlit.deprecation_util as deprecation_util
+    import streamlit.elements.arrow as arrow
+
+    warnings: list[str] = []
+    real = deprecation_util.show_deprecation_warning
+
+    def record(message: str, *args, **kwargs) -> None:
+        warnings.append(message)
+        real(message, *args, **kwargs)
+
+    for module in (deprecation_util, arrow):
+        monkeypatch.setattr(module, "show_deprecation_warning", record)
+    client = FakeClient()
+    client.blocklist_response = [
+        BlocklistEntry(caller_id="x", hit_count=1, first_seen=T0, last_seen=T0)
+    ]
+    at = _run(client)
+    assert not at.exception and at.dataframe
+    assert warnings == []
+
+
 def test_table_headers_follow_language() -> None:
     client = FakeClient()
     client.blocklist_response = [
@@ -207,20 +267,30 @@ def test_no_result_or_scores_before_analysis() -> None:
     assert not at.button or all(b.label != t("analyze_button", "en") for b in at.button)
 
 
-def test_simulate_phone_line_is_disabled_and_explained() -> None:
+def test_phone_line_toggle_is_enabled_off_by_default_and_explained() -> None:
     at = _run(FakeClient())
-    (toggle,) = at.toggle
-    assert toggle.label == t("simulate_label", "en") and toggle.disabled and not toggle.value
-    assert t("simulate_unavailable", "en") in _text(at)
+    toggle, timeline_toggle = at.toggle
+    assert toggle.label == t("simulate_label", "en") and not toggle.disabled and not toggle.value
+    assert timeline_toggle.label == t("timeline_label", "en") and not timeline_toggle.value
+    assert t("simulate_off", "en") in _text(at)
+    toggle.set_value(True).run()
+    assert t("simulate_on", "en") in _text(at)
 
 
-def _analyze(client: FakeClient, lang: str = "en", caller: str = "") -> AppTest:
+def _click_analyze(at: AppTest, lang: str = "en") -> AppTest:
+    return next(b for b in at.button if b.label == t("analyze_button", lang)).click().run()
+
+
+def _analyze(
+    client: FakeClient, lang: str = "en", caller: str = "", simulate: bool = False
+) -> AppTest:
     at = _run(client, lang)
     if caller:
         at.text_input[0].set_value(caller).run()
+    if simulate:
+        at.toggle[0].set_value(True).run()
     at.file_uploader[0].set_value(("clip.wav", b"RIFFfake", "audio/wav")).run()
-    next(b for b in at.button if b.label == t("analyze_button", lang)).click().run()
-    return at
+    return _click_analyze(at, lang)
 
 
 def test_flagged_result_is_shown_with_banner() -> None:
@@ -228,12 +298,12 @@ def test_flagged_result_is_shown_with_banner() -> None:
     client.analyze_response = _result(True, 0.9998)
     at = _analyze(client, caller="  alice ")
     assert not at.exception
-    assert _analyze_calls(client) == [("analyze", b"RIFFfake", "clip.wav", "alice")]
+    assert _analyze_calls(client) == [("analyze", b"RIFFfake", "clip.wav", "alice", False)]
     assert t("flagged_banner", "en") in [e.value for e in at.error]
     values = {m.label: m.value for m in at.metric}
     assert values[t("m_label", "en")] == t("label_fake", "en")
-    assert values[t("m_score", "en")] == "0.9998"
-    assert values[t("m_threshold", "en")] == "0.5000"
+    assert values[t("m_score", "en")] == "0.999800"
+    assert values[t("m_threshold", "en")] == "0.500000"
     assert values[t("m_latency", "en")] == t("unit_ms", "en", value="12.3")
     assert values[t("m_model", "en")] == "m-1"
     assert values[t("m_flagged", "en")] == t("yes", "en")
@@ -283,7 +353,17 @@ def test_recorded_audio_is_analyzed_too() -> None:
 
 
 @pytest.mark.parametrize(
-    "kind", ["too_large", "unsupported", "invalid", "not_implemented", "server", "timeout"]
+    "kind",
+    [
+        "too_large",
+        "unsupported",
+        "invalid",
+        "not_implemented",
+        "unavailable",
+        "busy",
+        "server",
+        "timeout",
+    ],
 )
 def test_analysis_errors_show_distinct_messages(kind: str) -> None:
     client = FakeClient()
@@ -291,7 +371,9 @@ def test_analysis_errors_show_distinct_messages(kind: str) -> None:
     at = _analyze(client)
     assert not at.exception and not at.metric
     errors = [e.value for e in at.error]
-    assert any(t(f"err_{kind}", "en") in e and "why" in e for e in errors)
+    # without phone-line simulation a 503 can only come from the decoder
+    key = "err_decoder_unavailable" if kind == "unavailable" else f"err_{kind}"
+    assert any(t(key, "en") in e and "why" in e for e in errors)
 
 
 def test_failed_analysis_clears_previous_result() -> None:
@@ -304,9 +386,498 @@ def test_failed_analysis_clears_previous_result() -> None:
     assert not at.metric
 
 
-def test_analyze_never_requests_codec_simulation() -> None:
+def test_simulation_is_requested_only_when_the_toggle_is_on() -> None:
     client = FakeClient()
     client.analyze_response = _result(False)
     _analyze(client)
-    calls = _analyze_calls(client)
-    assert calls and all(len(c) == 4 for c in calls)  # audio, name, caller only: no codec field
+    assert [c[4] for c in _analyze_calls(client)] == [False]
+    client = FakeClient()
+    client.analyze_response = _result(False, codec="g711_mulaw")
+    _analyze(client, simulate=True)
+    assert [c[4] for c in _analyze_calls(client)] == [True]
+
+
+def test_simulated_result_says_which_codec_was_applied() -> None:
+    client = FakeClient()
+    client.analyze_response = _result(True, codec="g711_mulaw")
+    at = _analyze(client, simulate=True)
+    assert t("result_simulated", "en", codec="g711_mulaw") in _text(at)
+    assert t("result_clean", "en") not in _text(at)
+
+
+def test_503_from_simulation_is_an_error_not_a_result() -> None:
+    client = FakeClient()
+    client.analyze_response = ApiError("unavailable", 503, "Codec simulation is unavailable")
+    at = _analyze(client, simulate=True)
+    assert not at.exception and not at.metric  # nothing presented as a result
+    assert any(t("err_unavailable", "en") in e.value for e in at.error)
+    assert t("err_server", "en") not in _text(at)  # its own message, not the generic 5xx one
+
+
+@pytest.mark.parametrize("lang", ["en", "hi"])
+def test_503_without_simulation_is_the_decoder_message(lang: str) -> None:
+    client = FakeClient()
+    client.analyze_response = ApiError("unavailable", 503, "decoder missing")
+    at = _analyze(client, lang=lang)
+    assert not at.exception and not at.metric
+    errors = [e.value for e in at.error]
+    assert any(t("err_decoder_unavailable", lang) in e for e in errors)
+    assert not any(t("err_unavailable", lang) in e for e in errors)  # not the codec text
+
+
+def test_uploader_accepts_m4a() -> None:
+    from voxguard.ui.app import AUDIO_TYPES
+
+    assert "m4a" in AUDIO_TYPES
+    client = FakeClient()
+    client.analyze_response = _result(False, 0.1)
+    at = _run(client)
+    at.file_uploader[0].set_value(("rec.m4a", b"\x00\x00\x00\x18ftypM4A ", "audio/mp4")).run()
+    next(b for b in at.button if b.label == t("analyze_button", "en")).click().run()
+    assert not at.exception
+    assert _analyze_calls(client)[0][2] == "rec.m4a"
+
+
+def test_501_from_simulation_explains_the_server_setting() -> None:
+    client = FakeClient()
+    client.analyze_response = ApiError("not_implemented", 501, "not configured")
+    at = _analyze(client, simulate=True)
+    assert not at.metric
+    assert any("VOXGUARD_SIMULATE_CODEC" in e.value for e in at.error)
+
+
+def test_same_clip_clean_and_phone_line_side_by_side() -> None:
+    client = FakeClient()
+    client.analyze_response = lambda simulate: _result(
+        not simulate, 0.2 if simulate else 0.95, "g711_mulaw" if simulate else None
+    )
+    at = _analyze(client)  # clean first
+    at.toggle[0].set_value(True).run()
+    _click_analyze(at)  # same clip, phone line
+    assert not at.exception
+    text = _text(at)
+    assert t("result_header_clean", "en") in text and t("result_header_phone", "en") in text
+    scores = [m.value for m in at.metric if m.label == t("m_score", "en")]
+    assert scores == ["0.950000", "0.200000"]  # clean on the left, phone line on the right
+    assert [c[4] for c in _analyze_calls(client)] == [False, True]
+
+
+# --- stale results ----------------------------------------------------------------------
+
+
+def test_new_upload_drops_the_previous_result() -> None:
+    client = FakeClient()
+    client.analyze_response = _result(True, 0.9)
+    at = _analyze(client)
+    assert at.metric
+    at.file_uploader[0].set_value(("other.wav", b"RIFFother", "audio/wav")).run()
+    assert not at.exception and not at.metric  # the old score must not sit next to a new file
+    _click_analyze(at)
+    assert at.metric and _analyze_calls(client)[-1][1] == b"RIFFother"
+
+
+def test_removing_the_file_drops_the_result() -> None:
+    client = FakeClient()
+    client.analyze_response = _result(True)
+    at = _analyze(client)
+    at.file_uploader[0].clear().run()
+    assert not at.metric and t("no_audio", "en") in _text(at)
+
+
+def test_new_recording_drops_the_previous_result() -> None:
+    client = FakeClient()
+    client.analyze_response = _result(False, 0.1)
+    at = _run(client)
+    at.radio[0].set_value("record").run()
+    at.audio_input[0].set_value(("rec.wav", b"RIFFmic1", "audio/wav")).run()
+    _click_analyze(at)
+    assert at.metric
+    at.audio_input[0].set_value(("rec.wav", b"RIFFmic2", "audio/wav")).run()
+    assert not at.metric
+
+
+def test_reanalysis_shows_the_latest_response() -> None:
+    client = FakeClient()
+    client.analyze_response = _result(True, 0.9)
+    at = _analyze(client)
+    client.analyze_response = _result(False, 0.1)
+    _click_analyze(at)
+    scores = [m.value for m in at.metric if m.label == t("m_score", "en")]
+    assert scores == ["0.100000"]
+
+
+# --- refetching -------------------------------------------------------------------------
+
+
+def _count(client: FakeClient, name: str) -> int:
+    return sum(1 for c in client.calls if c[0] == name)
+
+
+def test_reruns_reuse_recent_api_reads() -> None:
+    client = FakeClient()
+    at = _run(client)
+    before = {n: _count(client, n) for n in ("health", "sessions", "blocklist", "alerts")}
+    assert before == {"health": 1, "sessions": 1, "blocklist": 1, "alerts": 1}
+    at.text_input[0].set_value("typing a caller id").run()
+    at.selectbox[0].set_value("hi").run()
+    after = {n: _count(client, n) for n in before}
+    assert after == before  # typing and switching language did not refetch
+
+
+def test_refresh_button_refetches_its_list() -> None:
+    client = FakeClient()
+    at = _run(client)
+    refresh = [b for b in at.button if b.label == t("refresh", "en")]
+    refresh[1].click().run()  # blocklist tab
+    assert _count(client, "blocklist") == 2 and _count(client, "sessions") == 1
+
+
+def test_lists_refetch_after_an_analysis() -> None:
+    client = FakeClient()
+    client.analyze_response = _result(True)
+    _analyze(client)
+    assert _count(client, "sessions") == 2 and _count(client, "alerts") == 2
+
+
+def test_api_errors_are_not_cached() -> None:
+    client = FakeClient(down=ApiError("unreachable"))
+    at = _run(client)
+    client.down = None
+    at.text_input[0].set_value("x").run()
+    assert t("status_connected", "en") in _text(at)
+
+
+# --- codec choice ---------------------------------------------------------------------------
+
+
+def _codec_box(at: AppTest):
+    return at.selectbox(key="codec")
+
+
+def test_codec_dropdown_only_when_simulating() -> None:
+    at = _run(FakeClient())
+    assert not [b for b in at.selectbox if b.key == "codec"]
+    at.toggle[0].set_value(True).run()
+    assert _codec_box(at).label == t("codec_label", "en")
+
+
+@pytest.mark.parametrize("lang", ["en", "hi"])
+def test_codec_dropdown_offers_only_available_codecs_and_labels_gsm(lang: str) -> None:
+    at = _run(FakeClient(), lang)
+    at.toggle[0].set_value(True).run()
+    box = _codec_box(at)
+    assert "amr_wb" not in box.options and "AMR-WB" not in box.options  # unavailable on server
+    assert t("codec_gsm", lang) in box.options and box.options[0] == "G.711 µ-law"
+    assert box.value == "g711_mulaw"  # the server default is preselected
+
+
+def test_selected_codec_is_sent_and_codec_time_shown_separately() -> None:
+    client = FakeClient()
+    client.analyze_response = _result(True, codec="gsm", codec_ms=7.25)
+    at = _run(client)
+    at.toggle[0].set_value(True).run()
+    _codec_box(at).set_value("gsm").run()
+    at.file_uploader[0].set_value(("clip.wav", b"RIFFfake", "audio/wav")).run()
+    at = _click_analyze(at)
+    assert client.codecs_sent == ["gsm"]
+    values = {m.label: m.value for m in at.metric}
+    assert values[t("m_latency", "en")] == t("unit_ms", "en", value="12.3")  # detector only
+    assert values[t("m_codec_ms", "en")] == t("unit_ms", "en", value="7.2")
+
+
+def test_clean_analysis_sends_no_codec_and_shows_no_codec_time() -> None:
+    client = FakeClient()
+    client.analyze_response = _result(False)
+    at = _analyze(client)
+    assert client.codecs_sent == [None]
+    values = {m.label: m.value for m in at.metric}
+    assert values[t("m_codec_ms", "en")] == t("none_value", "en")
+
+
+def test_codec_list_error_falls_back_to_the_server_default() -> None:
+    client = FakeClient()
+    client.codecs_response = ApiError("unreachable")
+    client.analyze_response = _result(False, codec="g711_mulaw", codec_ms=3.0)
+    at = _analyze(client, simulate=True)
+    assert not at.exception and t("codecs_error", "en") in _text(at)
+    assert client.codecs_sent == [None]
+    assert _analyze_calls(client)[0][-1] is True  # simulate_codec=true: server default codec
+
+
+def test_no_available_codec_is_explained() -> None:
+    client = FakeClient()
+    client.codecs_response = CodecsResponse(
+        default=None, codecs=[CodecInfo(name=n, available=False, bitrate=None) for n in CODECS]
+    )
+    at = _run(client)
+    at.toggle[0].set_value(True).run()
+    assert not [b for b in at.selectbox if b.key == "codec"]
+    assert t("no_codecs", "en") in _text(at)
+
+
+def _clean_then_opus() -> tuple[FakeClient, AppTest]:
+    client = FakeClient()
+    client.analyze_response = lambda simulate: _result(
+        not simulate,
+        0.2 if simulate else 0.95,
+        "opus" if simulate else None,
+        5.0 if simulate else None,
+    )
+    at = _analyze(client)  # clean
+    at.toggle[0].set_value(True).run()
+    _codec_box(at).set_value("opus").run()
+    return client, _click_analyze(at)  # same clip through opus
+
+
+def test_changing_codec_drops_the_phone_result_and_keeps_the_clean_one() -> None:
+    client, at = _clean_then_opus()
+    assert t("result_header_phone", "en") in _text(at)  # side by side
+    at = _codec_box(at).set_value("gsm").run()
+    text = _text(at)
+    assert t("result_header_phone", "en") not in text and "opus" not in text
+    assert t("result_header", "en") in [h.value for h in at.subheader]  # the clean result stays
+    assert {m.label: m.value for m in at.metric}[t("m_score", "en")] == "0.950000"
+    at = _codec_box(at).set_value("opus").run()  # switching back does not bring it back
+    assert "opus" not in _text(at) and len(_analyze_calls(client)) == 2
+
+
+def test_rerun_with_the_same_codec_keeps_the_phone_result() -> None:
+    _, at = _clean_then_opus()
+    at = at.run()
+    assert t("result_header_phone", "en") in _text(at) and "opus" in _text(at)
+
+
+# --- near-threshold caution (one-sided band agreed with Aarya, 16 Nov) ------------------------
+
+DEMO_THRESHOLD = 0.012676023156691243  # the deployed phone threshold, as a realistic scale
+
+
+def test_caution_factor_is_the_agreed_value() -> None:
+    from voxguard.ui.app import CAUTION_FACTOR
+
+    assert CAUTION_FACTOR == 1.5
+
+
+@pytest.mark.parametrize(
+    ("score", "threshold", "expected"),
+    [
+        (0.5, 0.5, True),  # exactly at the threshold: flagged, and uncertain
+        (0.6, 0.5, True),
+        (0.7499, 0.5, True),
+        (0.75, 0.5, False),  # 1.5 x the threshold: a clear result
+        (0.99, 0.5, False),
+        (0.4999, 0.5, False),  # under the threshold: one-sided, no caution
+        (0.0, 0.5, False),
+        (DEMO_THRESHOLD, DEMO_THRESHOLD, True),
+        (0.019, DEMO_THRESHOLD, True),  # ~0.0127-0.019 at the demo threshold
+        (DEMO_THRESHOLD * 1.5, DEMO_THRESHOLD, False),
+        (0.0126, DEMO_THRESHOLD, False),
+        (0.853, DEMO_THRESHOLD, False),
+    ],
+)
+def test_near_threshold_band(score: float, threshold: float, expected: bool) -> None:
+    from voxguard.ui.app import near_threshold
+
+    assert near_threshold(score, threshold) is expected
+
+
+@pytest.mark.parametrize("lang", ["en", "hi"])
+@pytest.mark.parametrize(
+    ("flagged", "score", "shown"),
+    [(True, 0.6, True), (True, 0.5, True), (True, 0.9, False), (False, 0.4, False)],
+)
+def test_caution_shown_only_inside_the_band(
+    lang: str, flagged: bool, score: float, shown: bool
+) -> None:
+    client = FakeClient()
+    client.analyze_response = _result(flagged, score)  # threshold 0.5
+    at = _analyze(client, lang=lang)
+    assert not at.exception
+    warnings = [w.value for w in at.warning]
+    assert (t("caution_near_threshold", lang) in warnings) is shown
+    # the decision itself is unchanged: banner and label follow the API's response
+    banner = t("flagged_banner" if flagged else "not_flagged_banner", lang)
+    assert banner in _text(at)
+    assert at.metric[0].value == t(f"label_{'fake' if flagged else 'real'}", lang)
+
+
+def test_caution_follows_each_result_side_by_side() -> None:
+    client = FakeClient()
+    client.analyze_response = lambda simulate: (
+        _result(True, 0.6, codec="g711_mulaw") if simulate else _result(True, 0.9)
+    )
+    at = _analyze(client)  # clean: 0.9, a clear result
+    at.toggle[0].set_value(True).run()
+    _click_analyze(at)  # same clip, phone line: 0.6, near the threshold
+    assert not at.exception
+    warnings = [w.value for w in at.warning]
+    assert warnings.count(t("caution_near_threshold", "en")) == 1  # only the phone-line result
+
+
+# --- live-monitoring timeline ---------------------------------------------------------------
+
+
+def _timeline_result(first_flag_s: float | None) -> AnalyzeResponse:
+    from voxguard.schemas import TimelinePoint
+
+    points = [
+        TimelinePoint(start_s=0.0, end_s=4.0, fake_score=0.2, running_score=0.2, flagged=False),
+        TimelinePoint(start_s=4.0, end_s=8.0, fake_score=0.9, running_score=0.55, flagged=True),
+    ]
+    return _result(True, 0.55).model_copy(update={"timeline": points, "first_flag_s": first_flag_s})
+
+
+def _chart_count(at: AppTest) -> int:
+    return len(at.get("vega_lite_chart"))
+
+
+def test_timeline_is_requested_only_when_the_toggle_is_on() -> None:
+    client = FakeClient()
+    client.analyze_response = _result(False, 0.1)
+    _analyze(client)
+    at = _run(client)
+    next(x for x in at.toggle if x.label == t("timeline_label", "en")).set_value(True).run()
+    at.file_uploader[0].set_value(("clip.wav", b"RIFFfake", "audio/wav")).run()
+    _click_analyze(at)
+    assert client.timeline_sent == [False, True]
+
+
+@pytest.mark.parametrize("lang", ["en", "hi"])
+def test_timeline_shows_the_chart_and_when_it_would_have_flagged(lang: str) -> None:
+    client = FakeClient()
+    client.analyze_response = _timeline_result(8.0)
+    at = _analyze(client, lang=lang)
+    text = _text(at)
+    assert t("timeline_header", lang) in text
+    assert t("timeline_flagged_at", lang, seconds="8.0") in text
+    assert t("timeline_note", lang) in text
+    assert _chart_count(at) == 1
+
+
+def test_timeline_that_never_reaches_the_threshold_says_so() -> None:
+    client = FakeClient()
+    client.analyze_response = _timeline_result(None)
+    text = _text(_analyze(client))
+    assert (
+        t("timeline_never", "en") in text
+        and t("timeline_flagged_at", "en", seconds="8.0") not in text
+    )
+
+
+def test_an_early_alert_the_full_recording_does_not_support_is_explained() -> None:
+    """Seen on the real model: a genuine recording's first window was just over the threshold,
+    the full recording was not. Do not say it "would have flagged this call"."""
+    client = FakeClient()
+    client.analyze_response = _timeline_result(4.0).model_copy(
+        update={"flagged": False, "label": "real", "fake_score": 0.4}
+    )
+    text = _text(_analyze(client))
+    assert t("timeline_flagged_briefly", "en", seconds="4.0") in text
+    assert t("timeline_flagged_at", "en", seconds="4.0") not in text
+
+
+def test_no_timeline_section_without_timeline_data() -> None:
+    client = FakeClient()
+    client.analyze_response = _result(True)
+    at = _analyze(client)
+    assert t("timeline_header", "en") not in _text(at) and _chart_count(at) == 0
+
+
+def test_replay_redraws_the_chart_and_keeps_the_result() -> None:
+    client = FakeClient()
+    client.analyze_response = _timeline_result(8.0)
+    at = _analyze(client)
+    replay = next(b for b in at.button if b.label == t("timeline_replay", "en"))
+    at = replay.click().run()
+    assert not at.exception and _chart_count(at) == 1
+    assert t("timeline_flagged_at", "en", seconds="8.0") in _text(at)
+    assert len(_analyze_calls(client)) == 1  # replay does not analyze again
+
+
+def test_timeline_chart_is_log_scale_with_threshold_and_flag_marker() -> None:
+    from voxguard.ui.app import timeline_spec
+
+    result = _timeline_result(8.0)
+    spec = timeline_spec(result, "en")
+    line, threshold, flag = spec["layer"]
+    assert line["encoding"]["y"]["scale"]["type"] == "log"
+    lo, hi = line["encoding"]["y"]["scale"]["domain"]
+    assert lo < 0.2 and hi > 0.9  # every point and the threshold fit
+    assert threshold["data"]["values"][0][t("m_score", "en")] == result.threshold
+    assert flag["data"]["values"] == [{t("timeline_x", "en"): 8.0}]
+    first = timeline_spec(result, "en", upto=1)  # replay: before the flagged point
+    assert len(first["layer"]) == 2 and first["layer"][0]["encoding"]["y"]["scale"]["domain"] == [
+        lo,
+        hi,
+    ]
+    assert len(first["layer"][0]["data"]["values"]) == 2  # one point, two series
+
+
+def test_sidebar_links_to_the_live_call_monitor(monkeypatch) -> None:
+    monkeypatch.delenv("VOXGUARD_MONITOR_URL", raising=False)
+    at = _run(FakeClient())
+    (link,) = at.get("link_button")
+    assert (
+        link.proto.label == t("monitor_link", "en") and link.proto.url == "http://fake:8000/monitor"
+    )
+    monkeypatch.setenv("VOXGUARD_MONITOR_URL", "http://localhost:8001/monitor")
+    (link,) = _run(FakeClient(), lang="hi").get("link_button")
+    assert link.proto.label == t("monitor_link", "hi") and link.proto.url.endswith(":8001/monitor")
+
+
+def _decision(status: str = "held"):
+    from voxguard.schemas import TransactionDecision
+
+    return TransactionDecision(
+        decision_id="d1",
+        created_at=T0,
+        session_id="sess-9",
+        amount_inr=75000.0,
+        beneficiary="A/c XXXX1234",
+        high_value=True,
+        live=True,
+        tier="high",
+        action="hold",
+        status=status,
+        score=0.5,
+        threshold=0.01,
+        windows=3,
+        reasons=["risk_high", "high_value"],
+        required_steps=["second_approver", "callback"],
+        completed_steps=["callback"],
+    )
+
+
+@pytest.mark.parametrize("lang", ["en", "hi"])
+def test_transactions_tab_lists_decisions_with_a_report_link(monkeypatch, lang: str) -> None:
+    monkeypatch.setenv("VOXGUARD_MONITOR_URL", "http://localhost:8000/monitor")
+    client = FakeClient()
+    client.transactions_response = [_decision()]
+    at = _run(client, lang)
+    (df,) = [d for d in at.dataframe if t("col_amount", lang) in d.value.columns]
+    row = df.value.iloc[0]
+    assert row[t("tx_status", lang)] == t("tx_status_held", lang)
+    assert row[t("tx_steps", lang)] == t("tx_method_callback", lang)
+    assert (
+        row[t("col_report", lang)] == f"http://localhost:8000/v1/sessions/sess-9/report?lang={lang}"
+    )
+
+
+def test_alerts_link_to_the_incident_report(monkeypatch) -> None:
+    monkeypatch.delenv("VOXGUARD_MONITOR_URL", raising=False)
+    client = FakeClient()
+    client.alerts_response = [
+        AlertRecord(
+            alert_id="a1",
+            created_at=T0,
+            session_id="s-1",
+            caller_id=None,
+            fake_score=0.9,
+            message="Flagged call",
+        )
+    ]
+    at = _run(client)
+    (df,) = [d for d in at.dataframe if t("col_message", "en") in d.value.columns]
+    assert (
+        df.value.iloc[0][t("col_report", "en")] == "http://fake:8000/v1/sessions/s-1/report?lang=en"
+    )

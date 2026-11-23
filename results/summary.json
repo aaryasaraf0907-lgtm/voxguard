@@ -1,6 +1,6 @@
 {
   "meta": {
-    "generated_at": "2026-11-10T12:25:09+00:00",
+    "generated_at": "2026-11-21T14:17:07+00:00",
     "max_samples": null,
     "test_sets": {
       "clean": [
@@ -11,10 +11,17 @@
       ],
       "heldout": [
         "data/processed/manifests/eval_subset10k_heldout.csv"
+      ],
+      "in_the_wild": [
+        "data/processed/manifests/in_the_wild.csv"
+      ],
+      "hindi": [
+        "data/processed/manifests/hindi.csv"
       ]
     }
   },
   "families": [
-    "rawnet2"
+    "rawnet2",
+    "ssl_aasist"
   ]
 }

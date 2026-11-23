@@ -1,3 +1,4 @@
+import math
 from pathlib import Path
 
 import pytest
@@ -15,6 +16,7 @@ from voxguard.train import (  # noqa: E402
     pick_device,
     seed_epoch,
     train,
+    train_step,
 )
 
 
@@ -41,6 +43,7 @@ def test_train_writes_checkpoints_and_metrics(tmp_path: Path) -> None:
     assert (out / "last.pt").exists() and (out / "best.pt").exists()
     assert len((out / "metrics.jsonl").read_text().splitlines()) == 2
     assert len(res["history"]) == 2 and all(r["train_loss"] > 0 for r in res["history"])
+    assert all(r["skipped_batches"] == 0 for r in res["history"])
     assert not list(out.glob("*.tmp"))
 
 
@@ -61,7 +64,7 @@ def test_max_samples_smoke_mode(tmp_path: Path) -> None:
 
 def test_load_config_roundtrip_and_validation(tmp_path: Path) -> None:
     cfg = load_config(Path(__file__).parents[1] / "configs" / "rawnet2.yaml")
-    assert cfg.model["name"] == "rawnet2" and cfg.train.class_weights == [0.1, 0.9]
+    assert cfg.model["name"] == "rawnet2" and cfg.train.class_weights == [0.9, 0.1]
     bad = tmp_path / "bad.yaml"
     bad.write_text("train:\n  epochz: 3\n")
     with pytest.raises(ValueError, match="epochz"):
@@ -121,12 +124,126 @@ def test_best_checkpoint_is_weights_only(tmp_path: Path) -> None:
     from voxguard.models import load_from_checkpoint
 
     _, info = load_from_checkpoint(tmp_path / "run" / "best.pt", "cpu")
-    assert info["epoch"] == 0
+    assert info["epoch"] == 0 and info["run"] == "run"  # train.out_dir's basename
 
 
-def test_ssl_config_upweights_bonafide() -> None:
+@pytest.mark.parametrize(
+    ("out_dir", "run"),
+    [
+        ("/kaggle/working/runs/ssl-aasist-codec-aug-v2", "ssl-aasist-codec-aug-v2"),
+        ("/kaggle/working/runs/ssl-aasist-codec-aug-v2-p2", "ssl-aasist-codec-aug-v2"),  # resume
+        ("runs/rawnet2-clean-v2/", "rawnet2-clean-v2"),
+        ("C:\\runs\\rawnet2-clean", "rawnet2-clean"),
+        ("runs/v2-plus", "v2-plus"),  # only a trailing -p<digits> is a part suffix
+        ("", None),
+    ],
+)
+def test_run_name_from_out_dir(out_dir: str, run: str | None) -> None:
+    from voxguard.models import run_name
+
+    assert run_name({"train": {"out_dir": out_dir}}) == run
+
+
+def test_run_name_missing_for_hand_built_checkpoints() -> None:
+    from voxguard.models import run_name
+
+    assert run_name({"model": {"name": "rawnet2"}}) is None
+
+
+def test_model_version_tells_runs_apart() -> None:
+    from voxguard.inference import model_version
+
+    clean = {"name": "ssl_aasist", "run": "ssl-aasist-clean", "epoch": 7}
+    aug = {"name": "ssl_aasist", "run": "ssl-aasist-codec-aug-v2", "epoch": 7}
+    assert model_version(clean, "best.pt") == "ssl_aasist/ssl-aasist-clean:best.pt:epoch7"
+    assert model_version(aug, "voxguard-team/voxguard-ssl-aasist-codec-aug") == (
+        "ssl_aasist/ssl-aasist-codec-aug-v2:voxguard-ssl-aasist-codec-aug:epoch7"
+    )
+    assert model_version({"name": "rawnet2", "run": None, "epoch": 3}, "/x/best.pt") == (
+        "rawnet2:best.pt:epoch3"  # no run recorded: the old format
+    )
+    from voxguard.api.thresholds import model_identity
+
+    # thresholds.json matching (name and epoch) now separates the two runs
+    assert model_identity(model_version(clean, "best.pt")) != model_identity(
+        model_version(aug, "best.pt")
+    )
+
+
+@pytest.mark.parametrize("name", ["ssl_aasist.yaml", "rawnet2.yaml"])
+def test_config_upweights_bonafide(name: str) -> None:
     # labels are 1 = fake; ASVspoof is ~90 % fake, so the minority bona fide class gets the
     # larger weight (the reference code's [0.1, 0.9] assumes bona fide = 1).
-    cfg = load_config(Path(__file__).parents[1] / "configs" / "ssl_aasist.yaml")
+    cfg = load_config(Path(__file__).parents[1] / "configs" / name)
     assert cfg.train.class_weights[0] > cfg.train.class_weights[1]
     assert TrainConfig().class_weights[0] > TrainConfig().class_weights[1]
+
+
+class _BNNet(torch.nn.Module):
+    """Linear -> BatchNorm1d -> 2 logits; enough to see running stats move."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.fc = torch.nn.Linear(4, 4)
+        self.bn = torch.nn.BatchNorm1d(4)
+        self.out = torch.nn.Linear(4, 2)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.out(self.bn(self.fc(x)))
+
+
+def _step_parts():
+    torch.manual_seed(0)
+    model = _BNNet().train()
+    opt = torch.optim.SGD(model.parameters(), lr=0.1)
+    scaler = torch.amp.GradScaler("cuda", enabled=False)
+    return model, opt, scaler, torch.nn.CrossEntropyLoss()
+
+
+def test_train_step_trains_on_a_finite_batch() -> None:
+    model, opt, scaler, loss_fn = _step_parts()
+    before = model.bn.running_mean.clone()
+    loss = train_step(
+        model, model, torch.randn(8, 4), torch.randint(0, 2, (8,)), loss_fn, opt, scaler, False
+    )
+    assert loss is not None and math.isfinite(loss)
+    assert not torch.equal(model.bn.running_mean, before)
+
+
+def test_train_step_skips_non_finite_input_without_forward() -> None:
+    model, opt, scaler, loss_fn = _step_parts()
+    x = torch.randn(8, 4)
+    x[3, 1] = float("inf")
+    before = {k: v.clone() for k, v in model.state_dict().items()}
+    assert (
+        train_step(model, model, x, torch.zeros(8, dtype=torch.long), loss_fn, opt, scaler, False)
+        is None
+    )
+    assert all(torch.equal(before[k], v) for k, v in model.state_dict().items())
+
+
+def test_train_step_nan_loss_restores_batchnorm_stats() -> None:
+    # finite input, but a NaN weight makes the forward pass (and the BN stats update) NaN
+    model, opt, scaler, loss_fn = _step_parts()
+    with torch.no_grad():
+        model.fc.weight[0, 0] = float("nan")
+    stats = {k: v.clone() for k, v in model.named_buffers()}
+    y = torch.randint(0, 2, (8,))
+    assert train_step(model, model, torch.randn(8, 4), y, loss_fn, opt, scaler, False) is None
+    for k, v in model.named_buffers():
+        assert torch.equal(v, stats[k]), k  # still finite: eval-mode scoring is not poisoned
+
+
+def test_init_from_starts_a_fresh_run_from_given_weights(tmp_path: Path) -> None:
+    train(_cfg(tmp_path, 1, out="base"))
+    base = torch.load(tmp_path / "base" / "best.pt", weights_only=False)["model"]
+    cfg = _cfg(tmp_path, 1, out="ft")
+    cfg.train.init_from = str(tmp_path / "base" / "best.pt")
+    cfg.train.lr = 0.0  # weights unchanged by training: the result must equal the start
+    cfg.data.realistic = {"probability": 1.0}
+    res = train(cfg)
+    ft = torch.load(tmp_path / "ft" / "last.pt", weights_only=False)
+    assert ft["epoch"] == 0 and len(res["history"]) == 1
+    for k, v in base.items():
+        if v.dtype.is_floating_point and "running" not in k and "num_batches" not in k:
+            assert torch.equal(v, ft["model"][k]), k

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import math
 import os
 import time
 from collections.abc import Callable
@@ -46,7 +47,7 @@ def threshold_from_env(default: float = DEFAULT_THRESHOLD) -> float:
     return value
 
 
-MIN_TAIL = NUM_SAMPLES // 4  # a trailing partial window shorter than ~1 s is dropped
+MIN_TAIL = NUM_SAMPLES // 4  # a trailing leftover shorter than ~1 s is dropped
 
 Resampler = Callable[[np.ndarray, int, int], np.ndarray]
 
@@ -67,29 +68,45 @@ def linear_resample(x: np.ndarray, sr_in: int, sr_out: int) -> np.ndarray:
     return np.interp(grid, np.arange(len(x)), x).astype(np.float32)
 
 
+def window_starts(n_samples: int) -> list[int]:
+    """Start sample of each 64,600-sample window scored from a 16 kHz clip of ``n_samples``.
+
+    Non-overlapping full windows, then the clip's last 64,600 samples (overlapping the previous
+    window) when there is a leftover of at least ``MIN_TAIL``: a repeat-padded 1-3 s tail repeats
+    itself (or its silence) and scored well above the clip's other windows on real speech
+    (15 Nov). A shorter leftover is dropped, except in a clip of one to 1.25 windows (4.0-5.05
+    s): there the last window is scored too, so the score is not the first 4 s alone, which
+    scored higher than the last 4 s on real speech (20 Nov). A clip shorter than one window is
+    one window from 0 (repeat-padded by ``to_windows``).
+    """
+    if n_samples <= NUM_SAMPLES:
+        return [0]
+    n_full, tail = divmod(n_samples, NUM_SAMPLES)
+    starts = [i * NUM_SAMPLES for i in range(n_full)]
+    if tail >= MIN_TAIL or (n_full == 1 and tail > 0):
+        starts.append(n_samples - NUM_SAMPLES)
+    return starts
+
+
 def to_windows(
     waveform: np.ndarray, sample_rate: int, resampler: Resampler = linear_resample
 ) -> list[np.ndarray]:
     """Resample to 16 kHz mono float32 and split into 64,600-sample windows.
 
-    Windows are non-overlapping. A short window is repeat-padded (as in training, see
-    ``voxguard.data.datasets.fix_length``); a trailing partial window shorter than
-    ``MIN_TAIL`` is dropped when there is at least one full window.
+    A clip shorter than one window is repeat-padded, as in training (see
+    ``voxguard.data.datasets.fix_length``). Longer clips are split as ``window_starts`` says.
     """
     x = to_mono(waveform)
     if sample_rate != TARGET_SR and len(x):
         x = resampler(x, sample_rate, TARGET_SR)
     if len(x) == 0:
         return [np.zeros(NUM_SAMPLES, dtype=np.float32)]
-    windows = []
-    for start in range(0, len(x), NUM_SAMPLES):
-        w = x[start : start + NUM_SAMPLES]
-        if len(w) < NUM_SAMPLES:
-            if windows and len(w) < MIN_TAIL:
-                break
-            w = np.tile(w, int(np.ceil(NUM_SAMPLES / len(w))))[:NUM_SAMPLES]
-        windows.append(np.ascontiguousarray(w, dtype=np.float32))
-    return windows
+    if len(x) < NUM_SAMPLES:
+        x = np.tile(x, int(np.ceil(NUM_SAMPLES / len(x))))[:NUM_SAMPLES]
+    return [
+        np.ascontiguousarray(x[s : s + NUM_SAMPLES], dtype=np.float32)
+        for s in window_starts(len(x))
+    ]
 
 
 class StubDetector:
@@ -115,8 +132,30 @@ class StubDetector:
         )
 
 
+# torchaudio builds a sinc filter of about (sr_in / g) x (sr_out / g) elements, g = gcd(sr_in,
+# sr_out): 44100 -> 16000 is 441 x 160, but 44101 Hz shares no factor with 16000 and would need
+# gigabytes (found in Person 2's review, 18 Nov 2026). Standard rates stay far below this cap
+# (largest: 11025 Hz, 441 x 640 = 282,240). The API checks the same bound before decoding.
+MAX_RESAMPLE_ELEMENTS = 1_000_000
+
+
+def resample_elements(sr_in: int, sr_out: int = TARGET_SR) -> int:
+    """Approximate size of torchaudio's resampling filter from ``sr_in`` to ``sr_out``."""
+    g = math.gcd(sr_in, sr_out)
+    return (sr_in // g) * (sr_out // g)
+
+
 def torch_resample(x: np.ndarray, sr_in: int, sr_out: int) -> np.ndarray:
-    """Band-limited resampling via torchaudio (used by the real detector)."""
+    """Band-limited resampling via torchaudio (used by the real detector).
+
+    Refuses rates whose filter would exceed ``MAX_RESAMPLE_ELEMENTS`` (ValueError) instead of
+    allocating gigabytes.
+    """
+    if resample_elements(sr_in, sr_out) > MAX_RESAMPLE_ELEMENTS:
+        raise ValueError(
+            f"resampling {sr_in} Hz to {sr_out} Hz needs too large a filter; "
+            "use a standard sample rate (e.g. 8000, 16000, 44100 or 48000 Hz)"
+        )
     import torch
     import torchaudio.functional as AF
 
@@ -143,13 +182,27 @@ def resolve_checkpoint(model_repo: str, filename: str = "best.pt") -> Path:
     return Path(hf_hub_download(repo_id=model_repo, filename=filename))
 
 
+def model_version(info: dict, source: str) -> str:
+    """``<name>[/<run>]:<source>:epoch<N>``.
+
+    E.g. ``ssl_aasist/ssl-aasist-codec-aug-v2:best.pt:epoch7``.
+
+    The run name keeps a clean and a codec-augmented checkpoint of the same architecture and
+    epoch apart; ``<source>`` is the load location (file or directory name, or HF repo id).
+    """
+    name = f"{info['name']}/{info['run']}" if info.get("run") else info["name"]
+    return f"{name}:{Path(source).name or source}:epoch{info['epoch']}"
+
+
 class RealDetector:
     """Trained RawNet2 / SSL-AASIST checkpoint behind the Detector contract.
 
     ``model_repo``: local ``.pt`` file, a directory containing ``filename``, or a Hugging Face
     repo id (default: ``VOXGUARD_MODEL_REPO``). Threshold precedence: argument, then
     ``VOXGUARD_THRESHOLD``, then 0.5. Long clips are scored per 64,600-sample window and the
-    window scores averaged.
+    window scores averaged, ``batch_size`` windows per forward pass (4: measured 22 Nov on the
+    SSL-AASIST demo model on CPU, a 60 s clip took 2.7 s at 4 and 2.6 s at 8, but peak memory
+    was 2.8 GB at 4 against 3.5 GB at 8, per analysis, and the API runs two at once).
     """
 
     def __init__(
@@ -158,7 +211,7 @@ class RealDetector:
         threshold: float | None = None,
         device: str = "cpu",
         filename: str = "best.pt",
-        batch_size: int = 8,
+        batch_size: int = 4,
     ) -> None:
         import torch
 
@@ -175,7 +228,7 @@ class RealDetector:
         self.batch_size = batch_size
         ckpt_path = resolve_checkpoint(source, filename)
         self.model, info = load_from_checkpoint(ckpt_path, device)
-        self.model_version = f"{info['name']}:{Path(source).name or source}:epoch{info['epoch']}"
+        self.model_version = model_version(info, source)
         self.threshold = threshold_from_env() if threshold is None else threshold
         if not 0.0 <= self.threshold <= 1.0:
             raise ValueError(f"threshold must be in [0, 1], got {self.threshold}")
@@ -203,7 +256,7 @@ class RealDetector:
 
 def get_detector() -> Detector:
     """Select the detector from VOXGUARD_DETECTOR=stub|real (default: stub)."""
-    kind = os.environ.get("VOXGUARD_DETECTOR", "stub").lower()
+    kind = os.environ.get("VOXGUARD_DETECTOR", "stub").strip().lower() or "stub"
     if kind == "stub":
         return StubDetector()
     if kind == "real":

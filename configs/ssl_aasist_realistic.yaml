@@ -1,0 +1,51 @@
+# SSL-AASIST realistic-recording fine-tune (15 Nov plan). Starts from the codec-augmented
+# checkpoint (v2 part 3, epoch 11) and trains 4 more epochs on the same codec-augmented manifest
+# with on-the-fly room reverb, microphone EQ, coloured noise and gain (data/realistic.py) on half
+# of the clips. Why: In-the-Wild (out-of-domain real-world speech) showed 19 % of real clips
+# flagged at the phone threshold; the false alarms cluster in reverberant / old / music-heavy
+# recordings, a recording-chain variation ASVspoof does not contain.
+# Kaggle (after the RawNet2 run):
+#   python -m voxguard.kaggle_runner push --run ssl-aasist-realistic \
+#     --config configs/ssl_aasist_realistic.yaml \
+#     --train-manifest train_codec_aug.csv --init-from <owner>/voxguard-ssl-aasist-codec-aug-v2-p3
+# Success criterion: fewer In-the-Wild false alarms without a clear rise in missed fakes on the
+# phone-degraded eval sets (both via evaluate.py). Everything else as configs/ssl_aasist.yaml.
+model:
+  name: ssl_aasist
+  pretrained: facebook/wav2vec2-xls-r-300m
+  finetune: full
+  last_n: 4
+  gradient_checkpointing: true
+  proj_dim: 128
+data:
+  train_manifests: [data/processed/manifests/train_codec_aug.csv]
+  dev_manifests: [data/processed/manifests/asvspoof2019_la_dev.csv]
+  roots: [data/raw, data/processed/codec_aug]  # Kaggle: set by the kernel
+  num_samples: 64600
+  dev_max_samples: 5000
+  train_samples_per_epoch: 25380
+  realistic:
+    probability: 0.5
+    reverb_probability: 0.5
+    rt60_s: [0.15, 0.8]
+    eq_probability: 0.5
+    eq_max_db: 8.0
+    noise_probability: 0.5
+    snr_db: [10.0, 35.0]
+    gain_db: [-6.0, 6.0]
+train:
+  epochs: 4
+  batch_size: 14
+  lr: 1.0e-6
+  frontend_lr: null
+  weight_decay: 1.0e-4
+  class_weights: [0.9, 0.1]
+  seed: 1234
+  num_workers: 2
+  amp: true
+  out_dir: runs/ssl_aasist_realistic
+  device: auto
+  init_from: null           # set by --init-from (Kaggle: the codec-aug part 3 best.pt)
+wandb:
+  enabled: false
+  project: voxguard

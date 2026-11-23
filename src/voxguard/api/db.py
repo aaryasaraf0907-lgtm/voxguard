@@ -1,4 +1,5 @@
-"""SQLAlchemy 2 models and engine setup: sessions, alerts and the caller blocklist."""
+"""SQLAlchemy 2 models and engine setup: sessions, alerts, the caller blocklist, live-call windows
+and transaction decisions with their audit trail."""
 
 from __future__ import annotations
 
@@ -8,8 +9,11 @@ from typing import Any
 from sqlalchemy import DateTime, Engine, ForeignKey, TypeDecorator, create_engine, event
 from sqlalchemy.engine import URL, make_url
 from sqlalchemy.exc import ArgumentError
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 from sqlalchemy.pool import StaticPool
+
+BUSY_TIMEOUT_MS = 30_000
+IMMEDIATE = "voxguard_begin_immediate"  # execution option read by the "begin" listener
 
 
 class UTCDateTime(TypeDecorator[datetime]):
@@ -68,6 +72,70 @@ class BlocklistRow(Base):
     last_seen: Mapped[datetime] = mapped_column(UTCDateTime)
 
 
+class CallWindowRow(Base):
+    """Feature-level log of a live call: one row per scored window, numbers only, no audio."""
+
+    __tablename__ = "call_windows"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    session_id: Mapped[str] = mapped_column(ForeignKey("sessions.session_id"), index=True)
+    t_s: Mapped[float]  # end of the window, seconds into the call
+    window_score: Mapped[float]
+    running_score: Mapped[float]
+
+
+class TransactionRow(Base):
+    """A transfer checked against a call's risk (api/policy.py). ``session_id`` is not a foreign
+    key: a live call's session is stored only when the call ends."""
+
+    __tablename__ = "transactions"
+
+    decision_id: Mapped[str] = mapped_column(primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, index=True)
+    session_id: Mapped[str] = mapped_column(index=True)
+    amount_inr: Mapped[float]
+    beneficiary: Mapped[str | None]
+    high_value: Mapped[bool]
+    live: Mapped[bool]  # checked while the call was still going on
+    tier: Mapped[str]
+    action: Mapped[str]  # allow | step_up | hold
+    status: Mapped[str]  # allowed | pending | held | released
+    score: Mapped[float | None]
+    threshold: Mapped[float]
+    windows: Mapped[int | None]
+    reasons: Mapped[str]  # JSON list of reason codes
+    required_steps: Mapped[str]  # JSON list of verification methods
+
+
+class TransactionEventRow(Base):
+    """Append-only audit trail of a transaction decision."""
+
+    __tablename__ = "transaction_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    decision_id: Mapped[str] = mapped_column(ForeignKey("transactions.decision_id"), index=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    kind: Mapped[str]  # decided | verified | released
+    method: Mapped[str | None]
+    verified_by: Mapped[str | None]
+    note: Mapped[str | None]
+
+
+class EvidenceRow(Base):
+    """Append-only, hash-chained log of stored records (api/evidence.py)."""
+
+    __tablename__ = "evidence_log"
+
+    seq: Mapped[int] = mapped_column(primary_key=True)  # 1, 2, 3, ... (no gaps when intact)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    kind: Mapped[str]  # session | windows | decision | event
+    ref: Mapped[str]  # session_id, decision_id or event id
+    session_id: Mapped[str] = mapped_column(index=True)
+    record_digest: Mapped[str]
+    prev_hash: Mapped[str]
+    hash: Mapped[str] = mapped_column(unique=True)
+
+
 def require_sqlite_url(url: str) -> URL:
     """The blocklist upsert uses SQLite's ON CONFLICT, so only SQLite URLs are supported.
 
@@ -92,16 +160,45 @@ def make_engine(url: str) -> Engine:
     # FastAPI runs sync handlers on a threadpool, so SQLite connections cross threads.
     kwargs: dict = {"connect_args": {"check_same_thread": False}}
     if parsed.database in (None, "", ":memory:"):
-        kwargs["poolclass"] = StaticPool  # one shared connection, else each thread sees a new DB
+        # One shared connection, else each thread sees a new empty DB. Request threads then share
+        # one transaction, so a rollback in one request can undo another's uncommitted rows:
+        # acceptable for tests and quick local runs only. Deployments use a file database.
+        kwargs["poolclass"] = StaticPool
     engine = create_engine(url, **kwargs)
 
+    file_db = parsed.database not in (None, "", ":memory:")
+
     @event.listens_for(engine, "connect")
-    def _enforce_foreign_keys(dbapi_connection: Any, _record: Any) -> None:
+    def _configure_connection(dbapi_connection: Any, _record: Any) -> None:
+        # SQLAlchemy emits BEGIN itself (_begin below), so the driver must not (its implicit
+        # transactions start late and cannot be IMMEDIATE).
+        dbapi_connection.isolation_level = None
         cursor = dbapi_connection.cursor()
         cursor.execute("PRAGMA foreign_keys=ON")
+        # Load test (18 Nov 2026): with the default rollback journal and 5 s lock wait, 16+
+        # simultaneous analyses plus a polling reader gave "database is locked" (500). WAL lets
+        # readers run during a write; writers still take turns, waiting up to 30 s.
+        cursor.execute(f"PRAGMA busy_timeout={BUSY_TIMEOUT_MS}")
+        if file_db:
+            cursor.execute("PRAGMA journal_mode=WAL")
         cursor.close()
 
+    @event.listens_for(engine, "begin")
+    def _begin(conn: Any) -> None:
+        immediate = conn.get_execution_options().get(IMMEDIATE, False)
+        conn.exec_driver_sql("BEGIN IMMEDIATE" if immediate else "BEGIN")
+
     return engine
+
+
+def begin_write(db: Session) -> None:
+    """Start ``db``'s transaction holding SQLite's write lock (BEGIN IMMEDIATE).
+
+    Writers then take turns, so a timestamp taken after this call follows commit order: an
+    ``/v1/alerts?since=`` poller cannot miss a row that commits after it read a newer one. (The
+    load test saw up to 900 out-of-order commits per minute without it.) Call it before the
+    first statement of the transaction."""
+    db.connection(execution_options={IMMEDIATE: True})
 
 
 def create_tables(engine: Engine) -> None:

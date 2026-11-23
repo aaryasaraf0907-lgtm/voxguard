@@ -1,0 +1,25 @@
+# Packages in uv.lock that the INSTALL_ML=1 images must NOT install with `uv sync`: torch and
+# torchaudio (the CPU builds pinned in docker/torch-cpu.txt replace them) and every CUDA package
+# torch pulls in on Linux (amd64 and arm64 alike). tests/test_docker_ml_pins.py checks this
+# list against uv.lock.
+torch
+torchaudio
+triton
+cuda-bindings
+cuda-pathfinder
+cuda-toolkit
+nvidia-cublas
+nvidia-cuda-cccl
+nvidia-cuda-cupti
+nvidia-cuda-nvrtc
+nvidia-cuda-runtime
+nvidia-cudnn-cu13
+nvidia-cufft
+nvidia-cufile
+nvidia-cusolver
+nvidia-cusparse
+nvidia-cusparselt-cu13
+nvidia-nccl-cu13
+nvidia-nvjitlink
+nvidia-nvshmem-cu13
+nvidia-nvtx

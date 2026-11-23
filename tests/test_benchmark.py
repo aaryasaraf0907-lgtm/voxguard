@@ -121,6 +121,12 @@ def test_full_stub_run_with_codec_and_api(tmp_path) -> None:
     api = r["api_request"]
     assert api["codec"] == "g711_mulaw" and api["clean"]["n"] == 3 and api["simulated"]["n"] == 3
     assert api["clean"]["sequential_requests_per_s"] > 0
+    # the API's own split: detector latency per request, codec time only when simulated
+    assert api["clean"]["server_latency_ms"]["n"] == 3 and "server_codec_ms" not in api["clean"]
+    assert api["simulated"]["server_codec_ms"]["n"] == 3
+    assert api["simulated"]["server_codec_ms"]["p50_ms"] > 0
+    md = benchmark.render_markdown([r])
+    assert "API codec_ms" in md and "apply to Inference only" in md
 
 
 def test_render_and_load_results_skip_mocked(tmp_path) -> None:
@@ -138,6 +144,8 @@ def test_render_and_load_results_skip_mocked(tmp_path) -> None:
     md = benchmark.render_markdown(loaded)
     assert "Auto-generated" in md and real["id"] in md and "stub-0" in md and "stub run" in md
     assert "mockedrun" not in md
+    row = next(line for line in md.splitlines() if line.startswith(f"| {real['id']} "))
+    assert row.endswith("| n/a | n/a | n/a | n/a |")  # no codec or API run: nothing invented
 
 
 def test_cli_writes_json(tmp_path) -> None:

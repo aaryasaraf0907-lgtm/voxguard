@@ -1,4 +1,4 @@
-# CLAUDE.md — VoxGuard
+# CLAUDE.md — LineTrue
 
 > Shared project brief for BOTH teammates' Claude Code sessions. Read it fully before doing anything.
 > If it conflicts with a direct instruction from the user in the session, follow the user and flag the conflict.
@@ -9,7 +9,7 @@
 
 ## 1. What we are building
 
-**VoxGuard** is a codec-aware voice-deepfake (vishing) detector for telephone-quality audio, plus a thin "prevention" layer and a demo app.
+**LineTrue** (display name since 19 Nov 2026; formerly VoxGuard, renamed because a public SIH26104 repo uses that name. Code identifiers stay `voxguard`: the package, `VOXGUARD_*` variables, image, repo and HF repo names) is a codec-aware voice-deepfake (vishing) detector for telephone-quality audio, plus a thin "prevention" layer and a demo app.
 
 - University semester project: Engineering Design & Innovation. Team of **2**. Final submission **mid-December 2026** (~6 weeks from 1 Nov). **All tools must be free.**
 - Aligned with SIH 2026 problem statement **SIH26104** (AICTE): "AI-Powered Real-Time Detection and Prevention of Voice Cloning Impersonation Attacks" -> detection AND prevention, and REAL-TIME (latency is a reported metric).
@@ -42,7 +42,7 @@ Stretch evidence: train on a subset of codecs, test on an unseen codec.
 6. FastAPI service with analyze endpoint, SQLite persistence, **prevention layer** (flagged sessions + blocklist + alerts)
 7. Streamlit demo (English + Hindi UI), incl. "simulate phone line" toggle (same clip, clean vs codec-degraded)
 8. Docker, GitHub Actions CI (ruff + pytest), README, architecture + results docs
-9. Private deployment (HF Space, CPU) or local docker-compose demo as fallback
+9. Local docker-compose deployment (API + UI, real detector). A private HF Space is optional only: since 2026, Docker Spaces need a paid HF plan (PRO / Team / Enterprise), which the free-only rule excludes (checked 13 Nov 2026)
 
 **Stretch (only after MVP is green, in this order):**
 1. Unseen-codec generalization experiment
@@ -86,7 +86,7 @@ Stretch evidence: train on a subset of codecs, test on an unseen codec.
 | UI | Streamlit (>=1.39 for `st.audio_input`) |
 | Quality | pytest, pytest-benchmark, ruff (lint + format), pre-commit (optional) |
 | CI/CD | GitHub Actions (ruff + pytest on PRs to `dev`/`main`) |
-| Packaging/deploy | Docker + docker-compose; HF Space (CPU, **private**) |
+| Packaging/deploy | Docker + docker-compose (local); HF Space only if a free route exists again (Docker Spaces need a paid plan as of Nov 2026) |
 | Training compute | Kaggle Notebooks / Colab free GPUs; MacBook for dev + smoke tests only |
 
 ## 6. Repo layout
@@ -118,7 +118,7 @@ Git ignores (never commit): `data/raw/`, `data/processed/`, `*.pt/*.pth/*.ckpt`,
 
 ## 7. Interface contract (do not change without telling the other person + PR)
 
-Audio conventions: 16 kHz mono float32. Detector does its own preprocessing: resample -> mono -> crop/pad to 64,600 samples (~4 s); clips longer than 4 s are scored with non-overlapping windows and averaged.
+Audio conventions: 16 kHz mono float32. Detector does its own preprocessing: resample -> mono -> crop/pad to 64,600 samples (~4 s); clips longer than 4 s are scored with non-overlapping windows and averaged; a leftover of at least ~1 s (16,150 samples) is scored as the clip's last 64,600 samples (overlapping the previous window), never repeat-padded, and a shorter leftover is dropped (changed 15 Nov: padded tails scored well above the other windows on real speech), except in a 4.0-5.05 s clip, where the last 64,600 samples are always scored as a second window (changed 20 Nov, #103: on real speech the first 4 s alone scored above the last 4 s and flagged short genuine clips). Only clips shorter than 4 s are repeat-padded, as in training.
 
     # src/voxguard/inference.py
     @dataclass(frozen=True)
@@ -143,12 +143,25 @@ REST API (schemas in `schemas.py`):
 | Method + path | Purpose |
 |---|---|
 | `GET /health` | `{status, detector, model_version}` |
-| `POST /v1/analyze` | multipart `file`; optional form `caller_id`, `simulate_codec` -> `{session_id, label, fake_score, threshold, latency_ms, model_version, flagged, codec_applied}` |
+| `POST /v1/analyze` | multipart `file`; optional form `caller_id`, `simulate_codec`, `codec` -> `{session_id, label, fake_score, threshold, latency_ms, model_version, flagged, codec_applied, codec_ms}` |
+| `GET /v1/codecs` | `{default, codecs: [{name, available, bitrate}]}`: every codec in `data/codecs.CODECS`; `available` = this server's ffmpeg has the encoder; `bitrate` = `data.augment.default_spec(name).bitrate` (null for fixed-rate G.711); `default` = `VOXGUARD_SIMULATE_CODEC` or null |
 | `GET /v1/sessions?flagged_only=&limit=` | stored sessions |
 | `GET /v1/blocklist` | caller ids auto-blocked, with hit counts |
 | `GET /v1/alerts?since=` | alerts raised by the prevention layer |
 
+Phone-line simulation in `/v1/analyze` (agreed in #44's review):
+- `codec=<name>` selects the codec and implies simulation, whatever `simulate_codec` says. Without `codec`, `simulate_codec=true` uses `VOXGUARD_SIMULATE_CODEC` (501 if unset). An empty `codec` counts as omitted. An unknown name is 422; a known codec this server's ffmpeg lacks is 503. Another codec is never substituted, and nothing is scored or stored on these errors.
+- The codec runs at `default_spec(codec)`'s bitrate, the evaluation sets' condition (no noise in the demo), after resampling to 16 kHz.
+- Busy server (added 19 Nov, #92): at most `VOXGUARD_MAX_RUNNING_ANALYSES` (2) analyses run and `VOXGUARD_MAX_WAITING_ANALYSES` (8) wait, up to 45 s; beyond that `/v1/analyze` answers **503 with `Retry-After`**, nothing scored or stored. A 503 without `Retry-After` is still a missing codec or decoder. Session/alert `created_at` is taken under the write lock, so it follows commit order (what `since=` relies on).
+- Live-monitoring timeline (added 19 Nov): optional form field `timeline=true` adds `timeline` (per detector window: `start_s`, `end_s`, `fake_score`, `running_score`, `flagged`) and `first_flag_s` (seconds of audio after which the running average first reached the threshold, or null) to the response; both response-only, null without it. Each window is scored with `Detector.predict` on the detector's own windows; the clip score is their mean, so verdict and stored session are unchanged.
+- Live call monitor (added 19 Nov): `WS /v1/stream?sample_rate=<8000-48000>[&caller_id=&codec=]` takes mono float32 LE frames and `{"type": "end"}`; replies `ready`, `score` (every 2 s once a 4 s window is in: `t_s`, `window_score`, `running_score`, `flagged`), `alert` (first time the running average of at least 2 windows reaches 1.5x the threshold, `ALERT_FACTOR` in `api/risk.py`, changed 20 Nov; the stored verdict still uses the threshold; `level` is always `high`, kept for clients and webhooks; `ready` carries `alert_factor`), `busy`, `limit`, `final`, `error`. Each window is scored as `/v1/analyze` scores a 4 s clip; at the end one session is stored through the prevention layer with the running average as its score. No audio kept beyond the latest window. `GET /monitor` serves its browser page.
+- Transfer checks (added 19 Nov, `api/policy.py`): `POST /v1/transactions/check` `{session_id, amount_inr, beneficiary?}` decides from the call's risk, live (running average of the stream so far) or stored: tier `unknown` (live, fewer than 2 windows) / `low` / `caution` (threshold to 1.5x) / `high`, one tier up if the caller was flagged on an earlier call; action from `VOXGUARD_TRANSACTION_POLICY` per tier and value (`high_value` at or above `VOXGUARD_HIGH_VALUE_INR`, 50,000): `allow`, `step_up` (any one of `callback`, `otp`, `second_approver`) or `hold` (`second_approver` and `callback`). `POST /v1/transactions/{decision_id}/verify` `{method, verified_by, note?}` records a step and releases when done; `GET /v1/transactions[?session_id=]` lists decisions with an append-only audit trail. `GET /v1/sessions/{id}/timeline` returns a live call's stored per-window scores (no audio); `GET /v1/sessions/{id}/report?lang=` a printable incident report. Optional signed webhook (`VOXGUARD_ALERT_WEBHOOK_URL`, HMAC-SHA256 with `VOXGUARD_ALERT_WEBHOOK_SECRET`) for `call_flagged`, `live_alert`, `transaction_step_up`, `transaction_held`, `transaction_released`.
+- Evidence trail (added 19 Nov, `api/evidence.py`): every stored session, a live call's windows, each transfer decision and each verification step add a hash-chained entry to `evidence_log` in the same transaction; `GET /v1/evidence/verify[?session_id=]` returns `{ok, entries, head, problems, session_entries}`; webhook payloads carry `evidence_head`. A hold's second approver and call-back need different `verified_by` names (422 otherwise).
+- `codec_applied` is the codec actually used, or null. `codec_ms` is the wall time of the whole simulation (resample + ffmpeg encode/decode), null without simulation; response-only, not stored. `latency_ms` stays detector inference only.
+
 Prevention rule (MVP): `fake_score >= threshold` -> session stored as flagged, alert created, `caller_id` (if given) upserted into blocklist with a counter. Threshold modes: `eer` (default) and `low_far` (operating point shifted to reduce missed fakes).
+
+Thresholds (agreed 13 Nov): `thresholds.json` next to each checkpoint (`{model_version, selected_on: "dev", clean, phone, low_far: {clean, phone}, per_codec: {...}}`), chosen on dev by `evaluate.py`; GSM is never used to choose one. In `eer` mode the API uses, in order: an explicit `VOXGUARD_THRESHOLD`; else the file's **phone** threshold for audio of unknown origin and for simulated phone lines, its **clean** threshold only for audio known to be clean (no request field says that yet); else the detector's threshold (0.5). `per_codec` and `low_far` are for reporting only. The file's `model_version` must name the same model and epoch as the loaded checkpoint: `<name>[/<run>]:<source>:epoch<N>` (the run is the training run, e.g. `ssl_aasist/ssl-aasist-codec-aug-v2`, so clean and codec-augmented checkpoints differ; added 14 Nov) is compared on its first and last parts only, since `<source>` is the load location (`best.pt`, a mounted directory, the HF repo name) and differs between `evaluate.py` and the API. A malformed file or a different model or epoch stops startup; a missing file keeps the old behaviour. The response's `threshold` is the one applied.
 
 ## 8. Data and codec spec
 
@@ -176,7 +189,7 @@ Prevention rule (MVP): `fake_score >= threshold` -> session stored as flagged, a
 
 ## 11. Languages
 
-- **UI: English + Hindi (MVP).** All user-visible strings go through `i18n.t(key, lang)` with `en` and `hi` dictionaries; language toggle in the sidebar. Aarya reviews the Hindi strings.
+- **UI: English + Hindi (MVP).** All user-visible strings go through `i18n.t(key, lang)` with `en` and `hi` dictionaries; language toggle in the sidebar. Aarya checks new Hindi strings when she reviews the PR; corrections go in a follow-up PR, so this never blocks a merge.
 - **Detection: English is the trained/evaluated language** (ASVspoof is English).
 - **Hindi detection is a STRETCH generalization test**, not a feature claim: real Hindi speech from open corpora (e.g. Google FLEURS `hi_in`; verify access), fake Hindi generated with open TTS (e.g. XTTS-v2 Hindi, `facebook/mms-tts-hin`; verify availability and non-commercial licences, which are fine for academic use but must be noted). XLS-R is multilingual so it is a reasonable bet; WavLM is English-centric.
 - In every doc, claim only what was measured ("evaluated on a small Hindi set"), never "supports Hindi".
@@ -186,7 +199,7 @@ Prevention rule (MVP): `fake_score >= threshold` -> session stored as flagged, a
 | | **Person 1 - ML Core + repo owner (Aarya)** | **Person 2 - Product & Platform (teammate)** |
 |---|---|---|
 | Owns | `data/`, `models/`, `metrics.py`, `train.py`, `evaluate.py`, `inference.py` (RealDetector), `configs/`, `scripts/`, results docs | `api/`, `ui/`, `schemas.py`, `docker/`, `.github/`, API/UI tests, README, `architecture.md`, deployment |
-| Delivers | pipeline, 2 models, 2x2 results, latency numbers, checkpoint on HF Hub | working API + prevention layer, EN/HI demo, CI, Docker, private deploy, demo script/video |
+| Delivers | pipeline, 2 models, 2x2 results, latency numbers, checkpoint on HF Hub | working API + prevention layer, EN/HI demo, CI, Docker, local compose deployment, demo script |
 | Shared | `CLAUDE.md`, `pyproject.toml`, `docs/STATUS.md`, `docs/invention-disclosure.md`, the section-7 contract | |
 
 Person 1 lands the scaffold + contract first (small PR, within a day) so Person 2 is never blocked. Person 2 builds against `StubDetector` until the real checkpoint exists.
@@ -195,9 +208,9 @@ Each Claude Code session updates ONLY its own section of `docs/STATUS.md` at the
 ## 13. Git workflow
 
 - Everything reaches `main` and `dev` through a PR: never push to `main`/`dev` directly, never force-push or rewrite history. Work on `feat/<task>`, `fix/<task>`, `docs/<task>` branches from `dev`; open PRs with `gh pr create --base dev`. Never bypass the branch ruleset or use admin overrides.
-- **Merging into `dev` (team decision, 8 Nov 2026):** the author may merge their own PR once (1) CI is green on the PR's **latest** commit, (2) ruff and the test suite pass locally, and (3) if `dev` has moved since the PR's CI run, the PR has been re-tested merged onto current `dev`. Review by the other person is welcome but not required. Changes to the section 7 contract, shared preprocessing, or this file must still be called out to the other person in the PR description. The other person's PRs may be merged after a review and the same three checks.
+- **Merging into `dev` (team decision, 8 Nov 2026):** the author may merge their own PR once (1) CI is green on the PR's **latest** commit, (2) ruff and the test suite pass locally, and (3) if `dev` has moved since the PR's CI run, the PR has been re-tested merged onto current `dev`. Review by the other person is welcome but not required. Changes to the section 7 contract, shared preprocessing, or this file must still be called out to the other person in the PR description. The other person's PRs may be merged after a review and the same three checks. Work inside your own area (section 12) needs no one else's go-ahead: routine rebuilds, image pulls, dev tooling, smoke tests and merging your own PRs. Only section 7 contract changes, shared preprocessing and this file need the other person first.
 - Small PRs (aim < 400 changed lines), imperative commit messages, CI green before merging or asking for review, fill in the PR template.
-- `dev` -> `main` only at milestones, by PR: **M1 15 Nov** (pipeline + stub end-to-end), **M2 29 Nov** (real model in the demo), **M3 8 Dec** (feature freeze).
+- `dev` -> `main` only at milestones, by PR: **M1 15 Nov** (pipeline + stub end-to-end), **M2 29 Nov** (real model in the demo), **M3 8 Dec** (feature freeze). **Brought forward (18 Nov, then 22 Nov): the whole project, including the final `dev` -> `main` promotion, is complete by 24 Nov 2026, 23:59 IST** (see section 16).
 - Never commit secrets, `.env`, data, checkpoints. Never print tokens. Use `.env.example` for variable names only.
 
 ## 14. Coding conventions
@@ -217,9 +230,11 @@ Python 3.11, type hints everywhere, ruff (lint + format), pydantic v2, `logging`
 | 1 (2-8 Nov) | scaffold PR + contract; ASVspoof download; codec pipeline | review scaffold; FastAPI + SQLite skeleton on StubDetector; UI skeleton |
 | 2 (9-15 Nov) | dataset loaders, EER, RawNet2 + smoke run; SSL-AASIST code | prevention layer, alerts, UI (EN/HI), API tests, CI. **M1** |
 | 3 (16-22 Nov) | full training runs (clean vs codec-aug) on Kaggle/Colab | Docker/compose, benchmark harness, "simulate phone line" toggle (uses `codecs.py`) |
-| 4 (23-29 Nov) | evaluation matrix, per-codec results, RealDetector + checkpoint to HF Hub. **M2** | integrate real detector, private deploy, demo polish |
-| 5 (30 Nov-6 Dec) | stretch: unseen codec / Hindi; results write-up | docs, README, demo video/script; **M3 (8 Dec) feature freeze** |
+| 4 (23-29 Nov) | evaluation matrix, per-codec results, RealDetector + checkpoint to HF Hub. **M2** | integrate real detector, compose deployment with the real detector, demo polish |
+| 5 (30 Nov-6 Dec) | stretch: unseen codec / Hindi; results write-up | docs, README, demo script; **M3 (8 Dec) feature freeze** |
 | 6 (7-13 Dec) | final numbers, report sections, invention disclosure | final report/presentation support, rehearsal, buffer |
+
+**Compressed plan (decided 18 Nov; deadline moved to 24 Nov 23:59 IST on 22 Nov): everything above is done by 24 Nov 2026, 23:59 IST.** The only blocked work is GPU training after the Kaggle quota reset (Sat 21 Nov 05:30 IST). 21 Nov: RawNet2 codec-aug v2 and the SSL realistic fine-tune run in parallel. 22-23 Nov: thresholds, evaluation, the four-model `docs/results.md`, checkpoints published, demo model and operating point fixed. Person 2 in parallel: the demo script, the 15-minute README check with a person, retrained RawNet2 benchmarks, re-running the sanity clips. 23 Nov: Person 2's README check with a person, browser checks (Safari, Firefox, Edge, Brave) and sanity clips; the demo video was dropped (22 Nov). 24 Nov: final docs and STATUS, then the final `dev` -> `main` promotion, by 23:59 IST. The week rows above are kept for history.
 
 If behind schedule, cut stretch items first, then the second SSL model, then Hindi eval. Never cut: the 2x2 matrix, the working demo, tests/CI.
 
@@ -233,7 +248,7 @@ If behind schedule, cut stretch items first, then the second SSL model, then Hin
 
 ## 18. Working agreements for Claude Code
 
-- Plan first for any task touching more than ~3 files; wait for the user's go-ahead.
-- Ask before: downloading > 1 GB, installing system packages, spending quota, deleting anything, changing the contract.
+- Plan first for any task touching more than ~3 files and state the plan; wait for a go-ahead only if it changes the section 7 contract, shared preprocessing or this file.
+- Ask before: deleting data or work you did not create, spending limited GPU quota (Kaggle/Colab), downloading datasets > 1 GB, changing the contract. Routine downloads (Docker base images, Python packages, the team's own checkpoints) and installing dev tools need no approval; mention them in the PR.
 - Prefer the smallest change that works; no scope creep beyond sections 3 and 12.
 - After each PR: give a short summary, how to run/test it, and what is next.

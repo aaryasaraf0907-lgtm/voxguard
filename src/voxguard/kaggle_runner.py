@@ -49,6 +49,7 @@ class RunSpec:
     epochs: int | None = None
     max_samples: int | None = None
     resume_run: str | None = None  # run whose last.pt to continue from
+    init_run: str | None = None  # fine-tune: run whose best.pt gives the starting weights
 
 
 @dataclass(frozen=True)
@@ -198,6 +199,9 @@ if SPEC["resume_run"]:
             shutil.copy2(prev_dir / name, out_dir / name)
             print("carried over", prev_dir / name, flush=True)
     cmd.append("--resume")
+if SPEC["init_run"]:
+    prev = "runs/" + SPEC["init_run"]
+    cmd += ["--init-from", str(find(prev + "/best.pt") / prev / "best.pt")]  # part 1 only
 
 if shutil.which("nvidia-smi"):
     subprocess.run(["nvidia-smi", "-L"], check=False)
@@ -275,6 +279,7 @@ def kernel_metadata(
     resume_from: str | None = None,
     gpu: bool = True,
     internet: bool = False,
+    init_from: str | None = None,
 ) -> dict[str, object]:
     slug = kernel_slug(spec.run)
     return {
@@ -291,15 +296,22 @@ def kernel_metadata(
             f"{owner}/{PREP_DATASET}",
             f"{owner}/{LA_DATASET}",
         ],
-        "kernel_sources": [resume_from] if resume_from else [],
+        "kernel_sources": list(dict.fromkeys(k for k in (resume_from, init_from) if k)),
         "competition_sources": [],
     }
 
 
 def push(
-    owner: str, spec: RunSpec, accelerator: str, resume_from: str | None, dry_run: bool
+    owner: str,
+    spec: RunSpec,
+    accelerator: str,
+    resume_from: str | None,
+    dry_run: bool,
+    init_from: str | None = None,
 ) -> Path:
-    meta = kernel_metadata(owner, spec, resume_from, internet=needs_internet(spec.config))
+    meta = kernel_metadata(
+        owner, spec, resume_from, internet=needs_internet(spec.config), init_from=init_from
+    )
     return _push_folder(spec.run, render_kernel(spec), meta, accelerator, dry_run)
 
 
@@ -341,6 +353,9 @@ def main(argv: list[str] | None = None) -> None:
     s.add_argument("--max-samples", type=int, default=None)
     s.add_argument("--smoke", action="store_true", help="shorthand: 1 epoch, 200 samples")
     s.add_argument("--resume-from", default=None, help="kernel ref whose output has last.pt")
+    s.add_argument(
+        "--init-from", default=None, help="fine-tune: kernel ref whose output has best.pt"
+    )
     s.add_argument("--accelerator", default="NvidiaTeslaT4")
     s.add_argument("--dry-run", action="store_true", help="stage files, do not push")
     s = sub.add_parser("push-augment", help="CPU kernel: per-codec copies of a manifest subset")
@@ -377,8 +392,9 @@ def main(argv: list[str] | None = None) -> None:
             epochs=1 if args.smoke else args.epochs,
             max_samples=200 if args.smoke else args.max_samples,
             resume_run=run_from_kernel(args.resume_from) if args.resume_from else None,
+            init_run=run_from_kernel(args.init_from) if args.init_from else None,
         )
-        push(owner, spec, args.accelerator, args.resume_from, args.dry_run)
+        push(owner, spec, args.accelerator, args.resume_from, args.dry_run, args.init_from)
 
 
 if __name__ == "__main__":
