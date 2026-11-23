@@ -264,7 +264,7 @@ from the first run. (The first run's scorer also printed its In-the-Wild preview
 not used for this fix, which follows from the train/eval check above.) Its epochs are scored at the
 final gate if they arrive in time, otherwise reported later in this PR, marked as late.
 
-## Test-only checks (23 Nov ~03:45 UTC, after the final gate, before any test-only result)
+## Test-only checks (23 Nov 02:48 UTC, commit dc9dcee: after the final gate, before any test-only result)
 
 **Chosen candidate.** The final gate (all completed runs, unchanged checks) passed three
 candidates: C:fix-2-top-init-l2-gentle, B:top-mu0.5 and C:top-mu0.5. The choice rule (fewest dev
