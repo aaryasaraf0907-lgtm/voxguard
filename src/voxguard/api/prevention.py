@@ -14,7 +14,14 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from voxguard.api import evidence
-from voxguard.api.db import AlertRow, BlocklistRow, CallWindowRow, SessionRow, begin_write
+from voxguard.api.db import (
+    AlertRow,
+    BlocklistRow,
+    CallWindowRow,
+    SessionLanguageRow,
+    SessionRow,
+    begin_write,
+)
 from voxguard.api.deps import Settings
 from voxguard.api.thresholds import ThresholdSet
 from voxguard.inference import Prediction
@@ -109,6 +116,7 @@ def store_session(
     decision: Decision,
     codec_applied: str | None,
     windows: list[tuple[float, float, float]] | None = None,
+    language: object | None = None,  # voxguard.language.LanguageResult, if the check ran
 ) -> SessionRow:
     """Store one analysed session, plus its alert and blocklist update when flagged, and a live
     call's per-window scores (``windows``: t_s, window score, running average), in one
@@ -140,6 +148,15 @@ def store_session(
             db.flush()
             evidence.append(
                 db, "windows", session_id, session_id, evidence.windows_payload(window_rows)
+            )
+        if language is not None:
+            db.add(
+                SessionLanguageRow(
+                    session_id=session_id,
+                    code=language.code,  # type: ignore[attr-defined]
+                    supported_share=language.supported_share,  # type: ignore[attr-defined]
+                    supported=language.supported,  # type: ignore[attr-defined]
+                )
             )
         if row.flagged:
             record_flag(db, row)

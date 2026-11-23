@@ -49,6 +49,21 @@ class AnalyzeResponse(BaseModel):
             "reached the threshold; null if it never did. Not stored."
         ),
     )
+    language: str | None = Field(
+        default=None,
+        description=(
+            "Only with VOXGUARD_LANGUAGE_CHECK=on: the most likely spoken language (Whisper code, "
+            'e.g. "en", "ta"); null if the check is off or the clip is too short to judge.'
+        ),
+    )
+    language_name: str | None = Field(default=None, description='e.g. "Tamil"')
+    language_supported: bool | None = Field(
+        default=None,
+        description=(
+            "False when the speech is clearly not English or Hindi: the verdict is unchanged "
+            "but less reliable for this language; confirm the call by a call-back."
+        ),
+    )
 
 
 class TimelinePoint(BaseModel):

@@ -261,6 +261,29 @@ What it is not: it listens to a microphone or a file, not a phone line (telephon
 scope); the codec runs per window, not across the whole call; the first score needs one window
 and an alert two (about 6 s). Browsers allow the microphone only on localhost or HTTPS.
 
+## Spoken-language check (`voxguard/language.py`, `VOXGUARD_LANGUAGE_CHECK`)
+
+The detector is trained and evaluated on English (ASVspoof), with Hindi only as a small
+generalisation test, so for speech in another language its score means little. With the check on,
+the API loads `openai/whisper-base` (MIT; `VOXGUARD_LANGUAGE_MODEL` to change) at startup and
+reads Whisper's probability for each language on the **original** audio (before any phone-line
+simulation; up to the first 30 s of an upload, the first 6 s of a live call, which is before the
+earliest possible live alert at 6.25 s).
+
+- **Unsupported** only when English + Hindi + Urdu together get less than 10 % (spoken Hindi and
+  Urdu are nearly the same). Then `language_supported` is false and the app, the monitor and the
+  incident report add a note, "Language not supported yet (detected: X)": the result is less
+  reliable for this language, confirm by a call-back. **The verdict is unchanged:** a call over
+  the threshold is still flagged, alerted and blocklisted (a cloned voice must not escape by
+  switching language), and transfer checks are unchanged.
+- **Anything less clear** (also clips under 2 s, or a failed check) keeps the normal verdict.
+- **Stored** in its own table, `session_languages` (code, supported share, supported), so
+  existing databases gain it at startup without a migration (not part of the evidence chain).
+- **Checked privately (22 Nov)** with whisper-base: 1 of 320 genuine English clips
+  (Indian-accented, ASVspoof 2019, In-the-Wild) fell under the cut; 28 of 30 synthetic Tamil,
+  Marathi, Bengali, French and Spanish sentences (MMS-TTS) did, and no Hindi one. Phone-band audio
+  makes the language less certain; such clips then keep the normal verdict.
+
 ## Transfer checks, evidence and alerts (`api/policy.py`, `api/transactions.py`)
 
 Graded verification, not a binary accusation: a transfer asked for during or after a checked

@@ -29,6 +29,7 @@ from voxguard.api import evidence, policy
 from voxguard.api.db import (
     BlocklistRow,
     CallWindowRow,
+    SessionLanguageRow,
     SessionRow,
     TransactionEventRow,
     TransactionRow,
@@ -261,8 +262,15 @@ def session_report(
         raise HTTPException(404, "Unknown session_id")
     stmt = select(TransactionRow).where(TransactionRow.session_id == session_id)
     decisions = [_decision(db, r) for r in db.scalars(stmt.order_by(TransactionRow.created_at))]
+    lrow = db.get(SessionLanguageRow, session_id)
+    language = None
+    if lrow is not None:
+        from voxguard.language import language_name
+
+        language = (language_name(lrow.code), lrow.supported)
     html = render_report(row, _windows(db, session_id), decisions, lang,
-                         evidence.verify(db, session_id), actions=not download)  # fmt: skip
+                         evidence.verify(db, session_id), actions=not download,
+                         language=language)  # fmt: skip
     headers = {"Cache-Control": "no-store"}
     if download:
         name = f"linetrue-report-{session_id}-{lang}.html"

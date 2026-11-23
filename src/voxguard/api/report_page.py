@@ -103,10 +103,19 @@ def render_report(
     lang: str,
     check: dict | None = None,
     actions: bool = True,
+    language: tuple[str, bool] | None = None,
 ) -> str:
     """``actions`` adds the Download and Print buttons (left out of the downloaded file itself)."""
     e = escape
     verdict = t("report_flagged" if row.flagged else "report_not_flagged", lang)
+    # speech clearly not in English or Hindi (voxguard/language.py): a note next to the verdict,
+    # which is unchanged (a flagged call stays flagged, with its alert and blocklist entry)
+    lang_note = ""
+    if language is not None and not language[1]:
+        lang_note = (
+            f'<p class="langnote">{e(t("monitor_lang_unsupported", lang, language=language[0]))} '
+            f"{e(t('monitor_lang_unsupported_advice', lang))}</p>"
+        )
     facts = [
         (t("report_session", lang), row.session_id),
         (t("report_time", lang), _fmt_time(row.created_at)),
@@ -120,6 +129,10 @@ def render_report(
         (t("m_codec", lang), row.codec_applied or t("none_value", lang)),
         (t("m_model", lang), row.model_version),
     ]
+    if language is not None:  # only when the language check ran (VOXGUARD_LANGUAGE_CHECK)
+        name, supported = language
+        shown = name if supported else t("report_language_unsupported", lang, language=name)
+        facts.append((t("report_language", lang), shown))
     facts_html = "".join(f"<tr><th>{e(k)}</th><td>{e(str(v))}</td></tr>" for k, v in facts)
     if windows:
         flag_at = next((p.t_s for p in windows if p.running_score >= row.threshold), None)
@@ -187,6 +200,7 @@ def render_report(
   main {{ max-width: 860px; margin: 0 auto; padding: 24px 16px 48px; }}
   h1 {{ font-size: 1.5rem; margin: 0 0 4px; }} h2 {{ font-size: 1.1rem; margin: 24px 0 8px; }}
   .verdict {{ padding: 12px 14px; border-radius: 8px; background: {"#fee2e2" if row.flagged else "#dcfce7"}; }}
+  .langnote {{ padding: 10px 14px; border-radius: 8px; background: #fef3c7; }}
   table {{ border-collapse: collapse; width: 100%; margin: 8px 0; font-size: .92rem; }}
   th, td {{ border: 1px solid #e5e7eb; padding: 4px 8px; text-align: left; vertical-align: top; }}
   th {{ background: #f6f7f9; }}
@@ -203,6 +217,7 @@ def render_report(
 <h1>{e(t("report_title", lang))}</h1>
 <p class="muted">{e(t("report_generated", lang, time=_fmt_time(datetime.now(UTC))))}</p>
 {_actions(lang) + chr(10) if actions else ""}<p class="verdict"><strong>{e(verdict)}</strong></p>
+{lang_note}
 <table>{facts_html}</table>
 <h2>{e(t("report_timeline", lang))}</h2>
 {timeline}

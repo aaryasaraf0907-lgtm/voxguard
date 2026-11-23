@@ -31,6 +31,12 @@ wraps them in an application:
   and allowed, sent for verification (call-back, OTP or a second approver) or held, with an
   audit trail and an incident report per call that can be downloaded (HTML) or printed / saved
   as PDF (no audio kept).
+- **Optional language check** (off by default; `VOXGUARD_LANGUAGE_CHECK=on` in `.env`): the
+  detector is trained and tested on English, with Hindi as a small test. With the check on, a
+  clip whose speech is clearly in another language gets a note, "Language not supported yet
+  (detected: …)", saying its result is less reliable and to confirm by a call-back. The verdict,
+  alert and blocklist are unchanged. It downloads `openai/whisper-base` (~290 MB) on first start
+  and adds about 0.5 s per analysis on CPU.
 
 ## Quick start: the demo with the real model
 

@@ -68,6 +68,7 @@ PAGE = r"""<!doctype html>
   #banner.alert { background:var(--alert); color:var(--alert-fg); }
   #banner.info { background:var(--info); color:var(--info-fg); }
   #banner.caution { background:#fef3c7; color:#78350f; }
+  #langnote { background:#fef3c7; color:#78350f; padding:10px 14px; border-radius:8px; }
   #banner strong { font-size:1.25rem; display:block; }
   #guidance { margin-top:10px; }
   #guidance ul { margin:4px 0 0; padding-left:20px; }
@@ -137,6 +138,7 @@ PAGE = r"""<!doctype html>
     <span><i class="key" style="background:var(--thr)"></i><span data-t="monitor_threshold"></span></span>
     <span class="muted" data-t="monitor_seconds"></span>
   </div>
+  <p id="langnote" hidden></p>
   <div id="final" class="muted"></div>
   <p id="scorenote" class="muted" hidden data-t="monitor_score_note"></p>
   <p id="reportlinks" hidden><a id="report" href="#" target="_blank" rel="noopener" data-t="monitor_report"></a>
@@ -180,6 +182,7 @@ function t(key, vars) {
 
 const state = { ws: null, ctx: null, media: null, source: null, pending: [], pendingN: 0,
                 points: [], threshold: null, flagAt: null, alerted: false, last: null,
+                unsupported: false, languageName: null,
                 minWindows: 2, caution: 1.5, alertFactor: 1.5,
                 banner: ["", "monitor_status_idle", null], final: null, seconds: 0 };
 
@@ -191,6 +194,7 @@ function applyLanguage() {
   showBanner(...state.banner);
   renderFinal();
   renderDecision();
+  renderLangNote();
 }
 
 function showBanner(kind, headKey, detail) {
@@ -314,6 +318,10 @@ function onMessage(m) {
     state.alerted = true; state.flagAt = m.t_s;
     showRisk(state.last);
     draw();
+  } else if (m.type === "language") {
+    // speech clearly not in English or Hindi: no verdict, advise a call-back (never "safe")
+    state.languageName = m.language_name || m.language;
+    if (m.language_supported === false) { state.unsupported = true; renderLangNote(); }
   } else if (m.type === "busy") {
     $("final").textContent = t("monitor_busy");
   } else if (m.type === "final") {
@@ -321,6 +329,15 @@ function onMessage(m) {
   } else if (m.type === "error") {
     state.final = { error: m.detail }; renderFinal();
     showBanner("alert", "monitor_error", { vars: { detail: m.detail } });
+  }
+}
+
+function renderLangNote() {
+  // a note next to the risk banner, which is unchanged: an alert still fires when the risk is high
+  $("langnote").hidden = !state.unsupported;
+  if (state.unsupported) {
+    $("langnote").textContent = t("monitor_lang_unsupported", { language: state.languageName }) +
+      " " + t("monitor_lang_unsupported_advice");
   }
 }
 
@@ -441,9 +458,10 @@ function teardown() { stopAudio(); }
 
 function reset() {
   Object.assign(state, { points: [], threshold: null, flagAt: null, alerted: false, last: null,
+                         unsupported: false, languageName: null,
                          final: null, seconds: 0, pending: [], pendingN: 0, sessionId: null,
                          decision: null });
-  $("approve").disabled = true; renderDecision(); $("reportlinks").hidden = true; $("scorenote").hidden = true;
+  $("approve").disabled = true; renderDecision(); $("reportlinks").hidden = true; $("scorenote").hidden = true; $("langnote").hidden = true;
   for (const id of ["elapsed", "window", "running", "threshold"]) $(id).textContent = "–";
   $("final").textContent = "";
   draw();

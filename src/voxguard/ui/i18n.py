@@ -81,6 +81,14 @@ EN: dict[str, str] = {
     "m_session": "Session ID: {session_id}",
     "label_real": "Real",
     "label_fake": "Fake",
+    "monitor_lang_unsupported": "Language not supported yet (detected: {language})",
+    "monitor_lang_unsupported_advice": (
+        "LineTrue is trained and tested on English, with Hindi as a small test, so its "
+        "result for this language is less reliable. Whatever it shows, confirm the call by "
+        "calling back on a number you already trust."
+    ),
+    "report_language": "Spoken language",
+    "report_language_unsupported": "{language}: not supported yet",
     "yes": "Yes",
     "no": "No",
     "none_value": "None",
@@ -410,6 +418,14 @@ HI: dict[str, str] = {
     "m_session": "सत्र आईडी: {session_id}",
     "label_real": "असली",
     "label_fake": "नकली",
+    "monitor_lang_unsupported": "यह भाषा अभी समर्थित नहीं है (पहचानी गई: {language})",
+    "monitor_lang_unsupported_advice": (
+        "LineTrue को अंग्रेज़ी पर प्रशिक्षित और परखा गया है, और हिंदी पर एक छोटा परीक्षण हुआ है, "
+        "इसलिए इस भाषा के लिए उसका नतीजा कम भरोसेमंद है। नतीजा जो भी हो, किसी ऐसे नंबर पर वापस "
+        "कॉल करके पुष्टि करें जिस पर आप पहले से भरोसा करते हैं।"
+    ),
+    "report_language": "बोली गई भाषा",
+    "report_language_unsupported": "{language}: अभी समर्थित नहीं",
     "yes": "हाँ",
     "no": "नहीं",
     "none_value": "कोई नहीं",

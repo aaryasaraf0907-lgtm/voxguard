@@ -134,6 +134,12 @@ def render_result(result: AnalyzeResponse, lang: str, header_key: str = "result_
             st.warning(t("caution_near_threshold", lang))
     else:
         st.success(t("not_flagged_banner", lang))
+    if result.language_supported is False:  # clearly not English or Hindi: verdict less reliable
+        name = result.language_name or result.language or "?"
+        st.warning(
+            f"{t('monitor_lang_unsupported', lang, language=name)} "
+            f"{t('monitor_lang_unsupported_advice', lang)}"
+        )
     cols = st.columns(4)
     cols[0].metric(t("m_label", lang), t(f"label_{result.label}", lang))
     # 6 decimals: SSL-AASIST's thresholds are around 0.01, where 4 would hide the difference

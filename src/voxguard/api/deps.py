@@ -38,6 +38,16 @@ def _positive_float_env(name: str, default: float) -> float:
     return value
 
 
+def _on_off_env(name: str) -> bool:
+    """on/true/1/yes -> True; off/false/0/no or unset -> False; anything else is an error."""
+    raw = os.environ.get(name, "").strip().lower()
+    if raw in ("", "off", "false", "0", "no"):
+        return False
+    if raw in ("on", "true", "1", "yes"):
+        return True
+    raise ValueError(f"{name} must be on or off, got {raw!r}")
+
+
 def _int_env(name: str, default: int, minimum: int) -> int:
     raw = os.environ.get(name, "").strip()
     if not raw:
@@ -73,6 +83,10 @@ class Settings:
     transaction_policy: tuple[tuple[str, tuple[str, str]], ...] = tuple(DEFAULT_POLICY.items())
     alert_webhook_url: str | None = None  # VOXGUARD_ALERT_WEBHOOK_URL (api/webhook.py)
     alert_webhook_secret: str | None = None  # VOXGUARD_ALERT_WEBHOOK_SECRET, signs each request
+    # VOXGUARD_LANGUAGE_CHECK=on: report "language not supported" for speech that is clearly not
+    # English or Hindi (voxguard/language.py); off by default (it downloads a Whisper model)
+    language_check: bool = False
+    language_model: str = "openai/whisper-base"  # VOXGUARD_LANGUAGE_MODEL
 
     def __post_init__(self) -> None:
         require_sqlite_url(self.db_url)
@@ -152,6 +166,9 @@ class Settings:
             transaction_policy=tuple(
                 parse_policy(os.environ.get("VOXGUARD_TRANSACTION_POLICY", "")).items()
             ),
+            language_check=_on_off_env("VOXGUARD_LANGUAGE_CHECK"),
+            language_model=os.environ.get("VOXGUARD_LANGUAGE_MODEL", "").strip()
+            or "openai/whisper-base",
             alert_webhook_url=os.environ.get("VOXGUARD_ALERT_WEBHOOK_URL", "").strip() or None,
             alert_webhook_secret=os.environ.get("VOXGUARD_ALERT_WEBHOOK_SECRET", "").strip()
             or None,
@@ -177,6 +194,10 @@ def get_gate(request: Request) -> AnalysisGate:
 
 def get_thresholds(request: Request) -> ThresholdSet | None:
     return request.app.state.thresholds
+
+
+def get_language_checker(request: Request):  # -> WhisperLanguageChecker | None
+    return request.app.state.language_checker
 
 
 def get_db(request: Request) -> Iterator[Session]:
