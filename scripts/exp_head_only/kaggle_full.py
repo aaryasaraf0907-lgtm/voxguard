@@ -1,0 +1,309 @@
+"""Round 3 (README "Round 3"): full fine-tune of p3 on a Kaggle GPU, with the head-only lessons.
+
+Runs as a Kaggle script kernel. Inputs are three private datasets, found by marker files wherever
+Kaggle mounts them: the experiment's code (``pyproject.toml``), the training audio
+(``exp-audio.marker``: ASVspoof 2019 LA train FLAC + Svarah genuine WAV) and p3's checkpoint
+(``best.pt`` next to ``thresholds.json``).
+
+Each epoch sees every training clip once with **fresh** augmentation, drawn from a seed of
+(epoch, clip): a codec on the whole file with probability ``P_CODEC`` (the head-only
+``CODEC_POLICY``: Opus weighted 2, noise before the codec on 30 %), a random 64,600-sample crop,
+then RawBoost on half the clips (``rawboost``), then ``data/realistic.py`` on both classes.
+Loss: inverse-frequency weighted cross-entropy + LAM x KL(p3 || model) at T=2 + MU x the
+genuine-margin anchor to p3 (as ``train_head.py``). p3 runs alongside as a frozen fp16 teacher.
+The CNN feature encoder stays p3's (frozen); the transformer layers and the back-end train.
+Every epoch's weights are saved (fp16) to ``/kaggle/working``; the epoch is chosen later,
+locally, by the unchanged dev gate.
+fix-r3 (README): the model trains in eval mode (dropout off, BatchNorm statistics fixed at p3's);
+gradients flow as usual.
+``SMOKE=1``: 64 clips, 1 epoch, to check the environment.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import sys
+import time
+from pathlib import Path
+
+import numpy as np
+
+T0 = time.time()
+BUDGET_S = float(os.environ.get("BUDGET_S", 10.5 * 3600))  # stop before Kaggle's 12 h limit
+SMOKE = os.environ.get("SMOKE") == "1"
+SEED = 20261121
+N = 64_600
+P_CODEC = 0.6
+LAM, MU, TEMP = 2.0, 2.0, 2.0
+LR_FRONTEND, LR_HEAD = 1e-6, 1e-5  # top XLS-R layer and back-end
+LLRD = 0.9  # each XLS-R layer below the top learns 0.9x as fast as the one above it
+WARMUP_STEPS, COSINE_EPOCHS, LR_FLOOR = 500, 9, 0.1  # then cosine to 10 % over 9 epochs
+CLIP_NORM, EMA_DECAY = 1.0, 0.999
+BATCH = 4 if SMOKE else 12
+_KAGGLE_OUT = "/kaggle/working" if Path("/kaggle/working").exists() else "runs/kaggle_full"
+OUT = Path(os.environ.get("OUT_DIR") or _KAGGLE_OUT)  # Colab: a Google Drive folder
+
+
+def find(marker: str) -> Path:
+    roots = [Path(os.environ["INPUT_ROOT"])] if os.environ.get("INPUT_ROOT") else []
+    for root in (*roots, Path("/kaggle/input"), Path(".")):
+        for p in root.rglob(marker):
+            return p.parent
+    raise SystemExit(f"input with {marker} not found")
+
+
+SRC = find("pyproject.toml")
+sys.path.insert(0, str(SRC / "src"))
+
+import torch  # noqa: E402
+import torch.nn.functional as F  # noqa: E402
+from torch.utils.data import DataLoader, Dataset  # noqa: E402
+
+from voxguard.data.augment import Policy, degrade, derive_rng, sample_spec  # noqa: E402
+from voxguard.data.codecs import usable_codecs  # noqa: E402
+from voxguard.data.datasets import fix_length  # noqa: E402
+from voxguard.data.realistic import RealisticPolicy, apply_realistic  # noqa: E402
+from voxguard.models import load_from_checkpoint  # noqa: E402
+
+P_RAWBOOST = 0.5
+REALISTIC = RealisticPolicy(probability=0.5, reverb_probability=0.5, rt60_s=(0.15, 0.8),
+                            eq_probability=0.5, eq_max_db=8.0, noise_probability=0.5,
+                            snr_db=(10.0, 35.0), gain_db=(-6.0, 6.0))  # fmt: skip
+WANTED = ["g711_mulaw", "g711_alaw", "amr_nb", "amr_wb", "opus"]
+
+
+def _notch_coeffs(rng: np.random.Generator, n_bands: int = 5) -> np.ndarray:
+    """A random multi-band FIR filter (RawBoost, Tak et al., ICASSP 2022, eq. 2-3; own code)."""
+    from scipy.signal import firwin, freqz
+
+    b = np.array([1.0])
+    for _ in range(n_bands):
+        fc = rng.uniform(20, 8000)
+        bw = rng.uniform(100, 1000)
+        c = int(rng.integers(10, 101)) | 1  # odd number of taps
+        lo, hi = max(fc - bw / 2, 1.0), min(fc + bw / 2, 7999.0)
+        if hi - lo < 10:
+            continue
+        b = np.convolve(b, firwin(c, [lo, hi], window="hamming", fs=16_000))
+    _, h = freqz(b, 1, fs=16_000)
+    return b / np.max(np.abs(h))
+
+
+def rawboost(x: np.ndarray, rng: np.random.Generator) -> np.ndarray:
+    """RawBoost's LA setting: linear + non-linear convolutive noise, then impulsive
+    signal-dependent noise (Tak, Kamble, Patino, Todisco, Evans, "RawBoost", ICASSP 2022).
+    Written from the paper's description; peak-normalised like the original."""
+    from scipy.signal import lfilter
+
+    y = np.zeros_like(x, dtype=np.float64)
+    for i in range(5):  # N_f = 5 non-linear orders
+        g = rng.uniform(-5.0, 0.0) if i == 0 else rng.uniform(-20.0, -5.0)  # dB per order
+        y += 10 ** (g / 20) * lfilter(_notch_coeffs(rng), 1, x.astype(np.float64) ** (i + 1))
+    y -= y.mean()
+    y /= np.max(np.abs(y)) + 1e-9
+    n = int(len(y) * rng.uniform(0, 10) / 100)  # impulsive: up to 10 % of samples
+    idx = rng.permutation(len(y))[:n]
+    f = (2 * rng.random(n) - 1) * (2 * rng.random(n) - 1)
+    y[idx] += 2.0 * y[idx] * f
+    y /= np.max(np.abs(y)) + 1e-9
+    return (y * np.max(np.abs(x))).astype(np.float32)  # keep the clip's original peak level
+
+
+def log(**kw) -> None:
+    kw["t_min"] = round((time.time() - T0) / 60, 1)
+    line = json.dumps(kw)
+    print(line, flush=True)
+    with (OUT / "log.jsonl").open("a") as fh:
+        fh.write(line + "\n")
+
+
+def items(audio: Path) -> list[tuple[str, int]]:
+    """(path, label) for every training clip: LA train (label from the key) + Svarah genuine."""
+    key = {}
+    for line in (audio / "la_train.txt").read_text().split("\n"):
+        if line:
+            fid, group = line.split("\t")
+            key[fid] = int(group != "bonafide")
+    la = [(str(audio / "la" / f"{f}.flac"), y) for f, y in sorted(key.items())]
+    sv = [(str(p), 0) for p in sorted((audio / "svarah").glob("*.wav"))]
+    return la + sv
+
+
+class Clips(Dataset):
+    def __init__(self, rows: list[tuple[str, int]], codecs: list[str]) -> None:
+        self.rows, self.codecs, self.epoch = rows, codecs, 0
+        self.policy = Policy(codecs={c: (2.0 if c == "opus" else 1.0) for c in codecs},
+                             noise_probability=0.3, snr_db=(10.0, 30.0))  # fmt: skip
+
+    def __len__(self) -> int:
+        return len(self.rows)
+
+    def __getitem__(self, i: int):
+        import soundfile as sf
+
+        path, y = self.rows[i]
+        x, sr = sf.read(path, dtype="float32", always_2d=True)
+        x = x.mean(axis=1)
+        assert sr == 16_000, f"{path}: {sr} Hz"
+        key = f"{Path(path).name}:e{self.epoch}"
+        rng = derive_rng(SEED, key, 0)
+        if self.codecs and rng.random() < P_CODEC:
+            x = degrade(x, sample_spec(rng, self.policy, self.codecs), rng)
+        x = fix_length(x, N, derive_rng(SEED, key, 1))
+        r3 = derive_rng(SEED, key, 3)
+        if r3.random() < P_RAWBOOST:
+            x = rawboost(x, r3)
+        x = apply_realistic(x, REALISTIC, derive_rng(SEED, key, 2))
+        return torch.from_numpy(np.ascontiguousarray(x, dtype=np.float32)), y
+
+
+def main() -> None:
+    OUT.mkdir(parents=True, exist_ok=True)
+    torch.manual_seed(SEED)
+    audio, ckpt = find("exp-audio.marker"), find("thresholds.json") / "best.pt"
+    codecs = usable_codecs(WANTED)
+    rows = items(audio)
+    if SMOKE:
+        rows = [rows[i] for i in np.random.default_rng(0).permutation(len(rows))[:64]]
+    y = np.array([r[1] for r in rows])
+    freq = np.bincount(y, minlength=2) / len(y)
+    weight = torch.tensor((1 / freq) / (1 / freq).sum(), dtype=torch.float32, device="cuda")
+    log(event="start", rows=len(rows), bonafide=int((y == 0).sum()), spoof=int((y == 1).sum()),
+        codecs=codecs, weight=weight.tolist(), gpu=torch.cuda.get_device_name(0))  # fmt: skip
+
+    model, info = load_from_checkpoint(ckpt, "cuda")
+    teacher, _ = load_from_checkpoint(ckpt, "cuda")
+    teacher = teacher.half().eval()
+    for p in teacher.parameters():
+        p.requires_grad = False
+    # fix-r3: train in eval mode (README "fix-r3"): no dropout/layerdrop, and the back-end's
+    # BatchNorm keeps p3's running statistics. In train mode p3's own logits already moved far
+    # from its eval-mode ones (margin MSE ~10 on dev clips), so the anchors chased noise and the
+    # BatchNorm statistics drifted to augmented batches (round 3 v1: dev phone EER 14 % at epoch 1).
+    model.eval()
+    for p in model.parameters():
+        p.requires_grad = True
+    model.frontend.model.gradient_checkpointing_enable()
+    model.frontend.model.freeze_feature_encoder()  # CNN encoder stays p3's (no grads, no ckpt)
+    w2v = model.frontend.model
+    layers = list(w2v.encoder.layers)
+    top = len(layers) - 1
+    groups, seen = [], set()
+
+    def add(params, lr: float, name: str) -> None:
+        ps = [p for p in params if p.requires_grad and id(p) not in seen]
+        seen.update(id(p) for p in ps)
+        if ps:
+            groups.append({"params": ps, "lr": lr, "name": name})
+
+    add(w2v.encoder.layer_norm.parameters(), LR_FRONTEND, "xlsr_final_norm")
+    for i, layer in enumerate(layers):  # layer-wise lr decay: lower layers move less
+        add(layer.parameters(), LR_FRONTEND * LLRD ** (top - i), f"xlsr_layer{i}")
+    add(w2v.parameters(), LR_FRONTEND * LLRD**top, "xlsr_embeddings")  # projection, pos-conv
+    add(model.parameters(), LR_HEAD, "backend")  # everything left: AASIST back-end
+    for gr in groups:
+        gr["base_lr"] = gr["lr"]
+    opt = torch.optim.Adam(groups, weight_decay=1e-4)
+    trainable = [p for gr in groups for p in gr["params"]]
+    scaler = torch.amp.GradScaler("cuda")
+    from torch.optim.swa_utils import AveragedModel, get_ema_multi_avg_fn
+
+    ema = AveragedModel(model, multi_avg_fn=get_ema_multi_avg_fn(EMA_DECAY), use_buffers=True)
+    step_global, skipped = 0, 0
+    log(event="optimiser", groups=len(groups), trainable=sum(p.numel() for p in trainable),
+        lr_bottom_layer=LR_FRONTEND * LLRD**top)  # fmt: skip
+
+    def lr_factor(step_n: int, steps_per_epoch: int) -> float:
+        if step_n < WARMUP_STEPS:
+            return (step_n + 1) / WARMUP_STEPS
+        horizon = max(COSINE_EPOCHS * steps_per_epoch - WARMUP_STEPS, 1)
+        prog = min((step_n - WARMUP_STEPS) / horizon, 1.0)
+        return LR_FLOOR + (1 - LR_FLOOR) * 0.5 * (1 + np.cos(np.pi * prog))
+
+    data = Clips(rows, codecs)
+    epochs = 1 if SMOKE else 99
+    # Resume after a disconnect (Colab): continue from the last saved epoch's weights, and its EMA.
+    # The optimiser state is not saved (it would triple the files), so Adam restarts there; the
+    # learning-rate schedule continues from that epoch. Logged, so the report can say so.
+    done = sorted(int(f.stem[5:]) for f in OUT.glob("epoch*.pt"))
+    first = 1
+    if done and not SMOKE:
+        last = torch.load(OUT / f"epoch{done[-1]}.pt", map_location="cuda")
+        model.load_state_dict({k: v.float() if v.is_floating_point() else v
+                               for k, v in last["model"].items()})  # fmt: skip
+        if (OUT / "ema_last.pt").exists():
+            em = torch.load(OUT / "ema_last.pt", map_location="cuda")["model"]
+            ema.module.load_state_dict({k: v.float() if v.is_floating_point() else v
+                                        for k, v in em.items()})  # fmt: skip
+        first = done[-1] + 1
+        log(event="resume", from_epoch=done[-1], optimizer="restarted")
+    epoch_s = None
+    for epoch in range(first, epochs + 1):
+        if epoch_s and time.time() - T0 + epoch_s > BUDGET_S:
+            log(event="stop", reason="time budget", next_epoch=epoch)
+            break
+        t_ep = time.time()
+        data.epoch = epoch
+        g = torch.Generator().manual_seed(SEED + epoch)
+        loader = DataLoader(data, batch_size=BATCH, shuffle=True, generator=g, num_workers=4,
+                            drop_last=True, persistent_workers=False)  # fmt: skip
+        total, n = 0.0, 0
+        if step_global == 0 and epoch > 1:  # resumed: the schedule continues where it was
+            step_global = (epoch - 1) * len(loader)
+        for step, (x, lab) in enumerate(loader):
+            x, lab = x.cuda(non_blocking=True), lab.cuda(non_blocking=True)
+            with torch.no_grad(), torch.autocast("cuda", dtype=torch.float16):
+                t = teacher(x.half()).float()
+            with torch.autocast("cuda", dtype=torch.float16):
+                s = model(x).float()
+            loss = F.cross_entropy(s, lab, weight=weight)
+            loss = loss + LAM * TEMP * TEMP * F.kl_div(
+                F.log_softmax(s / TEMP, -1), F.softmax(t / TEMP, -1), reduction="batchmean"
+            )
+            gen = lab == 0
+            if gen.any():
+                loss = loss + MU * F.mse_loss(s[gen, 1] - s[gen, 0], t[gen, 1] - t[gen, 0])
+            opt.zero_grad(set_to_none=True)
+            if not torch.isfinite(loss):  # one bad fp16 batch must not ruin the run
+                skipped += 1
+                continue
+            for gr in opt.param_groups:
+                gr["lr"] = gr["base_lr"] * lr_factor(step_global, len(loader))
+            scaler.scale(loss).backward()
+            scaler.unscale_(opt)
+            torch.nn.utils.clip_grad_norm_(trainable, CLIP_NORM)
+            scaler.step(opt)
+            scaler.update()
+            ema.update_parameters(model)
+            step_global += 1
+            total, n = total + float(loss.detach()) * len(lab), n + len(lab)
+            if step % 200 == 0:
+                log(event="step", epoch=epoch, step=step, of=len(loader),
+                    loss=round(total / max(n, 1), 4), skipped=skipped,
+                    lr_top=opt.param_groups[0]["lr"],
+                    gpu_gb=round(torch.cuda.max_memory_allocated() / 2**30, 2))  # fmt: skip
+            if time.time() - T0 > BUDGET_S + 0.5 * 3600:  # hard stop: keep the finished epochs
+                log(event="stop", reason="hard limit mid-epoch", epoch=epoch)
+                return
+
+        def half(sd: dict) -> dict:
+            return {k: v.half() if v.is_floating_point() else v for k, v in sd.items()}
+
+        torch.save({"model": half(model.state_dict()), "epoch": epoch, "base": info},
+                   OUT / f"epoch{epoch}.pt")  # fmt: skip
+        torch.save({"model": half(ema.module.state_dict()), "epoch": epoch, "base": info,
+                    "ema_decay": EMA_DECAY}, OUT / "ema_last.pt")  # candidate E  # fmt: skip
+        epoch_s = time.time() - t_ep
+        log(
+            event="epoch",
+            epoch=epoch,
+            loss=round(total / max(n, 1), 4),
+            minutes=round(epoch_s / 60, 1),
+        )
+        model.eval()  # fix-r3: stays in eval mode (see above)
+    log(event="done")
+
+
+if __name__ == "__main__":
+    main()
