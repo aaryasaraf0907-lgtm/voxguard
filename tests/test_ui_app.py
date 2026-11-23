@@ -222,7 +222,31 @@ def test_populated_tables_show_api_data_in_utc() -> None:
     assert sessions[t("col_score", "en")].tolist() == [0.9877, 0.7]
     assert sessions[t("col_label", "en")].tolist() == [t("label_fake", "en")] * 2
     assert blocklist[t("col_hits", "en")].tolist() == [3]
-    assert alerts[t("col_message", "en")].tolist() == ["Flagged call: x"]
+    assert alerts[t("col_message", "en")].tolist() == ["Flagged call: x"]  # unknown text: as stored
+
+
+@pytest.mark.parametrize("lang", ["en", "hi"])
+def test_alert_message_is_shown_in_the_ui_language(lang: str) -> None:
+    from voxguard.ui.app import alert_message
+
+    stored = "Flagged call: fake_score 0.8214 >= threshold 0.0127"  # as api/prevention writes it
+    shown = alert_message(stored, lang)
+    assert shown == t("alert_flagged_message", lang, score="0.8214", threshold="0.0127")
+    assert "0.8214" in shown and "0.0127" in shown
+    if lang == "hi":
+        assert "Flagged call" not in shown
+
+
+def test_alert_message_matches_what_the_prevention_layer_stores() -> None:
+    """The UI pattern and api/prevention.record_flag's text must not drift apart."""
+    import inspect
+
+    from voxguard.api import prevention
+    from voxguard.ui.app import FLAG_MESSAGE
+
+    source = inspect.getsource(prevention.record_flag)
+    assert '"Flagged call: fake_score {' in source and '">= threshold {' in source
+    assert FLAG_MESSAGE.fullmatch("Flagged call: fake_score 0.9998 >= threshold 0.5000")
 
 
 def test_tables_use_no_deprecated_streamlit_arguments(monkeypatch) -> None:
@@ -460,6 +484,31 @@ def test_same_clip_clean_and_phone_line_side_by_side() -> None:
     scores = [m.value for m in at.metric if m.label == t("m_score", "en")]
     assert scores == ["0.950000", "0.200000"]  # clean on the left, phone line on the right
     assert [c[4] for c in _analyze_calls(client)] == [False, True]
+
+
+def _metric_cells_per_row(at: AppTest) -> list[int]:
+    """For each column holding a metric directly: how many such columns share its row (1/weight)."""
+    return [
+        round(1 / col.weight)
+        for col in at.columns
+        if any(child.type == "metric" for child in col.children.values())
+    ]
+
+
+def test_side_by_side_results_put_two_values_per_row() -> None:
+    """Four per row inside half the page cut the scores off ("0.009…"): two per row there."""
+    client = FakeClient()
+    client.analyze_response = lambda simulate: _result(
+        not simulate, 0.2 if simulate else 0.95, "g711_mulaw" if simulate else None
+    )
+    at = _analyze(client)
+    assert _metric_cells_per_row(at) == [4] * 8  # one result: the full width, four per row
+    at.toggle[0].set_value(True).run()
+    _click_analyze(at)
+    assert not at.exception
+    assert _metric_cells_per_row(at) == [2] * 16  # two results: two per row in each half
+    labels = [m.label for m in at.metric]
+    assert labels.count(t("m_score", "en")) == 2 and labels.count(t("m_codec_ms", "en")) == 2
 
 
 # --- stale results ----------------------------------------------------------------------

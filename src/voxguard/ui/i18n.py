@@ -103,6 +103,7 @@ EN: dict[str, str] = {
     "col_first_seen": "First seen (UTC)",
     "col_last_seen": "Last seen (UTC)",
     "col_message": "Message",
+    "alert_flagged_message": "Flagged call: fake_score {score} >= threshold {threshold}",
     "col_session": "Session ID",
     "missing_value": "—",
     "server_detail": "Server message: {detail}",
@@ -432,6 +433,9 @@ HI: dict[str, str] = {
     "col_first_seen": "पहली बार देखा (UTC)",
     "col_last_seen": "आख़िरी बार देखा (UTC)",
     "col_message": "संदेश",
+    "alert_flagged_message": (
+        "चिह्नित कॉल: नकली होने का स्कोर {score}, सीमा {threshold} के बराबर या उससे अधिक"
+    ),
     "col_session": "सत्र आईडी",
     "missing_value": "—",
     "server_detail": "सर्वर का संदेश: {detail}",
