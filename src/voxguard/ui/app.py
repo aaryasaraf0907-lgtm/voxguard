@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -122,7 +123,14 @@ def near_threshold(score: float, threshold: float) -> bool:
     return threshold <= score < threshold * CAUTION_FACTOR
 
 
-def render_result(result: AnalyzeResponse, lang: str, header_key: str = "result_header") -> None:
+def metric_rows(per_row: int) -> list[Any]:
+    """Eight metric cells, ``per_row`` columns to a row (narrow layouts get fewer per row)."""
+    return [cell for _ in range(8 // per_row) for cell in st.columns(per_row)]
+
+
+def render_result(
+    result: AnalyzeResponse, lang: str, header_key: str = "result_header", narrow: bool = False
+) -> None:
     st.subheader(t(header_key, lang))
     if result.codec_applied:
         st.caption(t("result_simulated", lang, codec=result.codec_applied))
@@ -134,19 +142,19 @@ def render_result(result: AnalyzeResponse, lang: str, header_key: str = "result_
             st.warning(t("caution_near_threshold", lang))
     else:
         st.success(t("not_flagged_banner", lang))
-    cols = st.columns(4)
-    cols[0].metric(t("m_label", lang), t(f"label_{result.label}", lang))
+    # Side by side, four values per row cut the scores off ("0.009…"), so two per row there.
+    cells = metric_rows(2 if narrow else 4)
+    cells[0].metric(t("m_label", lang), t(f"label_{result.label}", lang))
     # 6 decimals: SSL-AASIST's thresholds are around 0.01, where 4 would hide the difference
     # between a score and the threshold it is compared with.
-    cols[1].metric(t("m_score", lang), f"{result.fake_score:.6f}")
-    cols[2].metric(t("m_threshold", lang), f"{result.threshold:.6f}")
-    cols[3].metric(t("m_latency", lang), t("unit_ms", lang, value=f"{result.latency_ms:.1f}"))
-    cols = st.columns(4)
-    cols[0].metric(t("m_model", lang), result.model_version)
-    cols[1].metric(t("m_flagged", lang), t("yes" if result.flagged else "no", lang))
-    cols[2].metric(t("m_codec", lang), result.codec_applied or t("none_value", lang))
+    cells[1].metric(t("m_score", lang), f"{result.fake_score:.6f}")
+    cells[2].metric(t("m_threshold", lang), f"{result.threshold:.6f}")
+    cells[3].metric(t("m_latency", lang), t("unit_ms", lang, value=f"{result.latency_ms:.1f}"))
+    cells[4].metric(t("m_model", lang), result.model_version)
+    cells[5].metric(t("m_flagged", lang), t("yes" if result.flagged else "no", lang))
+    cells[6].metric(t("m_codec", lang), result.codec_applied or t("none_value", lang))
     codec_ms = result.codec_ms
-    cols[3].metric(
+    cells[7].metric(
         t("m_codec_ms", lang),
         t("unit_ms", lang, value=f"{codec_ms:.1f}")
         if codec_ms is not None
@@ -155,6 +163,18 @@ def render_result(result: AnalyzeResponse, lang: str, header_key: str = "result_
     st.caption(t("m_session", lang, session_id=result.session_id))
     if result.timeline:
         render_timeline(result, lang, header_key)
+
+
+# The API stores one alert text, in English (`api/prevention.record_flag`); shown translated.
+FLAG_MESSAGE = re.compile(r"Flagged call: fake_score (\S+) >= threshold (\S+)")
+
+
+def alert_message(message: str, lang: str) -> str:
+    """The prevention layer's alert text in the UI language; any other text as stored."""
+    match = FLAG_MESSAGE.fullmatch(message)
+    if match is None:
+        return message
+    return t("alert_flagged_message", lang, score=match[1], threshold=match[2])
 
 
 SCORE_FLOOR = 1e-4  # log-scale chart: a score of 0 is drawn here
@@ -341,9 +361,9 @@ def render_analyze(client: Any, lang: str) -> None:
     if "clean" in results and "phone" in results:  # same clip, clean vs phone line
         left, right = st.columns(2)
         with left:
-            render_result(results["clean"], lang, "result_header_clean")
+            render_result(results["clean"], lang, "result_header_clean", narrow=True)
         with right:
-            render_result(results["phone"], lang, "result_header_phone")
+            render_result(results["phone"], lang, "result_header_phone", narrow=True)
     elif results:
         render_result(next(iter(results.values())), lang)
 
@@ -422,7 +442,7 @@ def render_monitoring(client: Any, lang: str, tabs: list[Any]) -> None:
                 t("col_time", lang): fmt_time(a.created_at),
                 t("col_caller", lang): a.caller_id or missing,
                 t("col_score", lang): round(a.fake_score, 4),
-                t("col_message", lang): a.message,
+                t("col_message", lang): alert_message(a.message, lang),
                 t("col_session", lang): a.session_id,
                 t("col_report", lang): report_url(client, a.session_id, lang),
             }
