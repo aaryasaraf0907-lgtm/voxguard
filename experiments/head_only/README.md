@@ -298,3 +298,29 @@ database, offline, tool code from origin/dev `89abfbf`), one after the other, on
    in training, so it stays an unseen codec). Counts and medians only, as that tool reports them.
 
 Reported as they come out, in this PR, whatever they show.
+
+## Test-only results (23 Nov, 02:49-04:00 UTC): C:fix-2 is **not to adopt**
+
+Both models on the same local scratch API (GPU, tool `89abfbf`), p3 at 0.012676, C:fix-2 at 0.01649.
+
+| Check | p3 | C:fix-2 |
+|---|---|---|
+| Clone test, as uploaded: clones caught / genuine flagged (of 20 each) | 15 / 1 | **12** / 0 |
+| Clone test, G.711 µ-law | 16 / 2 | **12** / 0 |
+| Set C (12 genuine real-mic recordings), flagged as uploaded / G.711 | 0 / 0 | 0 / 0 |
+| 2021 LA live calls, genuine calls with a live alert (5 codecs x 20) | 2 of 100 | 3 of 100 |
+| 2021 LA live calls, fake calls alerted | 100 of 100 | 100 of 100 |
+| 2021 LA live calls, mixed calls alerted / alerts before the switch | 100 / 8 | 100 / 2 |
+| 2021 LA live calls, flagged verdicts on genuine calls | 16 of 100 | 13 of 100 |
+
+**Stop rule triggered:** C:fix-2 catches fewer of the same-speaker clones than p3 (12 vs 15 as uploaded,
+12 vs 16 over G.711), so it is reported as not to adopt, as registered.
+
+*Why, for the record (not used to change the verdict):* at its higher threshold it flags no genuine
+recording of this voice, and at p3's threshold it catches all 40 clones but flags 26 of 40 genuine
+ones. Ranked by score, 14 clones (as uploaded) and 13 (G.711) sit above every genuine recording,
+against p3's 15 and 13: on this voice it separates clones from genuine no better than p3; it trades
+missed clones for false alarms along the same line. On the 2021 LA calls it is about level with p3.
+The dev and eval gains (missed fakes 0.25 % to 0.16 % on dev, A11 29.9 % to 15.4 %) do not carry over
+to the clone test, the same-speaker check this rule was written for. The submission ships p3, as
+planned. Round 3 (full fine-tune, `fix-r3` on Kaggle) is still running and is judged the same way.
