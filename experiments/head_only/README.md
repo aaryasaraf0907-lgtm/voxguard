@@ -263,3 +263,38 @@ learning rates, schedule, EMA, candidates A-E, the gate). A new output folder, s
 from the first run. (The first run's scorer also printed its In-the-Wild preview numbers; they were
 not used for this fix, which follows from the train/eval check above.) Its epochs are scored at the
 final gate if they arrive in time, otherwise reported later in this PR, marked as late.
+
+## Test-only checks (23 Nov ~03:45 UTC, after the final gate, before any test-only result)
+
+**Chosen candidate.** The final gate (all completed runs, unchanged checks) passed three
+candidates: C:fix-2-top-init-l2-gentle, B:top-mu0.5 and C:top-mu0.5. The choice rule (fewest dev
+phone missed fakes at 1 % false alarms, then lowest dev phone EER) picks
+**C:fix-2-top-init-l2-gentle** (0.16 %, against 0.21 % and 0.24 %). The eval-attack stop rule does
+not trigger (watched attacks' missed fakes at 1 % false alarms change by -4.3, -14.5, -0.2 and
+-0.1 pp).
+
+**How it is served.** `scripts/exp_head_only/blend_app.py`: the API's own detector loads p3, and
+its model is wrapped so one XLS-R pass gives p3's P(fake) and the run's (layer-22 input through the
+run's top layers and head), blended 0.75/0.25 exactly as in the gate. Checked against the gate's
+cached-feature scores on 24 dev clips: largest difference 0.0037 (fp16 caching).
+
+**Threshold.** C's dev phone EER threshold on the gate set is 0.01932, and p3's is 0.01485 there
+against its deployed 0.012676 (chosen on the whole dev set by `evaluate.py`). The candidate is
+served at the same ratio: 0.012676 x 0.01932 / 0.01485 = **0.01649** (1.30x). p3 runs at its
+deployed 0.012676 (its `thresholds.json`). Nothing is tuned on the results below.
+
+**Runs.** p3 and the candidate are both run now, the same way: a local scratch API (GPU, scratch
+database, offline, tool code from origin/dev `89abfbf`), one after the other, on the same inputs.
+
+1. **Same-speaker clone test** (`voice-clone-test/labels-clone.csv`: 20 genuine recordings of the
+   owner's voice and 20 OpenVoice clones of it), `real_audio_sanity.py run`, as uploaded and over
+   G.711 µ-law. **Stop rule (as registered above):** if the candidate flags fewer clones than p3,
+   as uploaded or over G.711, it is reported as not to adopt.
+2. **Set C** (12 consented genuine real-mic recordings), the same tool, as uploaded and over G.711
+   µ-law: flagged genuine recordings, counts only.
+3. **ASVspoof 2021 LA calls** (`live_eval.py`, the 19 Nov settings: 20 calls each of genuine, fake
+   and mixed, about 20 s, speed 2, seed 0), codecs none, G.711 µ-law, G.711 A-law and Opus, plus
+   **AMR-NB in place of GSM** (this machine's ffmpeg has no GSM encoder; AMR-NB, like GSM, was never
+   in training, so it stays an unseen codec). Counts and medians only, as that tool reports them.
+
+Reported as they come out, in this PR, whatever they show.
