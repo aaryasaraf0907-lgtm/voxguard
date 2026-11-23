@@ -243,3 +243,23 @@ run keeps its detection gain (dev phone missed fakes 0.03-0.09 %) but drifts 4-3
 the least drift, 4.2x, and 0.03 % missed fakes), XLS-R's top 2 layers start from p3 and train with it
 (`--top --init l2-lr1e4`); λ 2, μ 2, lr 5e-5 (back-end) and 1e-5 (top layers), 3 epochs,
 `--select-drift`. Judged at the final gate like every run.
+
+**fix-2-top-init-l2-gentle (23 Nov ~00:20 UTC, before it trains).** *Failure it addresses:* fix-1
+beats p3 on dev phone EER (0.34-0.39 % vs 0.47 %) and missed fakes (0.12-0.22 % vs 0.25 %) in every
+trained epoch, but its threshold jumps between epochs (2.01x, 1.65x, 3.26x of p3's), so the steps are
+too large to settle inside 1.5x. *Fix:* the same start as fix-1 with gentler steps: lr 2e-5
+(back-end) and 3e-6 (top layers), λ 2, μ 2, 3 epochs, `--select-drift`. Judged at the final gate.
+
+**fix-r3 (round 3 again, 23 Nov ~00:20 UTC, before it trains).** *Failure it addresses:* the first
+round-3 run (Colab, 3 epochs before Colab ended the session) collapsed: dev phone EER 14.4 % after
+epoch 1, recovering only slowly (7.2 %, 4.8 %), against p3's 0.47 %. *Cause, found without any test
+data:* the run trained in PyTorch train mode. On 32 dev clips, p3's own fake-genuine logit margin in
+train mode differs from its eval-mode margin by a mean squared 9.9 (6.9 from the AASIST back-end's
+BatchNorm/dropout alone), and genuine clips often get "fake" margins. So the distillation and margin
+anchors (to p3 in eval mode) chased that noise, and the BatchNorm running statistics drifted to the
+augmented batches. *Fix:* train in eval mode (dropout and layerdrop off, BatchNorm statistics fixed
+at p3's; gradients flow as before). Everything else in "Round 3" is unchanged (augmentation, loss,
+learning rates, schedule, EMA, candidates A-E, the gate). A new output folder, so nothing resumes
+from the first run. (The first run's scorer also printed its In-the-Wild preview numbers; they were
+not used for this fix, which follows from the train/eval check above.) Its epochs are scored at the
+final gate if they arrive in time, otherwise reported later in this PR, marked as late.

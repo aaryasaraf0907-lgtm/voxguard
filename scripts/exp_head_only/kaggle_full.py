@@ -14,6 +14,8 @@ genuine-margin anchor to p3 (as ``train_head.py``). p3 runs alongside as a froze
 The CNN feature encoder stays p3's (frozen); the transformer layers and the back-end train.
 Every epoch's weights are saved (fp16) to ``/kaggle/working``; the epoch is chosen later,
 locally, by the unchanged dev gate.
+fix-r3 (README): the model trains in eval mode (dropout off, BatchNorm statistics fixed at p3's);
+gradients flow as usual.
 ``SMOKE=1``: 64 clips, 1 epoch, to check the environment.
 """
 
@@ -175,7 +177,11 @@ def main() -> None:
     teacher = teacher.half().eval()
     for p in teacher.parameters():
         p.requires_grad = False
-    model.train()
+    # fix-r3: train in eval mode (README "fix-r3"): no dropout/layerdrop, and the back-end's
+    # BatchNorm keeps p3's running statistics. In train mode p3's own logits already moved far
+    # from its eval-mode ones (margin MSE ~10 on dev clips), so the anchors chased noise and the
+    # BatchNorm statistics drifted to augmented batches (round 3 v1: dev phone EER 14 % at epoch 1).
+    model.eval()
     for p in model.parameters():
         p.requires_grad = True
     model.frontend.model.gradient_checkpointing_enable()
@@ -275,7 +281,8 @@ def main() -> None:
             if step % 200 == 0:
                 log(event="step", epoch=epoch, step=step, of=len(loader),
                     loss=round(total / max(n, 1), 4), skipped=skipped,
-                    lr_top=opt.param_groups[0]["lr"])  # fmt: skip
+                    lr_top=opt.param_groups[0]["lr"],
+                    gpu_gb=round(torch.cuda.max_memory_allocated() / 2**30, 2))  # fmt: skip
             if time.time() - T0 > BUDGET_S + 0.5 * 3600:  # hard stop: keep the finished epochs
                 log(event="stop", reason="hard limit mid-epoch", epoch=epoch)
                 return
@@ -294,7 +301,7 @@ def main() -> None:
             loss=round(total / max(n, 1), 4),
             minutes=round(epoch_s / 60, 1),
         )
-        model.train()
+        model.eval()  # fix-r3: stays in eval mode (see above)
     log(event="done")
 
 
