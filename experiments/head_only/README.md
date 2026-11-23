@@ -351,4 +351,44 @@ against p3's 15 and 13: on this voice it separates clones from genuine no better
 missed clones for false alarms along the same line. On the 2021 LA calls it is about level with p3.
 The dev and eval gains (missed fakes 0.25 % to 0.16 % on dev, A11 29.9 % to 15.4 %) do not carry over
 to the clone test, the same-speaker check this rule was written for. The submission ships p3, as
-planned. Round 3 (full fine-tune, `fix-r3` on Kaggle) is still running and is judged the same way.
+planned. Round 3 (full fine-tune, `fix-r3` on Kaggle): see "Round 3 results" below.
+
+## Round 3 results (23 Nov, 10:46-12:20 UTC; reported late, after the final gate): **not to adopt**
+
+Both Kaggle runs used the same script, data and budget (10.5 h on a T4, as many epochs as fit);
+the only code difference is `fix-r3` (eval mode) and a GPU-memory log line.
+
+| Run | Epochs | Training loss, epoch 1 → last | Dev phone EER | In-the-Wild gate EER |
+|---|---|---|---|---|
+| Pre-fix (train mode, `voxguard-exp-full`) | 13 | 16.56 → 5.34 | 8.03 % (epoch 13), 7.72 % (E) | 51.0 %, 50.0 % |
+| `fix-r3` (eval mode, `voxguard-exp-full-r3b`) | 14 | 0.73 → 0.67 | 0.454 % (epoch 14, E) | 15.51 % |
+
+Same loss formula in both runs. The pre-fix run collapsed as round 3 v1 did, so the train-mode
+diagnosis holds: with only that change, the run stays at p3's level.
+
+**Gate, `fix-r3`.** Epochs 4, 9 and 14 and E (`ema_last`), each as A, B and C: 12 candidates. p3 is
+scored on the same rows (its cached features, as in every gate above); the r3b checkpoints are scored
+by `score_full.py` (whole model, fp16).
+
+| Candidate | Dev EER | Dev missed fakes at 1 % FA | Dev threshold (x p3) | ITW gate EER | ITW gate false alarms | Gate |
+|---|---|---|---|---|---|---|
+| p3 (same rows) | 0.585 % | 0.36 % | 1x | 15.85 % | 12.34 % | (reference) |
+| A: epochs 4 / 9 / 14 / E | 0.454-0.502 % | 0.17-0.22 % | 3.28-4.21x | 14.87-15.51 % | 7.91-8.86 % | fail (threshold) |
+| B: epochs 4 / 9 / 14 / E | 0.454-0.519 % | 0.20-0.22 % | 2.17-2.54x | 15.51-16.14 % | 8.86-9.49 % | fail (threshold; B:14 also ITW EER) |
+| C: epochs 4 / 9 / 14 / E | 0.474-0.558 % | 0.22-0.28 % | 1.65-1.79x | 15.85 % | 9.49-9.81 % | fail (threshold) |
+
+No candidate passes, so the test-only checks do not run. The fine-tune ranks clips better than p3 on
+these rows (dev EER 0.454 % vs 0.585 %, missed fakes 0.17 % vs 0.36 %, In-the-Wild no worse), but its
+scores move to a different scale: the dev threshold moves 3.3-4.2x, and even the 0.75/0.25 blend stays
+at 1.65x or more, the same failure as round 1.
+
+**Deviations from the registered plan, stated plainly.** (1) Measured on every 5th row of both gate
+sets (5,129 dev phone scores, 600 In-the-Wild clips), not all rows. A full-set scoring of the two
+closest checkpoints was started and stopped by the team: the verdict cannot change what ships, and
+thresholds 1.65x and above are not near the 1.5x line. (2) Epochs 4, 9 and 14 and E only, not every
+epoch, and D (the last-3 average) not built. The scored epochs barely differ (dev EER 0.454 % at epochs
+9, 14 and E), so an unscored epoch is unlikely to sit inside 1.5x; this is a judgement, not a
+measurement. Scores and the scoring script are kept privately with the other runs.
+
+**Outcome of the experiment.** No candidate from rounds 1-3 is adopted. The submission ships p3,
+unchanged.
