@@ -24,7 +24,9 @@ def scorers(runs: list[str]) -> dict:
     p3, _ = load_p3()
     out = {"p3": Head(p3)}
     for r in runs:
-        h = TopHead(p3) if r.startswith("top-") else Head(p3)  # README "Round 2d"
+        # README "Round 2d": a run trained with ``--top`` (``top-*`` and the ``fix-*-top-*`` runs)
+        args = json.loads((X / "runs" / r / "history.json").read_text())["args"]
+        h = TopHead(p3) if args.get("top") else Head(p3)
         h.load_state_dict(torch.load(X / "runs" / r / "best_head.pt", map_location="cpu"))
         out[f"A:{r}"] = h
     return out
