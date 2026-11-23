@@ -377,10 +377,12 @@ by `score_full.py` (whole model, fp16).
 | B: epochs 4 / 9 / 14 / E | 0.454-0.519 % | 0.20-0.22 % | 2.17-2.54x | 15.51-16.14 % | 8.86-9.49 % | fail (threshold; B:14 also ITW EER) |
 | C: epochs 4 / 9 / 14 / E | 0.474-0.558 % | 0.22-0.28 % | 1.65-1.79x | 15.85 % | 9.49-9.81 % | fail (threshold) |
 
-No candidate passes, so the test-only checks do not run. The fine-tune ranks clips better than p3 on
-these rows (dev EER 0.454 % vs 0.585 %, missed fakes 0.17 % vs 0.36 %, In-the-Wild no worse), but its
-scores move to a different scale: the dev threshold moves 3.3-4.2x, and even the 0.75/0.25 blend stays
-at 1.65x or more, the same failure as round 1.
+No candidate passes, so the test-only checks do not run. The fine-tune ranks the dev phone clips
+better than p3 on these rows (EER 0.454 % vs 0.585 %, missed fakes 0.17 % vs 0.36 %, on 5,129 scores);
+on In-the-Wild it is no worse than p3: on 600 clips the In-the-Wild differences, gains and losses
+alike, are within noise (about ±1.5 pp). But its scores move to a different scale: the dev threshold
+moves from 0.0173 (p3, these rows) to 0.057-0.073, 3.3-4.2x or 1.2-1.5 in log-odds, and even the
+0.75/0.25 blend stays at 1.65x or more, the same failure as round 1.
 
 **Deviations from the registered plan, stated plainly.** (1) Measured on every 5th row of both gate
 sets (5,129 dev phone scores, 600 In-the-Wild clips), not all rows. A full-set scoring of the two
